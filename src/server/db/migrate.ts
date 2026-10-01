@@ -1,0 +1,55 @@
+import { createHash } from 'node:crypto';
+import type pg from 'pg';
+import { inTransaction } from './index.js';
+import { initialSchema } from './migrations/001-initial.js';
+
+const migrations = [{ version: 1, name: 'initial', sql: initialSchema }];
+
+export async function migrate(pool: pg.Pool) {
+  return inTransaction(pool, async (client) => {
+    // Serialize migration runners across processes, releasing on commit/rollback.
+    await client.query('SELECT pg_advisory_xact_lock(713284, 1)');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version integer PRIMARY KEY,
+        name text NOT NULL,
+        checksum text NOT NULL,
+        applied_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    const applied = await client.query<{
+      version: number;
+      name: string;
+      checksum: string;
+    }>(
+      'SELECT version, name, checksum FROM schema_migrations ORDER BY version',
+    );
+    for (const row of applied.rows) {
+      const migration = migrations.find((item) => item.version === row.version);
+      if (
+        !migration ||
+        migration.name !== row.name ||
+        createHash('sha256').update(migration.sql).digest('hex') !==
+          row.checksum
+      ) {
+        throw new Error('Database migration history does not match this build');
+      }
+    }
+    const completed: number[] = [];
+    for (const migration of migrations) {
+      if (applied.rows.some((row) => row.version === migration.version))
+        continue;
+      await client.query(migration.sql);
+      await client.query(
+        'INSERT INTO schema_migrations (version, name, checksum) VALUES ($1, $2, $3)',
+        [
+          migration.version,
+          migration.name,
+          createHash('sha256').update(migration.sql).digest('hex'),
+        ],
+      );
+      completed.push(migration.version);
+    }
+    return completed;
+  });
+}

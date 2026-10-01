@@ -1,6 +1,6 @@
 # CrowdCue
 
-CrowdCue is a collaborative Spotify party-request application. This milestone provides a runnable application foundation only. Authentication, persistence, parties, requests, voting, and Spotify integration are not implemented yet. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
+CrowdCue is a collaborative Spotify party-request application. The application foundation and PostgreSQL database structure are implemented. Party/session APIs, authentication, requests, voting, and Spotify integration are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
 ## Architecture and stack
 
@@ -72,15 +72,55 @@ Keep local values in ignored `.env` files or deployment secret configuration. `.
 | `PORT`                  | `3000`; integer from 1 to 65535                                                                                           |
 | `LOG_LEVEL`             | `info`; Pino levels or `silent`                                                                                           |
 | `API_PROXY_TARGET`      | Optional Vite process environment override; defaults to `http://127.0.0.1:3000`. Set this when changing the backend port. |
-| `DATABASE_URL`          | Reserved for the next database task; not read yet                                                                         |
+| `DATABASE_URL`          | PostgreSQL URL for migration commands; never exposed to the browser                                                       |
+| `TEST_DATABASE_URL`     | PostgreSQL URL for integration tests; use a separate test database                                                        |
 | `SPOTIFY_CLIENT_ID`     | Reserved for OAuth; not read yet                                                                                          |
 | `SPOTIFY_CLIENT_SECRET` | Reserved server secret; not read yet                                                                                      |
 | `SPOTIFY_REDIRECT_URI`  | Reserved OAuth callback URL; not read yet                                                                                 |
 
 Vite does not read the backend `.env` into its configuration. For example, a custom backend port uses `PORT=3001 API_PROXY_TARGET=http://127.0.0.1:3001 npm run dev` on POSIX shells. No Spotify credentials or database connection are required to install, test, or start this foundation.
 
-## Next: database implementation
+## Database structure and migrations
 
-Plan on **PostgreSQL**, which provides transactions, foreign keys, partial unique indexes, and row locking for concurrent requests and votes. No ORM, database driver, models, or migrations have been introduced. Choose and install a migration/query layer in the database task; place persistence behind backend modules and add transactional integration tests against PostgreSQL. Enforce duplicate prevention in database constraints rather than relying solely on application checks. The health endpoint currently reports process liveness, not database readiness.
+Use **PostgreSQL 17** (validated version) with the `pg` driver, parameterized SQL, backend row interfaces, and versioned migrations in `src/server/db/`. No ORM or extra database service layer is required. Set `DATABASE_URL` in your ignored `.env` or deployment environment, then run:
+
+```sh
+npm run db:migrate
+# After npm run build, runtime-only deployments can use:
+npm run db:migrate:production
+```
+
+Create the database and its owner through your PostgreSQL provider before migrating. The migration role needs schema/table creation privileges; use a separate restricted runtime role when implementing deployment. Use the provider's verified TLS configuration for remote connections; do not disable certificate verification.
+
+Migrations run explicitly before deployment, rather than during server startup. The runner uses a transaction and a PostgreSQL advisory lock to serialize concurrent runners. Applied version/name/checksum records prevent silently modifying old migrations. Repeated runs are safe. Add a new migration for subsequent changes; do not edit an applied migration. No destructive rollback command is provided. Back up persistent data before production migrations.
+
+The initial schema includes:
+
+- `spotify_accounts` and private `spotify_credentials`: host identity and encrypted OAuth credential envelopes, separated from public party data.
+- `parties` and `party_settings`: host ownership, active/ended lifecycle, separate join/admin/display identifiers, backup playlist reference, and typed settings.
+- `guests`: party-scoped expiring guest sessions and optional display names.
+- `song_requests`: cached Spotify metadata, moderation states, optional manual ordering, and timestamps.
+- `votes`: one vote per guest/request, with foreign keys requiring the voter and request to belong to the same party.
+- `spotify_queue_operations`: one durable queue coordination record per request, including an UNKNOWN state for uncertain external outcomes.
+
+A partial unique index prevents the same track from having multiple REQUESTED, APPROVED, or QUEUED requests in one party, including concurrent inserts. PLAYED, REJECTED, and REMOVED requests remain as history and permit requesting the track again. Request authors must belong to the request's party. Indexes support party/host lookup, queue reads, guest requests, votes, and pending queue operations. Party deletion cascades party-owned data; deleting a host with parties is restricted and deleting a guest who authored requests is restricted. Ending a party preserves history.
+
+Future party creation must insert its settings in the same transaction using `inTransaction`. Application code must maintain `updated_at`, authorize mutations, enforce party state/settings/session expiry, and implement allowed request transitions. Database row types are internal shapes, not public API responses.
+
+Generate independent cryptographically random join/admin/display/session tokens in the session task. Store only SHA-256 hashes of private admin/display/session tokens. Length/format constraints cannot establish unpredictability or authorization. OAuth integration must encrypt access/refresh tokens with authenticated encryption and a key stored outside the database, using `encryption_key_id` for rotation; encryption is not implemented in this structure-only milestone. Do not store plaintext tokens or serialize credential rows. Queue coordination provides storage, not exactly-once Spotify delivery: the future worker must atomically claim operations and reconcile uncertain outcomes before retrying.
+
+### Database integration tests
+
+Set `TEST_DATABASE_URL` in the process environment to a separate test database, then run:
+
+```sh
+npm run test:db
+# Run every check with PostgreSQL tests included:
+npm run check
+```
+
+The test runner does not load `.env` automatically. Database tests create a random isolated schema and drop only that schema afterward; the test role needs schema creation privileges. They verify migration serialization/repeatability/drift, settings and lifecycle constraints, concurrent duplicate requests/votes, cross-party references, transaction rollback, and deletion behavior. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
+
+The server remains runnable without database configuration until party/session APIs are implemented. The health endpoint reports process liveness, not database readiness. **Next task: implement the Party/session system** using these tables and transaction helpers.
 
 Future real-time behavior can use Server-Sent Events from this backend with ordinary HTTP mutations; no real-time functionality is implemented. Multi-instance delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.
