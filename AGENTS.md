@@ -562,6 +562,53 @@ to the user before adding it.
 
 ---
 
+## Spotify Playlist Safety
+
+During development, Spotify playlists are READ ONLY.
+
+Allowed scopes:
+- playlist-read-private
+- playlist-read-collaborative
+
+Do NOT request:
+- playlist-modify-private
+- playlist-modify-public
+
+CrowdCue may:
+- List playlists
+- Read playlist metadata
+- Read playlist contents
+- Select and store a backup playlist ID
+- Compare CrowdCue tracks against playlist contents
+- Implement playlist synchronization logic behind an abstraction
+- Mock playlist writes in automated tests
+
+CrowdCue must NOT make live Spotify API calls that:
+- Add playlist items
+- Remove playlist items
+- Replace playlist contents
+- Reorder playlist items
+- Rename playlists
+- Change playlist metadata
+- Create playlists
+- Follow/unfollow playlists
+
+Implement playlist-writing functionality behind a dedicated service
+interface so write operations can be enabled later.
+
+All playlist write operations must be mocked or disabled during
+development.
+
+Future playlist write access must be restricted to the single Spotify
+playlist ID explicitly designated as CrowdCue's managed backup playlist.
+
+Never modify any other Spotify playlist.
+
+Do not add Spotify playlist modification scopes without explicit user
+approval.
+
+---
+
 ## Primary Goal
 
 Build CrowdCue incrementally into a secure, reliable, polished Spotify party-request application while requiring minimal supervision from the user.
