@@ -480,6 +480,19 @@ If a newer user instruction changes an existing requirement, implement the newer
 
 ---
 
+## Branch Policy
+
+During autonomous development, work on the designated development branch rather than `main`.
+
+For the current build:
+- Development branch: `codex/crowdcue-build`
+- Do not push implementation changes directly to `main`.
+- Do not merge into `main` unless explicitly instructed by the user.
+- Commit completed, tested milestones to the development branch.
+- Before beginning a new task, verify the current branch.
+
+---
+
 ## Primary Goal
 
 Build CrowdCue incrementally into a secure, reliable, polished Spotify party-request application while requiring minimal supervision from the user.
