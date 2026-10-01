@@ -1,0 +1,65 @@
+{
+  "name": "crowdcue",
+  "version": "0.1.0",
+  "description": "CrowdCue is a collaborative Spotify queue app that lets guests search for and add songs to a host’s playback queue in real time. Built for parties and events, it gives everyone a say in what plays next while keeping playback control with the host.",
+  "scripts": {
+    "dev": "concurrently --kill-others -n api,web \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx watch --env-file-if-exists=.env src/server/index.ts",
+    "dev:client": "vite",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "start": "node --env-file-if-exists=.env --conditions=production dist/server/index.js --production",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cbertrand451/CrowdCue.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/cbertrand451/CrowdCue/issues"
+  },
+  "homepage": "https://github.com/cbertrand451/CrowdCue#readme",
+  "private": true,
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "dependencies": {
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/static": "^10.1.5",
+    "fastify": "^5.12.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.19.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.13.0",
+    "jsdom": "^30.1.1",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  }
+}

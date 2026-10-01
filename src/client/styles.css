@@ -1,0 +1,45 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #f5f6f2;
+  background: #141917;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  width: min(100%, 60rem);
+  margin: 0 auto;
+  padding: clamp(1.5rem, 6vw, 5rem);
+}
+.wordmark {
+  font-weight: 750;
+  font-size: 1.5rem;
+  letter-spacing: -0.05em;
+  margin: 0 0 4rem;
+}
+h1 {
+  font-size: clamp(2.5rem, 7vw, 5rem);
+  line-height: 1.08;
+  letter-spacing: -0.055em;
+  margin: 0 0 1.5rem;
+}
+.intro {
+  color: #b8c3bc;
+  font-size: 1.125rem;
+}
+.status {
+  border-top: 1px solid #425148;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  line-height: 1.6;
+}
+.ready {
+  color: #a9ebba;
+}
+.unavailable {
+  color: #ffd1ad;
+}
