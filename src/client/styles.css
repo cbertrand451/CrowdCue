@@ -43,3 +43,37 @@ h1 {
 .unavailable {
   color: #ffd1ad;
 }
+.spotify-connection {
+  margin-top: 2rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.spotify-connection form {
+  display: inline-block;
+  margin-right: 0.75rem;
+}
+button {
+  font: inherit;
+  font-weight: 650;
+  border: 1px solid #a9ebba;
+  border-radius: 0.3rem;
+  background: #a9ebba;
+  color: #141917;
+  padding: 0.8rem 1.25rem;
+  min-height: 44px;
+  max-width: 100%;
+  cursor: pointer;
+}
+button.secondary {
+  background: transparent;
+  color: #f5f6f2;
+  border-color: #718078;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button:focus-visible {
+  outline: 2px solid #f5f6f2;
+  outline-offset: 4px;
+}

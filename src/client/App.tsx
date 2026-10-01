@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SpotifyConnection } from './SpotifyConnection';
 
 export function App() {
   const [status, setStatus] = useState<'checking' | 'ready' | 'unavailable'>(
@@ -44,6 +45,7 @@ export function App() {
             ? 'CrowdCue is running.'
             : 'Unable to reach CrowdCue. Please refresh to try again.'}
       </p>
+      <SpotifyConnection />
     </main>
   );
 }

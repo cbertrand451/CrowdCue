@@ -2,8 +2,12 @@ import { createHash } from 'node:crypto';
 import type pg from 'pg';
 import { inTransaction } from './index.js';
 import { initialSchema } from './migrations/001-initial.js';
+import { spotifyAuthSchema } from './migrations/002-spotify-auth.js';
 
-const migrations = [{ version: 1, name: 'initial', sql: initialSchema }];
+const migrations = [
+  { version: 1, name: 'initial', sql: initialSchema },
+  { version: 2, name: 'spotify-auth', sql: spotifyAuthSchema },
+];
 
 export async function migrate(pool: pg.Pool) {
   return inTransaction(pool, async (client) => {

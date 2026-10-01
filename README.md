@@ -1,6 +1,6 @@
 # CrowdCue
 
-CrowdCue is a collaborative Spotify party-request application. The application foundation and PostgreSQL database structure are implemented. Party/session APIs, authentication, requests, voting, and Spotify integration are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
+CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, and Spotify OAuth authentication are implemented. Party/guest session APIs, song requests, voting, and Spotify queue operations are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
 ## Architecture and stack
 
@@ -20,7 +20,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The frontend is at `http://localhost:5173`; the API is at `http://127.0.0.1:3000/api/health`. The health endpoint returns `{"status":"ok","service":"crowdcue"}`. The frontend confirms actual API connectivity and reports connection failure. A `.env` file is optional for this milestone; blank optional variables use defaults.
+The frontend is at `http://127.0.0.1:5173`; the API is at `http://127.0.0.1:3000/api/health`. The health endpoint returns `{"status":"ok","service":"crowdcue"}`. The frontend confirms actual API connectivity and reports connection failure. A `.env` file is optional when OAuth is disabled; blank optional variables use defaults.
 
 | Command                | Purpose                                                |
 | ---------------------- | ------------------------------------------------------ |
@@ -47,6 +47,8 @@ npm start
 
 Visit `http://127.0.0.1:3000`. `npm start` explicitly selects production mode. Deployment should provide HTTPS through a reverse proxy and use `HOST=0.0.0.0` when binding inside a container. Deployment automation is deferred. SIGINT/SIGTERM close Fastify gracefully. Install build dependencies before building; a runtime-only installation may use `npm ci --omit=dev` after the build artifacts have been produced.
 
+If your local `.env` enables OAuth with an HTTP loopback callback, use `SPOTIFY_AUTH_ENABLED=false npm start` for a local production-build smoke test, or supply HTTPS OAuth settings for a production authentication test.
+
 ## Project structure
 
 ```text
@@ -65,20 +67,56 @@ dist/server/       Generated backend JavaScript (ignored)
 
 Keep local values in ignored `.env` files or deployment secret configuration. `.env.example` contains names only. Never prefix privileged configuration with `VITE_`: that prefix exposes values in browser bundles.
 
-| Variable                | Default / purpose                                                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`              | `development`; accepts `development`, `test`, `production`. `npm start` selects `production`.                             |
-| `HOST`                  | `127.0.0.1`; use `0.0.0.0` for a cloud/container listener                                                                 |
-| `PORT`                  | `3000`; integer from 1 to 65535                                                                                           |
-| `LOG_LEVEL`             | `info`; Pino levels or `silent`                                                                                           |
-| `API_PROXY_TARGET`      | Optional Vite process environment override; defaults to `http://127.0.0.1:3000`. Set this when changing the backend port. |
-| `DATABASE_URL`          | PostgreSQL URL for migration commands; never exposed to the browser                                                       |
-| `TEST_DATABASE_URL`     | PostgreSQL URL for integration tests; use a separate test database                                                        |
-| `SPOTIFY_CLIENT_ID`     | Reserved for OAuth; not read yet                                                                                          |
-| `SPOTIFY_CLIENT_SECRET` | Reserved server secret; not read yet                                                                                      |
-| `SPOTIFY_REDIRECT_URI`  | Reserved OAuth callback URL; not read yet                                                                                 |
+| Variable                  | Default / purpose                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                | `development`; accepts `development`, `test`, `production`. `npm start` selects `production`.                             |
+| `HOST`                    | `127.0.0.1`; use `0.0.0.0` for a cloud/container listener                                                                 |
+| `PORT`                    | `3000`; integer from 1 to 65535                                                                                           |
+| `LOG_LEVEL`               | `info`; Pino levels or `silent`                                                                                           |
+| `API_PROXY_TARGET`        | Optional Vite process environment override; defaults to `http://127.0.0.1:3000`. Set this when changing the backend port. |
+| `DATABASE_URL`            | PostgreSQL URL for migrations and enabled authentication; never exposed to the browser                                    |
+| `TEST_DATABASE_URL`       | PostgreSQL URL for integration tests; use a separate test database                                                        |
+| `SPOTIFY_AUTH_ENABLED`    | Blank/false disables OAuth. Set true after completing the setup below                                                     |
+| `SPOTIFY_CLIENT_ID`       | Spotify application client ID                                                                                             |
+| `SPOTIFY_CLIENT_SECRET`   | Spotify application secret; backend only                                                                                  |
+| `SPOTIFY_REDIRECT_URI`    | Exact registered callback URL ending in /api/auth/spotify/callback                                                        |
+| `SPOTIFY_REDIRECT_URL`    | Alias when SPOTIFY_REDIRECT_URI is absent/blank                                                                           |
+| `APP_ORIGIN`              | Browser origin without a trailing slash; defaults to the callback origin and must match it                                |
+| `TOKEN_ENCRYPTION_KEYS`   | Secret JSON object of key IDs to canonical base64-encoded 32-byte keys                                                    |
+| `TOKEN_ENCRYPTION_KEY_ID` | Active encryption key ID; defaults to v1                                                                                  |
 
-Vite does not read the backend `.env` into its configuration. For example, a custom backend port uses `PORT=3001 API_PROXY_TARGET=http://127.0.0.1:3001 npm run dev` on POSIX shells. No Spotify credentials or database connection are required to install, test, or start this foundation.
+Vite does not read the backend `.env` into its configuration. For example, a custom backend port uses `PORT=3001 API_PROXY_TARGET=http://127.0.0.1:3001 npm run dev` on POSIX shells. No Spotify credentials or database connection are required to install, run unit tests, or start with OAuth disabled.
+
+## Spotify authentication setup
+
+The host clicks **Connect Spotify**, grants Spotify permissions, and returns to CrowdCue with a private host session. No Spotify password is handled by CrowdCue and no audio is played by the application.
+
+1. Supply `DATABASE_URL` and run `npm run db:migrate` to apply migration 002, which adds expiring OAuth attempts, host sessions, and host display names. Existing parties and credentials are preserved.
+2. Set the real Spotify application credentials in the backend environment. The managed environment's `SPOTIFY_REDIRECT_URL` is accepted as an alias.
+3. In the Spotify developer dashboard, register the exact callback URL `http://127.0.0.1:5173/api/auth/spotify/callback` for local development. Set `SPOTIFY_REDIRECT_URI` to that value and `APP_ORIGIN` to `http://127.0.0.1:5173`. Open the app using that same origin. Vite proxies the callback to the backend. HTTPS is required for production; replace the local origin with the deployed browser origin. Spotify requires explicit loopback IPs for HTTP redirects, so do not use localhost.
+4. For local development, run `npm run auth:keygen`. This writes a random encryption key to ignored `.env.token-key` with private permissions, without printing it. Existing key files are never overwritten. Server/start scripts load this file after `.env`; process environment values take precedence over both. Preserve the file across restarts. For deployment, provision `TOKEN_ENCRYPTION_KEYS` and `TOKEN_ENCRYPTION_KEY_ID` through your secret manager; never commit the local file.
+5. Set `SPOTIFY_AUTH_ENABLED=true`, restart with `npm run dev`, and click Connect Spotify. Configuration validation fails safely when required values, matching origins, or encryption keys are missing. When disabled, the app remains runnable and displays an unavailable connection button.
+
+The requested scopes are `user-read-private`, `user-read-playback-state`, `user-modify-playback-state`, and `playlist-modify-private`. They support host identification and the planned playback-state, queue, and private backup-playlist features. Spotify app development-mode access restrictions still apply: use an eligible account allowed by the app configuration. A live browser consent/sign-in is required to confirm provider configuration; automated tests use mocked Spotify responses.
+
+Authentication endpoints:
+
+| Endpoint                       | Behavior                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| POST /api/auth/spotify/login   | Same-origin browser form; sets a 10-minute OAuth cookie and redirects to Spotify                                          |
+| GET /api/auth/spotify/callback | Consumes browser-bound state, exchanges the code with PKCE, saves encrypted tokens, and rotates the host cookie           |
+| GET /api/auth/spotify/status   | Returns enabled/authenticated/connected flags, optional display name, and safe recovery status; refreshes expiring tokens |
+| POST /api/auth/logout          | Same-origin session revocation and cookie clearing for the current browser                                                |
+
+OAuth state is random, stored as a SHA-256 hash, bound to a separate HttpOnly browser cookie, and consumed atomically once. PKCE verifiers are also encrypted in the database. Private host sessions last 30 days and are stored only as token hashes. HTTPS cookies use Secure, HttpOnly, SameSite=Lax, Path=/, and the __Host- prefix. Mutating endpoints require the exact configured Origin. Authentication responses use no-store and no-referrer headers. Reverse-proxy/access logs must also avoid recording OAuth codes and private URLs.
+
+Access and refresh tokens use AES-256-GCM with random nonces and account/purpose binding. The key ring permits old and active key IDs: retain old keys while their ciphertext exists, switch the active ID for new writes, and refresh/reconnect to re-encrypt credentials before retiring an old key. Database errors, provider messages, and token values never reach browser responses or raw application logs.
+
+Tokens refresh automatically within 60 seconds of expiry. PostgreSQL row locks serialize refreshes across processes; omitted refresh tokens retain the previous value and rotated tokens replace it. Invalid grants commit credential removal and request reconnection, while transient errors/rate limits retain credentials for retry. Backend `AuthService.hostProfile` validates the host session and retries a Spotify 401 once with a refreshed token. Future privileged endpoints must use `requireHost` and verify party ownership; no client-supplied account ID grants host access.
+
+Sign out revokes this browser's CrowdCue session. It does not revoke Spotify consent or delete the host's encrypted credentials, so it will not interrupt future party workers. The status endpoint reports locally stored credential availability/refresh results; revocation of an otherwise unexpired token is detected on the next Spotify API call. No playlist, playback, or queue mutation is performed in this milestone.
+
+Authentication routes have per-process IP rate limits (10 login attempts, 30 callbacks/logout requests, and 60 status requests per minute). Do not trust arbitrary forwarded IP headers. When deploying behind a reverse proxy or across multiple instances, configure trusted proxy handling and shared edge rate limiting as part of deployment hardening. Node's environment proxy support honors configured HTTP/HTTPS proxies and CA trust for backend Spotify calls.
 
 ## Database structure and migrations
 
@@ -107,7 +145,7 @@ A partial unique index prevents the same track from having multiple REQUESTED, A
 
 Future party creation must insert its settings in the same transaction using `inTransaction`. Application code must maintain `updated_at`, authorize mutations, enforce party state/settings/session expiry, and implement allowed request transitions. Database row types are internal shapes, not public API responses.
 
-Generate independent cryptographically random join/admin/display/session tokens in the session task. Store only SHA-256 hashes of private admin/display/session tokens. Length/format constraints cannot establish unpredictability or authorization. OAuth integration must encrypt access/refresh tokens with authenticated encryption and a key stored outside the database, using `encryption_key_id` for rotation; encryption is not implemented in this structure-only milestone. Do not store plaintext tokens or serialize credential rows. Queue coordination provides storage, not exactly-once Spotify delivery: the future worker must atomically claim operations and reconcile uncertain outcomes before retrying.
+Generate independent cryptographically random join/admin/display/guest-session tokens in the party/session task. Store only SHA-256 hashes of private admin/display/session tokens. Length/format constraints cannot establish unpredictability or authorization. Host sessions and OAuth encryption are implemented as described above. Do not store plaintext tokens or serialize credential rows. Queue coordination provides storage, not exactly-once Spotify delivery: the future worker must atomically claim operations and reconcile uncertain outcomes before retrying.
 
 ### Database integration tests
 
@@ -119,8 +157,8 @@ npm run test:db
 npm run check
 ```
 
-The test runner does not load `.env` automatically. Database tests create a random isolated schema and drop only that schema afterward; the test role needs schema creation privileges. They verify migration serialization/repeatability/drift, settings and lifecycle constraints, concurrent duplicate requests/votes, cross-party references, transaction rollback, and deletion behavior. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
+The test runner does not load `.env` automatically. Database tests create random isolated schemas and drop only those schemas afterward; the test role needs schema creation privileges. They verify migrations, settings/lifecycle constraints, concurrent duplicate requests/votes, cross-party references, rollback/deletion behavior, OAuth replay/browser binding, encrypted persistence, session expiry/revocation, refresh serialization, and invalid-grant/transient-error handling. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
 
-The server remains runnable without database configuration until party/session APIs are implemented. The health endpoint reports process liveness, not database readiness. **Next task: implement the Party/session system** using these tables and transaction helpers.
+The server remains runnable without database configuration when OAuth is disabled. The health endpoint reports process liveness, not database readiness. **Next task: implement the Party/guest session system** using the authenticated host, database tables, and transaction helpers.
 
 Future real-time behavior can use Server-Sent Events from this backend with ordinary HTTP mutations; no real-time functionality is implemented. Multi-instance delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.

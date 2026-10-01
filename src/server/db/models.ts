@@ -8,6 +8,7 @@ export type QueueOperationStatus =
 export interface SpotifyAccount {
   id: string;
   spotify_user_id: string;
+  display_name: string | null;
   created_at: Date;
 }
 export interface SpotifyCredentials {

@@ -3,10 +3,16 @@ import helmet from '@fastify/helmet';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import type { Config } from './config.js';
+import { authRoutes } from './auth/routes.js';
+import type { AuthService } from './auth/service.js';
 
 export function buildApp(
   config: Config,
-  options: { serveFrontend?: boolean; logger?: boolean } = {},
+  options: {
+    serveFrontend?: boolean;
+    logger?: boolean;
+    auth?: AuthService;
+  } = {},
 ) {
   const app = Fastify({
     // Request URLs may eventually contain private party identifiers or OAuth codes.
@@ -24,6 +30,7 @@ export function buildApp(
           },
   });
   app.register(helmet);
+  app.register(authRoutes, { service: options.auth });
   app.get('/api/health', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
     return { status: 'ok', service: 'crowdcue' };

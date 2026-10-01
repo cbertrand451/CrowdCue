@@ -771,8 +771,8 @@ A recommended implementation sequence is:
 
 1. Initialize application architecture.
 2. Create database models and migrations.
-3. Implement Party/session system.
-4. Implement Spotify OAuth.
+3. Implement Spotify OAuth (including secure host authentication sessions).
+4. Implement Party/guest session system.
 5. Implement Admin/Host interface foundation.
 6. Implement Guest interface foundation.
 7. Implement Spotify song search.

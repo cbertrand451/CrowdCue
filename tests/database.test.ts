@@ -1,8 +1,9 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, inTransaction } from '../src/server/db/index.js';
 import { migrate } from '../src/server/db/migrate.js';
+import { initialSchema } from '../src/server/db/migrations/001-initial.js';
 
 const url = process.env.TEST_DATABASE_URL;
 if (process.env.npm_lifecycle_event === 'test:db' && !url) {
@@ -69,11 +70,62 @@ describe.skipIf(!url)('PostgreSQL persistence', () => {
 
   it('serializes concurrent migrations and supports repeat runs', async () => {
     const results = await Promise.all([migrate(pool), migrate(pool)]);
-    expect(results.flat()).toEqual([1]);
+    expect(results.flat()).toEqual([1, 2]);
     expect(await migrate(pool)).toEqual([]);
     expect((await pool.query('SELECT * FROM schema_migrations')).rowCount).toBe(
-      1,
+      2,
     );
+  });
+
+  it('upgrades a version-one database while preserving an existing party', async () => {
+    const isolated = `${schema}_upgrade`;
+    await admin.query(`CREATE SCHEMA "${isolated}"`);
+    const oldPool = new pg.Pool({
+      connectionString: url,
+      options: `-c search_path=${isolated}`,
+    });
+    try {
+      await oldPool.query(initialSchema);
+      await oldPool.query(`CREATE TABLE schema_migrations (
+        version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL,
+        applied_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      await oldPool.query(
+        "INSERT INTO schema_migrations (version, name, checksum) VALUES (1, 'initial', $1)",
+        [createHash('sha256').update(initialSchema).digest('hex')],
+      );
+      const account = (
+        await oldPool.query(
+          "INSERT INTO spotify_accounts (spotify_user_id) VALUES ('existing-host') RETURNING id",
+        )
+      ).rows[0].id;
+      const existing = (
+        await oldPool.query(
+          `INSERT INTO parties (host_account_id, name, guest_join_token, admin_token_hash, display_token_hash)
+         VALUES ($1, 'Existing party', $2, $3, $4) RETURNING id`,
+          [account, hash(), hash(), hash()],
+        )
+      ).rows[0].id;
+      expect(await migrate(oldPool)).toEqual([2]);
+      expect(
+        (
+          await oldPool.query('SELECT name FROM parties WHERE id = $1', [
+            existing,
+          ])
+        ).rows[0].name,
+      ).toBe('Existing party');
+      expect(
+        (
+          await oldPool.query(
+            'SELECT display_name FROM spotify_accounts WHERE id = $1',
+            [account],
+          )
+        ).rows[0].display_name,
+      ).toBeNull();
+    } finally {
+      await oldPool.end();
+      await admin.query(`DROP SCHEMA "${isolated}" CASCADE`);
+    }
   });
 
   it('rolls back a failed migration atomically and can retry', async () => {
@@ -94,7 +146,7 @@ describe.skipIf(!url)('PostgreSQL persistence', () => {
       );
       expect(tables.rows.map((row) => row.tablename)).toEqual(['parties']);
       await failingPool.query('DROP TABLE parties');
-      expect(await migrate(failingPool)).toEqual([1]);
+      expect(await migrate(failingPool)).toEqual([1, 2]);
     } finally {
       await failingPool.end();
       await admin.query(`DROP SCHEMA "${isolated}" CASCADE`);
@@ -259,7 +311,7 @@ describe.skipIf(!url)('PostgreSQL persistence', () => {
     );
     await expect(migrate(pool)).rejects.toThrow('migration history');
     expect((await pool.query('SELECT * FROM schema_migrations')).rowCount).toBe(
-      1,
+      2,
     );
   });
 });

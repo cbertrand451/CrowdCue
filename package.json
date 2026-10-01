@@ -4,10 +4,10 @@
   "description": "CrowdCue is a collaborative Spotify queue app that lets guests search for and add songs to a host’s playback queue in real time. Built for parties and events, it gives everyone a say in what plays next while keeping playback control with the host.",
   "scripts": {
     "dev": "concurrently --kill-others -n api,web \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "tsx watch --env-file-if-exists=.env src/server/index.ts",
+    "dev:server": "tsx watch --env-file-if-exists=.env --env-file-if-exists=.env.token-key src/server/index.ts",
     "dev:client": "vite",
     "build": "vite build && tsc -p tsconfig.server.json",
-    "start": "node --env-file-if-exists=.env --conditions=production dist/server/index.js --production",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.token-key --conditions=production dist/server/index.js --production",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -17,7 +17,8 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
     "db:migrate": "tsx --env-file-if-exists=.env src/server/db/cli.ts",
     "db:migrate:production": "node --env-file-if-exists=.env dist/server/db/cli.js",
-    "test:db": "vitest run tests/database.test.ts"
+    "test:db": "vitest run tests/database.test.ts tests/auth.database.test.ts",
+    "auth:keygen": "tsx src/server/auth/keygen.ts"
   },
   "repository": {
     "type": "git",
@@ -37,7 +38,9 @@
     "npm": ">=11 <12"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
     "@fastify/helmet": "^13.1.1",
+    "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.5",
     "fastify": "^5.12.5",
     "pg": "^8.23.1",
