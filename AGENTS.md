@@ -493,6 +493,75 @@ For the current build:
 
 ---
 
+## Spotify Account Safety
+
+Protect the user's personal Spotify account from unintended modification.
+
+CrowdCue must follow least-privilege Spotify authorization.
+
+Unless explicitly authorized by the user, NEVER request or use:
+
+- user-library-modify
+- user-follow-modify
+- playlist-modify-public
+- playlist-modify-private
+- ugc-image-upload
+
+Never modify or delete:
+
+- Saved/liked songs
+- Saved albums
+- Followed artists/users
+- Existing playlists
+- Existing playlist contents
+- Playlist metadata
+- Other persistent Spotify library data
+
+Never use destructive Spotify API operations during development or testing.
+
+Do not test Spotify write operations against the user's existing playlists or library.
+
+### Playback Permissions
+
+CrowdCue may eventually request:
+
+- user-read-currently-playing
+- user-read-playback-state
+- user-modify-playback-state
+
+`user-modify-playback-state` should only be used for functionality
+explicitly required by CrowdCue.
+
+For the initial product, its intended write operation is adding approved
+tracks to the Spotify playback queue.
+
+Do NOT use it to:
+
+- Skip tracks
+- Pause playback
+- Start playback
+- Seek
+- Change volume
+- Toggle shuffle
+- Change repeat mode
+- Transfer playback between devices
+
+unless the user explicitly adds those capabilities to the product.
+
+### Development Safety
+
+Prefer mocked Spotify API responses during automated testing.
+
+Live Spotify write operations must not be used in automated tests.
+
+Read-only live Spotify API calls may be used when appropriate.
+
+Before implementing any new Spotify functionality that requires an
+additional write scope, report the required scope and its capabilities
+to the user before adding it.
+
+---
+
 ## Primary Goal
 
 Build CrowdCue incrementally into a secure, reliable, polished Spotify party-request application while requiring minimal supervision from the user.
