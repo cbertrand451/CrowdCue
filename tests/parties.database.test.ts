@@ -750,4 +750,107 @@ describe.skipIf(!url)('party creation and authorization', () => {
       ).json().guest.id,
     ).toBe(renewed.json().guest.id);
   });
+  it('authorizes party guest searches, filters explicit songs, and refreshes a rejected host token once', async () => {
+    const party = (
+      await create({
+        name: 'Search party',
+        settings: { allowExplicitTracks: false },
+      })
+    ).json<{ party: PartyDetails }>().party;
+    const join = tokenFrom(party.links.guest);
+    const path = `/api/party-links/guest/${join}/search?q=song`;
+    expect((await app.inject(path)).statusCode).toBe(401);
+    expect(fetcher).not.toHaveBeenCalled();
+    const entered = await app.inject({
+      method: 'POST',
+      url: `/api/party-links/guest/${join}/session`,
+      headers: { origin: config.appOrigin },
+      payload: {},
+    });
+    const cookies = { [entered.cookies[0].name]: entered.cookies[0].value };
+    const song = {
+      id: 'a'.repeat(22),
+      name: 'Song',
+      artists: [{ name: 'Artist' }],
+      album: { name: 'Album', images: [] },
+      duration_ms: 120000,
+      explicit: false,
+    };
+    const page = {
+      tracks: {
+        items: [song, { ...song, id: 'b'.repeat(22), explicit: true }],
+        next: null,
+      },
+    };
+    fetcher.mockResolvedValueOnce(new Response(JSON.stringify(page)));
+    const results = await app.inject({ url: path, cookies });
+    expect(results.statusCode).toBe(200);
+    expect(results.json().tracks).toHaveLength(1);
+    expect(results.body).not.toMatch(
+      /test-access|test-refresh|host_account_id|ciphertext/,
+    );
+    expect(results.headers['cache-control']).toBe('no-store');
+    const foreign = await created();
+    expect(
+      (
+        await app.inject({
+          url: `/api/party-links/guest/${tokenFrom(foreign.links.guest)}/search?q=song`,
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (await app.inject({ url: path + '&hostId=' + other.id, cookies }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          url: `/api/party-links/guest/${tokenFrom(party.links.display!)}/search?q=song`,
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(404);
+    fetcher
+      .mockResolvedValueOnce(new Response('{}', { status: 401 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: 'fresh-search-token',
+            refresh_token: 'fresh-refresh',
+            expires_in: 3600,
+            token_type: 'Bearer',
+            scope: spotifyScopes.join(' '),
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(page)));
+    expect((await app.inject({ url: path, cookies })).statusCode).toBe(200);
+    expect(fetcher.mock.calls.at(-1)![1]!.headers).toEqual({
+      authorization: 'Bearer fresh-search-token',
+    });
+    fetcher.mockResolvedValueOnce(
+      new Response('secret provider error', {
+        status: 429,
+        headers: { 'retry-after': '15' },
+      }),
+    );
+    const limited = await app.inject({ url: path, cookies });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['retry-after']).toBe('15');
+    expect(limited.body).not.toContain('secret provider error');
+    await store.update(
+      host.id,
+      tokenFrom(party.links.admin!),
+      createPartySchema.parse({
+        name: party.name,
+        settings: { ...party.settings, requireGuestNames: true },
+      }),
+    );
+    expect((await app.inject({ url: path, cookies })).statusCode).toBe(400);
+    await store.end(host.id, tokenFrom(party.links.admin!));
+    const calls = fetcher.mock.calls.length;
+    expect((await app.inject({ url: path, cookies })).statusCode).toBe(409);
+    expect(fetcher).toHaveBeenCalledTimes(calls);
+  });
 });

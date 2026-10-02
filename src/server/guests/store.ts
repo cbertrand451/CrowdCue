@@ -80,4 +80,32 @@ export class PostgresGuestStore {
       return { guest: details(saved.rows[0]), token, created: true };
     });
   }
+  async searchContext(joinToken: string, sessionToken?: string) {
+    const result = await this.pool.query<{
+      host_account_id: string;
+      status: string;
+      require_guest_names: boolean;
+      allow_explicit_tracks: boolean;
+      guest_id: string | null;
+      display_name: string | null;
+    }>(
+      `SELECT p.host_account_id, p.status, s.require_guest_names, s.allow_explicit_tracks, g.id AS guest_id, g.display_name
+       FROM parties p JOIN party_settings s ON s.party_id = p.id
+       LEFT JOIN guests g ON g.party_id = p.id AND g.session_token_hash = $2 AND g.expires_at > now()
+       WHERE p.guest_join_token = $1`,
+      [joinToken, sessionToken ? hashToken(sessionToken) : null],
+    );
+    const party = result.rows[0];
+    if (!party) throw new GuestError(404, 'Party not found.');
+    if (party.status !== 'ACTIVE')
+      throw new GuestError(409, 'This party has ended.');
+    if (!party.guest_id)
+      throw new GuestError(401, 'Join this party again to search for songs.');
+    if (party.require_guest_names && !party.display_name)
+      throw new GuestError(400, 'Add your guest name before searching.');
+    return {
+      hostId: party.host_account_id,
+      allowExplicit: party.allow_explicit_tracks,
+    };
+  }
 }

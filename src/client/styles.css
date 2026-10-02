@@ -105,6 +105,7 @@ fieldset {
   min-width: 0;
 }
 input[type='text'],
+input[type='search'],
 input[type='number'],
 input:not([type]) {
   display: block;
@@ -198,4 +199,44 @@ a {
 .guest-preferences {
   margin-top: 2rem;
   line-height: 1.6;
+}
+
+.song-search {
+  border-top: 1px solid #425148;
+  margin-top: 2rem;
+  padding-top: 1rem;
+}
+.search-results {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+.search-results li {
+  display: flex;
+  gap: 1rem;
+  border-top: 1px solid #425148;
+  padding: 1rem 0;
+}
+.search-results img,
+.artwork-placeholder {
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+}
+.artwork-placeholder {
+  display: grid;
+  place-items: center;
+  background: #1d2520;
+  font-size: 2rem;
+}
+.track-details {
+  min-width: 0;
+}
+.track-details a {
+  font-weight: 650;
+}
+.track-details p {
+  margin: 0.35rem 0;
+  overflow-wrap: anywhere;
 }

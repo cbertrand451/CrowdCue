@@ -2,6 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { hashToken } from '../auth/crypto.js';
+import { searchQuerySchema } from '../search/contracts.js';
+import { SpotifyError } from '../spotify/client.js';
+import type { AuthService } from '../auth/service.js';
 import { validToken } from '../auth/service.js';
 import { guestInputSchema, GuestError } from './contracts.js';
 import type { PostgresGuestStore } from './store.js';
@@ -12,6 +15,7 @@ export async function guestRoutes(
   app: FastifyInstance,
   options: {
     store?: PostgresGuestStore;
+    auth?: AuthService;
     appOrigin?: string;
     secureCookies?: boolean;
   },
@@ -24,6 +28,15 @@ export async function guestRoutes(
     reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
   });
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof SpotifyError) {
+      if (error.retryAfter) reply.header('Retry-After', error.retryAfter);
+      return reply.code(error.kind === 'rate_limited' ? 429 : 503).send({
+        error:
+          error.kind === 'reauthenticate' || error.kind === 'permissions'
+            ? 'The host needs to reconnect Spotify before searching is available.'
+            : error.message,
+      });
+    }
     if (error instanceof GuestError)
       return reply.code(error.statusCode).send({ error: error.message });
     if (
@@ -91,4 +104,36 @@ export async function guestRoutes(
       },
     });
   }
+  app.get<{ Params: { token: string } }>(
+    '/api/party-links/guest/:token/search',
+    {
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      if (!options.store || !options.auth)
+        return reply
+          .code(503)
+          .send({ error: 'Song search is not available yet.' });
+      const token = request.params.token;
+      if (!/^[A-Za-z0-9_-]{32,128}$/.test(token))
+        throw new GuestError(404, 'Party not found.');
+      const query = searchQuerySchema.safeParse(request.query);
+      if (!query.success)
+        return reply.code(400).send({
+          error: 'Use a search between 2 and 200 characters and a valid page.',
+        });
+      const session =
+        request.cookies[guestCookieName(token, !!options.secureCookies)];
+      const context = await options.store.searchContext(
+        token,
+        validToken(session) ? session : undefined,
+      );
+      return options.auth.searchTracks(
+        context.hostId,
+        query.data.q,
+        query.data.offset,
+        context.allowExplicit,
+      );
+    },
+  );
 }

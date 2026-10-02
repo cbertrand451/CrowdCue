@@ -297,6 +297,8 @@ Never expose Spotify credentials to the browser.
 
 Spotify API requests requiring privileged credentials should go through the backend.
 
+Search requires an active party and a valid party-scoped guest session, including a name when required. The backend resolves the host from the party, refreshes credentials, returns normalized track metadata, and filters disallowed explicit, local, and unavailable tracks. Searches debounce for 400 ms, support bounded pagination, cancel stale browser requests, and provide safe recovery for provider failures and rate limits. Search results link to Spotify; song requests are implemented separately.
+
 ---
 
 # 11. Song Requests

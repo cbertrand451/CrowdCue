@@ -21,7 +21,7 @@ export const guestSessionSchema = z.object({
 export type GuestSession = z.infer<typeof guestSessionSchema>;
 export class GuestError extends Error {
   constructor(
-    public readonly statusCode: 400 | 404 | 409,
+    public readonly statusCode: 400 | 401 | 404 | 409,
     message: string,
   ) {
     super(message);

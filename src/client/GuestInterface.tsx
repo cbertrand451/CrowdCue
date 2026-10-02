@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
+import { SongSearch } from './SongSearch';
 import { z } from 'zod';
 import {
   guestInputSchema,
@@ -22,6 +29,10 @@ export function GuestInterface({
   const [feedback, setFeedback] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const inFlight = useRef(false);
+  const sessionExpired = useCallback(() => {
+    setGuest(null);
+    setFeedback('Your guest session expired. Join again to continue.');
+  }, []);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
     const active = new AbortController();
@@ -195,10 +206,16 @@ export function GuestInterface({
                     requests.
                   </p>
                 )}
-                <p className="muted">
-                  Song search, requests, and voting are coming next.
-                </p>
+                {!guest && <p className="muted">Join to search Spotify.</p>}
               </section>
+              {guest &&
+                (!party.settings.requireGuestNames || guest.displayName) && (
+                  <SongSearch
+                    token={token}
+                    allowExplicit={party.settings.allowExplicitTracks}
+                    onExpired={sessionExpired}
+                  />
+                )}
             </>
           )}
           {party.status === 'ENDED' && (

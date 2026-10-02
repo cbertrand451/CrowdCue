@@ -109,4 +109,25 @@ export class AuthService {
       return this.spotify.profile(refreshed);
     }
   }
+  // hostId must come from a server-verified party, never from browser input.
+  async searchTracks(
+    hostId: string,
+    query: string,
+    offset: number,
+    allowExplicit: boolean,
+  ) {
+    const token = await this.store.accessToken(hostId, this.spotify);
+    try {
+      return await this.spotify.search(token, query, offset, allowExplicit);
+    } catch (error) {
+      if (!(error instanceof SpotifyError) || error.kind !== 'reauthenticate')
+        throw error;
+      const refreshed = await this.store.accessToken(
+        hostId,
+        this.spotify,
+        token,
+      );
+      return this.spotify.search(refreshed, query, offset, allowExplicit);
+    }
+  }
 }

@@ -40,6 +40,7 @@ export function buildApp(
   app.register(helmet);
   app.register(guestRoutes, {
     store: options.guests,
+    auth: options.auth,
     appOrigin: options.auth?.config.appOrigin,
     secureCookies: options.auth?.config.secureCookies,
   });
