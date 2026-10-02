@@ -363,6 +363,8 @@ Votes should be associated with the guest/session identity so refreshing the pag
 
 The UI should update quickly when votes change.
 
+Guests can add or remove a vote on pending or approved requests, including their own. Vote totals and each guest’s selected state persist across refreshes; repeated desired-state mutations are idempotent. The host can disable voting without deleting totals. An active party, unexpired party-scoped guest identity, required name, and enabled voting are checked server-side. Queued/historical requests and ended parties are read-only. Voting never bypasses host approval or automatically sends a track to Spotify. Request boards update after a mutation and poll every five seconds. Vote-based queue ranking is implemented in the following queue-ordering task.
+
 ---
 
 # 14. Queue Ordering
@@ -792,19 +794,20 @@ A recommended implementation sequence is:
 7. Implement Guest interface and guest session foundation.
 8. Implement Spotify song search.
 9. Implement song requests.
-10. Implement voting.
-11. Implement CrowdCue queue ordering.
-12. Implement Spotify queue integration.
-13. Implement backup playlist behavior.
-14. Implement Display interface.
-15. Implement QR-code joining.
-16. Finalize secure Admin/Display URLs.
-17. Implement party controls/settings.
-18. Refine professional responsive UI.
-19. Harden security and error handling.
-20. Expand automated testing.
-21. Perform complete end-to-end testing.
-22. Prepare production deployment.
+10. Implement duplicate prevention and per-guest request limits.
+11. Implement voting.
+12. Implement CrowdCue queue ordering.
+13. Implement Spotify queue integration.
+14. Implement backup playlist behavior.
+15. Implement Display interface.
+16. Implement QR-code joining.
+17. Finalize secure Admin/Display URLs.
+18. Implement party controls/settings.
+19. Refine professional responsive UI.
+20. Harden security and error handling.
+21. Expand automated testing.
+22. Perform complete end-to-end testing.
+23. Prepare production deployment.
 
 Codex should implement these incrementally rather than attempting to generate the entire application at once.
 

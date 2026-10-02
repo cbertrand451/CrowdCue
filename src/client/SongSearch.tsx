@@ -277,7 +277,7 @@ export function SongSearch({
         </p>
       )}
       {requestError && <p role="alert">{requestError}</p>}
-      <p className="muted">Voting is coming next.</p>
+      <p className="muted">Vote for songs in the request list.</p>
     </section>
   );
 }

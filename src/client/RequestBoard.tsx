@@ -17,12 +17,16 @@ export function RequestBoard({
   token,
   active,
   refresh = 0,
+  votingEnabled = true,
+  canVote = true,
   onExpired,
 }: {
   role: 'guest' | 'admin';
   token: string;
   active: boolean;
   refresh?: number;
+  votingEnabled?: boolean;
+  canVote?: boolean;
   onExpired?: () => void;
 }) {
   const [requests, setRequests] = useState<SongRequest[]>([]);
@@ -68,7 +72,7 @@ export function RequestBoard({
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
-          timer = setTimeout(() => void load(), 15000);
+          timer = setTimeout(() => void load(), 5000);
         }
       }
     }
@@ -78,7 +82,10 @@ export function RequestBoard({
       clearTimeout(timer);
     };
   }, [role, token, offset, attempt, refresh, onExpired]);
-  async function moderate(id: string, action: 'approve' | 'reject' | 'remove') {
+  async function moderate(
+    id: string,
+    action: 'approve' | 'reject' | 'remove' | boolean,
+  ) {
     if (pending.current) return;
     pending.current = true;
     setBusy(id);
@@ -86,13 +93,15 @@ export function RequestBoard({
     const controller = mutation.current;
     try {
       const response = await fetch(
-        `/api/party-links/admin/${encodeURIComponent(token)}/requests/${id}`,
+        `/api/party-links/${typeof action === 'boolean' ? 'guest' : 'admin'}/${encodeURIComponent(token)}/requests/${id}${typeof action === 'boolean' ? '/vote' : ''}`,
         {
           method: 'POST',
           credentials: 'same-origin',
           signal: controller?.signal,
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action }),
+          body: JSON.stringify(
+            typeof action === 'boolean' ? { voted: action } : { action },
+          ),
         },
       );
       if (controller?.signal.aborted) return;
@@ -150,6 +159,11 @@ export function RequestBoard({
             : 'This party has ended.'}
         </p>
       )}
+      {role === 'guest' && !votingEnabled && (
+        <p className="muted">
+          Voting is turned off. Existing votes are preserved.
+        </p>
+      )}
       <ul className="search-results">
         {requests.map((request) => (
           <li key={request.id}>
@@ -176,6 +190,26 @@ export function RequestBoard({
               <p className="muted">
                 Requested by {request.requestedBy || 'a guest'}
               </p>
+              <p aria-live="polite">
+                {request.voteCount} {request.voteCount === 1 ? 'vote' : 'votes'}
+              </p>
+              {role === 'guest' &&
+                active &&
+                ['REQUESTED', 'APPROVED'].includes(request.status) && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    aria-pressed={request.hasVoted}
+                    disabled={!!busy || !votingEnabled || !canVote}
+                    onClick={() => void moderate(request.id, !request.hasVoted)}
+                  >
+                    {busy === request.id
+                      ? 'Saving vote…'
+                      : request.hasVoted
+                        ? 'Remove vote'
+                        : 'Vote'}
+                  </button>
+                )}
               {role === 'admin' &&
                 active &&
                 ['REQUESTED', 'APPROVED'].includes(request.status) && (
@@ -232,8 +266,7 @@ export function RequestBoard({
         )}
       </div>
       <p className="muted">
-        Approved requests are saved here. Spotify queue delivery and voting are
-        coming next.
+        Approved requests are saved here. Spotify queue delivery is coming next.
       </p>
     </section>
   );

@@ -156,7 +156,7 @@ export function GuestInterface({
                 !guest.displayName && (
                   <p role="alert">
                     The host now requires a name. Add yours before requesting
-                    songs.
+                    songs or voting.
                   </p>
                 )}
               <form onSubmit={join}>
@@ -227,6 +227,8 @@ export function GuestInterface({
               token={token}
               active={party.status === 'ACTIVE'}
               refresh={requestRefresh}
+              votingEnabled={party.settings.votingEnabled}
+              canVote={!party.settings.requireGuestNames || !!guest.displayName}
               onExpired={sessionExpired}
             />
           )}

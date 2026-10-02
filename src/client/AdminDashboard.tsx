@@ -171,7 +171,7 @@ export function AdminDashboard({
               {settings.queueBehavior === 'SPOTIFY_QUEUE'
                 ? 'Spotify queue'
                 : 'Backup playlist'}
-              . Voting and queue delivery are coming next.
+              . Spotify queue delivery is coming next.
             </p>
             <button type="submit">{busy ? 'Saving…' : 'Save settings'}</button>
           </fieldset>

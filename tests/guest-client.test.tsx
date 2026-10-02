@@ -103,7 +103,7 @@ it('restores an existing guest and displays current preferences and required-nam
   );
   expect(
     screen.getByText(
-      'The host now requires a name. Add yours before requesting songs.',
+      'The host now requires a name. Add yours before requesting songs or voting.',
     ),
   ).toBeInTheDocument();
   expect(screen.getByText('Voting is turned off.')).toBeInTheDocument();

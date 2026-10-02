@@ -79,7 +79,7 @@ export async function requestRoutes(
   for (const role of ['guest', 'admin'] as const) {
     app.get<{ Params: { token: string } }>(
       `/api/party-links/${role}/:token/requests`,
-      limited(role === 'guest' ? 120 : 60),
+      limited(role === 'guest' ? 600 : 60),
       async (request, reply) => {
         if (!options.store || !options.auth)
           return reply
@@ -187,6 +187,36 @@ export async function requestRoutes(
           value,
           request.params.id,
           input.data.action,
+        ),
+      };
+    },
+  );
+  app.post<{ Params: { token: string; id: string } }>(
+    '/api/party-links/guest/:token/requests/:id/vote',
+    { ...limited(120), bodyLimit: 1024 },
+    async (request, reply) => {
+      if (!options.store || !options.auth)
+        return reply.code(503).send({ error: 'Voting is not available yet.' });
+      if (request.headers.origin !== options.auth.config.appOrigin)
+        return reply.code(403).send({ error: 'Open the guest link to vote.' });
+      const value = token(request.params.token, 'guest');
+      if (!z.uuid().safeParse(request.params.id).success)
+        throw new RequestError(404, 'Request not found.');
+      const input = z
+        .object({ voted: z.boolean() })
+        .strict()
+        .safeParse(request.body);
+      if (!input.success)
+        throw new RequestError(
+          400,
+          'Choose whether to add or remove your vote.',
+        );
+      return {
+        request: await options.store.vote(
+          value,
+          session(request.cookies, value),
+          request.params.id,
+          input.data.voted,
         ),
       };
     },

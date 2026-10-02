@@ -156,3 +156,96 @@ it('keeps guest boards read-only and handles expired sessions', async () => {
   await waitFor(() => expect(expired).toHaveBeenCalledOnce());
   expect(screen.queryByRole('link', { name: 'Song' })).not.toBeInTheDocument();
 });
+
+it('adds and removes votes using idempotent desired states and respects the voting switch', async () => {
+  let voted = false;
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options?.method === 'POST')
+      voted = JSON.parse(options.body as string).voted;
+    const row = { ...request, voteCount: voted ? 1 : 0, hasVoted: voted };
+    return reply(
+      options?.method === 'POST'
+        ? { request: row }
+        : { requests: [row], nextOffset: null },
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const view = render(
+    <RequestBoard role="guest" token={'g'.repeat(43)} active votingEnabled />,
+  );
+  await screen.findByText('0 votes');
+  fireEvent.click(screen.getByRole('button', { name: 'Vote' }));
+  await screen.findByText('1 vote');
+  expect(screen.getByRole('button', { name: 'Remove vote' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Remove vote' }));
+  await screen.findByText('0 votes');
+  const mutations = fetcher.mock.calls.filter(
+    (call) => call[1]?.method === 'POST',
+  );
+  expect(mutations[0][0]).toMatch(/\/vote$/);
+  expect(JSON.parse(mutations[0][1]!.body as string)).toEqual({ voted: true });
+  expect(JSON.parse(mutations[1][1]!.body as string)).toEqual({ voted: false });
+  view.rerender(
+    <RequestBoard
+      role="guest"
+      token={'g'.repeat(43)}
+      active
+      votingEnabled={false}
+    />,
+  );
+  expect(screen.getByRole('button', { name: 'Vote' })).toBeDisabled();
+  expect(
+    screen.getByText('Voting is turned off. Existing votes are preserved.'),
+  ).toBeInTheDocument();
+  view.rerender(
+    <RequestBoard
+      role="guest"
+      token={'g'.repeat(43)}
+      active={false}
+      votingEnabled
+    />,
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Vote' }),
+  ).not.toBeInTheDocument();
+});
+
+it('blocks double voting and aborts pending vote mutations when leaving a party', async () => {
+  let resolve!: (value: ReturnType<typeof reply>) => void;
+  const pending = new Promise<ReturnType<typeof reply>>((done) => {
+    resolve = done;
+  });
+  const fetcher = vi.fn((_url: string, options?: RequestInit) =>
+    options?.method === 'POST'
+      ? pending
+      : Promise.resolve(
+          reply({
+            requests: [{ ...request, voteCount: 0, hasVoted: false }],
+            nextOffset: null,
+          }),
+        ),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const view = render(
+    <RequestBoard role="guest" token={'g'.repeat(43)} active />,
+  );
+  await screen.findByRole('button', { name: 'Vote' });
+  fireEvent.click(screen.getByRole('button', { name: 'Vote' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Saving vote…' }));
+  expect(
+    fetcher.mock.calls.filter((call) => call[1]?.method === 'POST'),
+  ).toHaveLength(1);
+  const signal = fetcher.mock.calls.find(
+    (call) => call[1]?.method === 'POST',
+  )![1]!.signal as AbortSignal;
+  view.unmount();
+  expect(signal.aborted).toBe(true);
+  await act(async () => {
+    resolve(reply({ request: { ...request, voteCount: 1, hasVoted: true } }));
+    await pending;
+  });
+  expect(screen.queryByText('1 vote')).not.toBeInTheDocument();
+});

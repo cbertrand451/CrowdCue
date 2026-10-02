@@ -11,6 +11,7 @@ interface Context {
   status: string;
   require_guest_names: boolean;
   approval_required: boolean;
+  voting_enabled: boolean;
   allow_explicit_tracks: boolean;
   max_active_requests_per_guest: number | null;
   request_cooldown_seconds: number;
@@ -30,7 +31,11 @@ interface Row {
   display_name: string | null;
   requested_by: string;
   created_at: Date;
+  vote_count?: number;
+  has_voted?: boolean;
 }
+const voteColumns = `(SELECT count(*)::int FROM votes v WHERE v.request_id = r.id) AS vote_count,
+  EXISTS(SELECT 1 FROM votes v WHERE v.request_id = r.id AND v.guest_id = $3) AS has_voted`;
 const active = "('REQUESTED', 'APPROVED', 'QUEUED')";
 function details(row: Row, guestId?: string | null): SongRequest {
   return {
@@ -38,6 +43,8 @@ function details(row: Row, guestId?: string | null): SongRequest {
     status: row.status,
     requestedBy: row.display_name,
     isOwn: row.requested_by === guestId,
+    voteCount: row.vote_count ?? 0,
+    hasVoted: row.has_voted ?? false,
     createdAt: row.created_at.toISOString(),
     track: {
       id: row.spotify_track_id,
@@ -61,7 +68,7 @@ export class PostgresRequestStore {
     mutation = true,
   ) {
     const result = await client.query<Context>(
-      `SELECT p.id, p.host_account_id, p.status, s.require_guest_names, s.approval_required, s.allow_explicit_tracks, s.max_active_requests_per_guest, s.request_cooldown_seconds,
+      `SELECT p.id, p.host_account_id, p.status, s.require_guest_names, s.approval_required, s.voting_enabled, s.allow_explicit_tracks, s.max_active_requests_per_guest, s.request_cooldown_seconds,
       g.id AS guest_id, g.display_name FROM parties p JOIN party_settings s ON s.party_id = p.id
       LEFT JOIN guests g ON g.party_id = p.id AND g.session_token_hash = $2 AND g.expires_at > now()
       WHERE p.guest_join_token = $1 ${lock ? 'FOR UPDATE OF p' : ''}`,
@@ -99,8 +106,8 @@ export class PostgresRequestStore {
         'This request attempt already used a different song. Start a new attempt.',
       );
     const result = await client.query<Row>(
-      `SELECT r.*, g.display_name FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND ${attempt.rows[0] ? 'r.id = $2' : `r.spotify_track_id = $2 AND r.status IN ${active}`}`,
-      [party.id, attempt.rows[0]?.request_id ?? id],
+      `SELECT r.*, g.display_name, ${voteColumns} FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND ${attempt.rows[0] ? 'r.id = $2' : `r.spotify_track_id = $2 AND r.status IN ${active}`}`,
+      [party.id, attempt.rows[0]?.request_id ?? id, party.guest_id],
     );
     return result.rows[0];
   }
@@ -198,8 +205,8 @@ export class PostgresRequestStore {
   }
   private async list(partyId: string, offset: number, guestId?: string | null) {
     const result = await this.pool.query<Row>(
-      `SELECT r.*, g.display_name FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 ${guestId ? `AND (r.status IN ${active} OR r.requested_by = $3)` : ''} ORDER BY r.created_at DESC, r.id DESC LIMIT 51 OFFSET $2`,
-      guestId ? [partyId, offset, guestId] : [partyId, offset],
+      `SELECT r.*, g.display_name, ${voteColumns} FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 ${guestId ? `AND (r.status IN ${active} OR r.requested_by = $3)` : ''} ORDER BY r.created_at DESC, r.id DESC LIMIT 51 OFFSET $2`,
+      [partyId, offset, guestId ?? null],
     );
     return {
       requests: result.rows.slice(0, 50).map((row) => details(row, guestId)),
@@ -239,8 +246,8 @@ export class PostgresRequestStore {
         throw new RequestError(409, 'This party has ended.');
       const row = (
         await client.query<Row>(
-          'SELECT r.*, g.display_name FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND r.id = $2 FOR UPDATE OF r',
-          [party.id, id],
+          `SELECT r.*, g.display_name, ${voteColumns} FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND r.id = $2 FOR UPDATE OF r`,
+          [party.id, id, null],
         )
       ).rows[0];
       if (!row) throw new RequestError(404, 'Request not found.');
@@ -261,6 +268,44 @@ export class PostgresRequestStore {
         [id, target],
       );
       return details({ ...row, status: target });
+    });
+  }
+  async vote(
+    token: string,
+    session: string | undefined,
+    id: string,
+    voted: boolean,
+  ) {
+    return inTransaction(this.pool, async (client) => {
+      const party = await this.context(client, token, session, true);
+      if (!party.voting_enabled)
+        throw new RequestError(409, 'Voting is turned off for this party.');
+      const row = (
+        await client.query<Row>(
+          'SELECT r.*, g.display_name FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND r.id = $2 FOR UPDATE OF r',
+          [party.id, id],
+        )
+      ).rows[0];
+      if (!row) throw new RequestError(404, 'Request not found.');
+      if (!['REQUESTED', 'APPROVED'].includes(row.status))
+        throw new RequestError(409, 'Voting is closed for this request.');
+      if (voted)
+        await client.query(
+          'INSERT INTO votes (party_id, request_id, guest_id) VALUES ($1, $2, $3) ON CONFLICT (request_id, guest_id) DO NOTHING',
+          [party.id, id, party.guest_id],
+        );
+      else
+        await client.query(
+          'DELETE FROM votes WHERE party_id = $1 AND request_id = $2 AND guest_id = $3',
+          [party.id, id, party.guest_id],
+        );
+      const saved = (
+        await client.query<Row>(
+          `SELECT r.*, g.display_name, ${voteColumns} FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND r.id = $2`,
+          [party.id, id, party.guest_id],
+        )
+      ).rows[0];
+      return details(saved, party.guest_id);
     });
   }
 }
