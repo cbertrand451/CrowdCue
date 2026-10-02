@@ -636,3 +636,22 @@ a {
     -webkit-line-clamp: 1;
   }
 }
+
+.queue-results li {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+}
+.queue-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-self: center;
+}
+@media (max-width: 640px) {
+  .queue-results li {
+    grid-template-columns: 2rem minmax(0, 1fr);
+  }
+  .queue-controls {
+    grid-column: 2 / -1;
+  }
+}

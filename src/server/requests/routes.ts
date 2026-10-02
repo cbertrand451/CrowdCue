@@ -6,6 +6,7 @@ import type { AuthService } from '../auth/service.js';
 import { validToken } from '../auth/service.js';
 import { guestCookieName } from '../guests/routes.js';
 import { SpotifyError } from '../spotify/client.js';
+import { queueActionSchema } from '../queue/contracts.js';
 import { requestInputSchema, RequestError } from './contracts.js';
 import type { PostgresRequestStore } from './store.js';
 export async function requestRoutes(
@@ -151,6 +152,36 @@ export async function requestRoutes(
           key.data,
         ));
       return reply.code(result.created ? 201 : 200).send(result);
+    },
+  );
+  app.post<{ Params: { token: string } }>(
+    '/api/party-links/admin/:token/queue',
+    { ...limited(30), bodyLimit: 1024 },
+    async (request, reply) => {
+      if (!options.store || !options.auth)
+        return reply
+          .code(503)
+          .send({ error: 'Queue controls are unavailable.' });
+      if (request.headers.origin !== options.auth.config.appOrigin)
+        return reply
+          .code(403)
+          .send({ error: 'Open CrowdCue to manage the queue.' });
+      const host = await options.auth
+        .requireHost(
+          request.cookies[
+            `${options.auth.config.secureCookies ? '__Host-' : ''}crowdcue_host`
+          ],
+        )
+        .catch((error: unknown) => {
+          if (error instanceof SpotifyError && error.kind === 'reauthenticate')
+            throw new RequestError(401, 'Sign in as this party’s host.');
+          throw error;
+        });
+      const value = token(request.params.token, 'admin');
+      const input = queueActionSchema.safeParse(request.body);
+      if (!input.success)
+        throw new RequestError(400, 'Choose a valid queue action.');
+      return options.store.controlQueue(host.accountId, value, input.data);
     },
   );
   app.post<{ Params: { token: string; id: string } }>(

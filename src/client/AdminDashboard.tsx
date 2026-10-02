@@ -134,6 +134,7 @@ export function AdminDashboard({
         token={token}
         refresh={queueRefresh}
         onExpired={onExpired}
+        onChange={() => setQueueRefresh((value) => value + 1)}
       />
       <section aria-label="Party settings">
         <h2>Party settings</h2>

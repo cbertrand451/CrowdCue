@@ -108,7 +108,7 @@ It should be visually useful from several feet away.
 
 The Display interface is read-only.
 
-The implemented TV interface shows the observed Spotify song, artwork, artist/album, paused/idle states, a bounded progress estimate, and six upcoming songs with locked/backup labels and guest vote totals. Pending requests expose only an approval count. A shared backend observation cache prevents extra Spotify calls per screen; it also observes music before the CrowdCue queue starts. Stale/provider-failed playback is labeled last-seen and never replaced with the locked next song. Ended parties show a finished-session message and saved queue, with no active joining prompt. Display snapshots contain no private links, credentials, host/guest identifiers, request authors, personal vote selections, or admin controls. WebSockets and five-second fallback reads keep the page current. Browser full screen is a presentation-only option. QR-code rendering for the displayed guest link is the separate task 16 milestone.
+The implemented TV interface shows the observed Spotify song, artwork, artist/album, paused/idle states, a bounded progress estimate, and six upcoming songs with locked/backup labels and guest vote totals. Pending requests expose only an approval count. A shared backend observation cache prevents extra Spotify calls per screen; it also observes music before the CrowdCue queue starts. Stale/provider-failed playback is labeled last-seen and never replaced with the locked next song. Ended parties show a finished-session message and saved queue, with no active joining prompt. Display snapshots contain no private links, credentials, host/guest identifiers, request authors, personal vote selections, or admin controls. WebSockets and five-second fallback reads keep the page current. Browser full screen is a presentation-only option. QR-code rendering for the displayed guest link is a separate upcoming milestone.
 
 
 ---
@@ -432,6 +432,8 @@ The architecture should support host actions including:
 - Reject request.
 - Approve request.
 - Reorder when appropriate.
+
+Task 16 adds authenticated host ordering of unlocked guest songs. Move up/down exchanges adjacent guest slots, preserving every backup slot and locked #1. The first move stores the current waiting guest order as a host override; votes remain recorded, and newly approved songs rank after the ordered songs until the host restores vote order (or request order when voting is disabled). Overrides apply before playback starts, during Spotify queue delivery, in playlist recovery, and on Guest/TV views. Moves target a specific neighboring request rather than a stale numeric position; nonadjacent, pending, removed, foreign, locked, or backup targets return a conflict. Repeating a move to the same relative position is safe. All ordering changes share the party transaction lock with voting, moderation, settings, ending, and playback locking, and publish committed realtime updates. Ended queues are read-only. UI arrows operate among guest songs on the current 50-song queue page.
 
 CrowdCue should never create a situation where guests have unrestricted control of the host's Spotify account.
 
@@ -810,9 +812,9 @@ A recommended implementation sequence is:
 13. Implement Spotify queue integration.
 14. Implement real-time WebSocket updates (backup playlist behavior included in task 13).
 15. Implement Display interface.
-16. Implement QR-code joining.
+16. Implement admin party controls (host queue ordering, alongside existing settings/moderation).
 17. Finalize secure Admin/Display URLs.
-18. Implement party controls/settings.
+18. Implement QR-code joining (party controls/settings completed in task 16).
 19. Refine professional responsive UI.
 20. Harden security and error handling.
 21. Expand automated testing.

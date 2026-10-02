@@ -1,5 +1,7 @@
 import { fillBackupBuffer, insertGuestEntry } from '../playback/scheduling.js';
 import { upcoming, entryRequest } from '../playback/ordering.js';
+import { changeQueueOrder } from '../queue/controls.js';
+import type { QueueAction } from '../queue/contracts.js';
 import { queueOrder } from '../queue/ordering.js';
 import type { QueueSnapshot } from '../queue/contracts.js';
 import type pg from 'pg';
@@ -341,6 +343,12 @@ export class PostgresRequestStore {
         [party.id],
       )
     ).rows[0];
+    const hostOrdered = (
+      await client.query<{ present: boolean }>(
+        "SELECT EXISTS(SELECT 1 FROM song_requests WHERE party_id=$1 AND status='APPROVED' AND manual_position IS NOT NULL) AS present",
+        [party.id],
+      )
+    ).rows[0].present;
     const session = (
       await client.query<{ initialized: boolean }>(
         'SELECT initialized FROM party_playback WHERE party_id=$1',
@@ -363,6 +371,7 @@ export class PostgresRequestStore {
           request: entryRequest(e, guestId),
         })),
         nextOffset: entries.length > offset + 50 ? offset + 50 : null,
+        hostOrdered,
         votingEnabled: settings.voting_enabled,
         status: party.status as 'ACTIVE' | 'ENDED',
       };
@@ -385,6 +394,7 @@ export class PostgresRequestStore {
         request: details(row, guestId),
       })),
       nextOffset: result.rows.length > 50 ? offset + 50 : null,
+      hostOrdered,
       votingEnabled: settings.voting_enabled,
       status: party.status as 'ACTIVE' | 'ENDED',
     };
@@ -393,6 +403,22 @@ export class PostgresRequestStore {
     return inTransaction(this.pool, async (client) => {
       const party = await this.context(client, token, session, 'share', false);
       return this.queue(client, party, offset, party.guest_id);
+    });
+  }
+  async controlQueue(hostId: string, token: string, action: QueueAction) {
+    return inTransaction(this.pool, async (client) => {
+      const party = await this.hostParty(client, hostId, token, true);
+      if (party.status !== 'ACTIVE')
+        throw new RequestError(409, 'This party has ended.');
+      // Re-read settings after the party lock; another host may have saved them.
+      const settings = (
+        await client.query<{ voting_enabled: boolean }>(
+          'SELECT voting_enabled FROM party_settings WHERE party_id=$1',
+          [party.id],
+        )
+      ).rows[0];
+      await changeQueueOrder(client, party.id, settings.voting_enabled, action);
+      return { ok: true };
     });
   }
   async adminQueue(hostId: string, token: string, offset: number) {

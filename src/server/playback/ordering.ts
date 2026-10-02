@@ -11,6 +11,7 @@ export interface Entry {
   locked_at: Date | null;
   delivery: 'PENDING' | 'SENDING' | 'SENT' | 'UNKNOWN';
   created_at: Date;
+  manual_position: number | null;
   vote_count: number;
   has_voted: boolean;
   display_name: string | null;
@@ -24,7 +25,7 @@ export async function upcoming(
 ): Promise<Entry[]> {
   const rows = (
     await client.query<Entry>(
-      `SELECT e.*, COALESCE((SELECT count(*)::int FROM votes v WHERE v.request_id=e.request_id),0) AS vote_count,
+      `SELECT e.*, r.manual_position, COALESCE((SELECT count(*)::int FROM votes v WHERE v.request_id=e.request_id),0) AS vote_count,
  EXISTS(SELECT 1 FROM votes v WHERE v.request_id=e.request_id AND v.guest_id=$2) AS has_voted,g.display_name,r.requested_by
  FROM playback_entries e LEFT JOIN song_requests r ON r.id=e.request_id LEFT JOIN guests g ON g.id=r.requested_by
  WHERE e.party_id=$1 AND e.status IN ('WAITING','LOCKED') ORDER BY (e.status='LOCKED') DESC,e.sequence`,
@@ -35,6 +36,7 @@ export async function upcoming(
     .filter((e) => e.status === 'WAITING' && e.source === 'GUEST')
     .sort(
       (a, b) =>
+        (a.manual_position ?? Infinity) - (b.manual_position ?? Infinity) ||
         (votingEnabled ? b.vote_count - a.vote_count : 0) ||
         a.created_at.getTime() - b.created_at.getTime() ||
         (a.request_id ?? a.id).localeCompare(b.request_id ?? b.id),
