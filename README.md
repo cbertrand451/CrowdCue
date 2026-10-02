@@ -1,6 +1,6 @@
 # CrowdCue
 
-CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Spotify song search, song requests with host moderation, and voting are implemented. CrowdCue queue ordering and Spotify queue operations are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
+CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Spotify song search, song requests with host moderation, and voting are implemented. Dynamic CrowdCue queue ordering is implemented; Spotify queue delivery is the next milestone. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
 ## Architecture and stack
 
@@ -208,7 +208,7 @@ The host's **Allow voting** setting defaults to enabled. Turning it off blocks v
 
 Vote controls update totals after a successful response, prevent overlapping mutations, cancel on navigation, and show the guest's selected state. All request boards poll every five seconds so other guests and the host see updated totals. Party settings/status still poll every 15 seconds, and the server checks current rules on every mutation. Guest request reads permit 600 requests per minute per process/IP and vote changes permit 120; shared deployment limits remain a later hardening task. Votes are scoped to the lightweight guest identity, with the same cookie persistence/expiration behavior as other guest features.
 
-Vote-based queue ranking is task twelve. The current request list remains newest first; automatic request acceptance still defaults to enabled, and Spotify queue delivery remains a separate milestone.
+The live CrowdCue queue ranks approved songs by votes. The request list remains newest first; automatic request acceptance still defaults to enabled, and Spotify queue delivery remains a separate milestone.
 
 ## Admin dashboard
 
@@ -216,7 +216,7 @@ Open the private Admin link from **Your parties**. The dashboard shows Spotify c
 
 `POST /api/party-links/admin/:token/settings` accepts the validated party name/settings shape; `POST /api/party-links/admin/:token/end` accepts `{}`. Both require the owning host session, the party's Admin token, the exact configured Origin, and bounded JSON. Mutations are limited to 30 attempts per minute per process/IP. Database row locks serialize settings changes against ending; an ended party rejects edits, while repeated end calls retain the original end timestamp. Public guest/display pages reflect the ended state through their existing polling.
 
-The dashboard includes request lists and approval/rejection/removal. Queue ordering, currently playing tracks, and QR codes depend on upcoming milestones. Queue mode is displayed but preserved during edits until queue delivery is implemented.
+The dashboard includes request lists and approval/rejection/removal. The dashboard includes the live ranked queue; currently playing tracks and QR codes depend on upcoming milestones. Queue mode is displayed but preserved during edits until queue delivery is implemented.
 
 ## Database structure and migrations
 
@@ -260,6 +260,16 @@ npm run check
 
 The test runner does not load `.env` automatically. Database tests create random isolated schemas and drop only those schemas afterward; the test role needs schema creation privileges. They verify migrations, settings/lifecycle constraints, concurrent duplicate requests/votes, cross-party references, rollback/deletion behavior, OAuth/session behavior, party creation transactions/idempotency, host ownership, role isolation, and link recovery. Frontend tests cover creation preferences, retries, sign-out privacy, link pages, and state polling. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
 
-The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **Voting is complete. Next task: implement CrowdCue queue ordering (task twelve).**
+The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **Dynamic CrowdCue queue ordering is complete. Next task: Spotify queue delivery (task thirteen).**
 
-Future request/vote updates can use Server-Sent Events with ordinary HTTP mutations; only party-state polling is implemented. Multi-instance event delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.
+Future request/vote updates can use Server-Sent Events with ordinary HTTP mutations; party state, requests, votes, and queue snapshots currently use polling. Multi-instance event delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.
+
+### Dynamic CrowdCue queue
+
+Guest and admin pages show a live, numbered queue, refreshed every five seconds and immediately after local requests, votes, or moderation. Only APPROVED requests enter this queue. Automatic approval remains the default; requests requiring host approval stay outside the queue until approved.
+
+With voting enabled, songs rank by vote count descending, then request time ascending, then request ID for a deterministic tie. With voting disabled, songs follow request time and ID. Votes remain saved when voting is disabled and regain their effect when enabled. Removed, rejected, played, and Spotify-queued requests are excluded. Ending a party retains its queue for read-only viewing.
+
+Authenticated GET endpoints `/api/party-links/guest/:token/queue` and `/api/party-links/admin/:token/queue` return `{ items: [{ position, request }], nextOffset, votingEnabled, status }`. Guest sessions and host ownership are checked server-side. Pages contain up to 50 songs with global positions; `?offset=50` requests the next page. Each response holds a shared party lock while reading settings and ranking songs. Pagination is live: votes can move songs between page loads; refresh or return to the first page to see the current front.
+
+This is CrowdCue's waiting queue. It does not send songs to Spotify yet; task thirteen implements that delivery boundary.

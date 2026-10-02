@@ -77,39 +77,43 @@ export async function requestRoutes(
     return parsed.data.offset;
   };
   for (const role of ['guest', 'admin'] as const) {
-    app.get<{ Params: { token: string } }>(
-      `/api/party-links/${role}/:token/requests`,
-      limited(role === 'guest' ? 600 : 60),
-      async (request, reply) => {
-        if (!options.store || !options.auth)
-          return reply
-            .code(503)
-            .send({ error: 'Song requests are not available yet.' });
-        const value = token(request.params.token, role);
-        const offset = page(request.query);
-        if (role === 'guest')
-          return options.store.guestList(
-            value,
-            session(request.cookies, value),
-            offset,
-          );
-        const host = await options.auth
-          .requireHost(
-            request.cookies[
-              `${options.auth.config.secureCookies ? '__Host-' : ''}crowdcue_host`
-            ],
-          )
-          .catch((error: unknown) => {
-            if (
-              error instanceof SpotifyError &&
-              error.kind === 'reauthenticate'
+    for (const view of ['requests', 'queue'] as const) {
+      app.get<{ Params: { token: string } }>(
+        `/api/party-links/${role}/:token/${view}`,
+        limited(role === 'guest' ? 600 : 60),
+        async (request, reply) => {
+          if (!options.store || !options.auth)
+            return reply
+              .code(503)
+              .send({ error: 'Song requests are not available yet.' });
+          const value = token(request.params.token, role);
+          const offset = page(request.query);
+          if (role === 'guest')
+            return (
+              view === 'queue'
+                ? options.store.guestQueue.bind(options.store)
+                : options.store.guestList.bind(options.store)
+            )(value, session(request.cookies, value), offset);
+          const host = await options.auth
+            .requireHost(
+              request.cookies[
+                `${options.auth.config.secureCookies ? '__Host-' : ''}crowdcue_host`
+              ],
             )
-              throw new RequestError(401, 'Sign in as this party’s host.');
-            throw error;
-          });
-        return options.store.adminList(host.accountId, value, offset);
-      },
-    );
+            .catch((error: unknown) => {
+              if (
+                error instanceof SpotifyError &&
+                error.kind === 'reauthenticate'
+              )
+                throw new RequestError(401, 'Sign in as this party’s host.');
+              throw error;
+            });
+          return view === 'queue'
+            ? options.store.adminQueue(host.accountId, value, offset)
+            : options.store.adminList(host.accountId, value, offset);
+        },
+      );
+    }
   }
   app.post<{ Params: { token: string } }>(
     '/api/party-links/guest/:token/requests',

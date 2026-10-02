@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
 } from 'react';
+import { QueueBoard } from './QueueBoard';
 import { RequestBoard } from './RequestBoard';
 import { SongSearch } from './SongSearch';
 import { z } from 'zod';
@@ -229,6 +230,15 @@ export function GuestInterface({
               refresh={requestRefresh}
               votingEnabled={party.settings.votingEnabled}
               canVote={!party.settings.requireGuestNames || !!guest.displayName}
+              onExpired={sessionExpired}
+              onChange={() => setRequestRefresh((value) => value + 1)}
+            />
+          )}
+          {guest && (
+            <QueueBoard
+              role="guest"
+              token={token}
+              refresh={requestRefresh}
               onExpired={sessionExpired}
             />
           )}

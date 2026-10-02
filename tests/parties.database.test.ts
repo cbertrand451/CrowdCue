@@ -1327,4 +1327,169 @@ describe.skipIf(!url)('party creation and authorization', () => {
     expect((await vote(true)).statusCode).toBe(401);
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it('dynamically ranks approved songs, preserves ties, and follows approval and voting settings', async () => {
+    const party = (
+      await create({
+        name: 'Queue party',
+        settings: { requestCooldownSeconds: 0, maxActiveRequestsPerGuest: 10 },
+      })
+    ).json<{ party: PartyDetails }>().party;
+    const join = tokenFrom(party.links.guest),
+      adminLink = tokenFrom(party.links.admin!);
+    const guests = new PostgresGuestStore(pool),
+      requests = new PostgresRequestStore(pool);
+    const guest = await guests.join(join, undefined, 'Alex');
+    const song = async (letter: string) =>
+      (
+        await requests.create(
+          join,
+          guest.token,
+          {
+            id: letter.repeat(22),
+            title: letter,
+            artists: ['Artist'],
+            album: 'Album',
+            artworkUrl: null,
+            durationMs: 120000,
+            explicit: false,
+            spotifyUrl: `https://open.spotify.com/track/${letter.repeat(22)}`,
+          },
+          randomUUID(),
+        )
+      ).request;
+    const first = await song('a'),
+      second = await song('b');
+    await pool.query(
+      "UPDATE song_requests SET created_at = '2026-01-01' WHERE id = $1",
+      [first.id],
+    );
+    const ids = async () =>
+      (await requests.guestQueue(join, guest.token, 0)).items.map(
+        (x) => x.request.id,
+      );
+    expect(await ids()).toEqual([first.id, second.id]);
+    await requests.vote(join, guest.token, second.id, true);
+    expect(await ids()).toEqual([second.id, first.id]);
+    await requests.vote(join, guest.token, first.id, true);
+    expect(await ids()).toEqual([first.id, second.id]);
+    await requests.vote(join, guest.token, first.id, false);
+    await store.update(
+      host.id,
+      adminLink,
+      createPartySchema.parse({
+        name: party.name,
+        settings: {
+          votingEnabled: false,
+          approvalRequired: true,
+          requestCooldownSeconds: 0,
+          maxActiveRequestsPerGuest: 10,
+        },
+      }),
+    );
+    expect(await ids()).toEqual([first.id, second.id]);
+    const pending = await song('c');
+    await store.update(
+      host.id,
+      adminLink,
+      createPartySchema.parse({
+        name: party.name,
+        settings: {
+          approvalRequired: true,
+          requestCooldownSeconds: 0,
+          maxActiveRequestsPerGuest: 10,
+        },
+      }),
+    );
+    await requests.vote(join, guest.token, pending.id, true);
+    expect(await ids()).toEqual([second.id, first.id]);
+    await requests.moderate(host.id, adminLink, pending.id, 'approve');
+    expect(await ids()).toEqual([second.id, pending.id, first.id]);
+    await requests.moderate(host.id, adminLink, second.id, 'remove');
+    expect(await ids()).toEqual([pending.id, first.id]);
+    const restarted = new PostgresRequestStore(pool);
+    expect(
+      (await restarted.adminQueue(host.id, adminLink, 0)).items.map(
+        (x) => x.request.id,
+      ),
+    ).toEqual(await ids());
+    await store.end(host.id, adminLink);
+    expect(await requests.guestQueue(join, guest.token, 0)).toMatchObject({
+      status: 'ENDED',
+      items: [
+        { position: 1, request: { id: pending.id } },
+        { position: 2, request: { id: first.id } },
+      ],
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('protects queue snapshots by role and session and returns stable global page positions', async () => {
+    const party = await created(),
+      join = tokenFrom(party.links.guest),
+      adminLink = tokenFrom(party.links.admin!);
+    const guest = await new PostgresGuestStore(pool).join(
+      join,
+      undefined,
+      'Alex',
+    );
+    await pool.query(
+      `INSERT INTO song_requests (party_id,requested_by,spotify_track_id,track_name,artist_name,album_name,duration_ms,is_explicit,status,created_at)
+      SELECT $1,$2,lpad(n::text,22,'0'),'Song '||n,'Artist','Album',120000,false,'APPROVED','2026-01-01'::timestamptz FROM generate_series(1,51) n`,
+      [party.id, guest.guest.id],
+    );
+    const requests = new PostgresRequestStore(pool);
+    const front = await requests.guestQueue(join, guest.token, 0),
+      back = await requests.guestQueue(join, guest.token, 50);
+    expect(front.items).toHaveLength(50);
+    expect(front.nextOffset).toBe(50);
+    expect(back.items).toHaveLength(1);
+    expect(back.items[0].position).toBe(51);
+    expect(back.nextOffset).toBeNull();
+    const sorted = [...front.items, ...back.items].map((x) => x.request.id);
+    expect(sorted).toEqual([...sorted].sort());
+    const get = (
+      role: string,
+      token: string,
+      cookies: Record<string, string> = {},
+    ) =>
+      app.inject({
+        method: 'GET',
+        url: `/api/party-links/${role}/${token}/queue?offset=0`,
+        cookies,
+      });
+    expect((await get('guest', join)).statusCode).toBe(401);
+    expect(
+      (
+        await get('guest', join, { [guestCookieName(join, true)]: guest.token })
+      ).json().items,
+    ).toHaveLength(50);
+    expect(
+      (await get('admin', adminLink, { '__Host-crowdcue_host': other.token }))
+        .statusCode,
+    ).toBe(404);
+    expect(
+      (await get('admin', adminLink, { '__Host-crowdcue_host': host.token }))
+        .statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await get('guest', adminLink, {
+          [guestCookieName(adminLink, true)]: guest.token,
+        })
+      ).statusCode,
+    ).toBe(404);
+    await pool.query("UPDATE song_requests SET status='QUEUED' WHERE id=$1", [
+      front.items[0].request.id,
+    ]);
+    expect(
+      (await requests.guestQueue(join, guest.token, 0)).items,
+    ).toHaveLength(50);
+    await pool.query(
+      "UPDATE guests SET created_at=now()-interval '31 days',expires_at=now()-interval '1 day' WHERE id=$1",
+      [guest.guest.id],
+    );
+    expect(
+      (await get('guest', join, { [guestCookieName(join, true)]: guest.token }))
+        .statusCode,
+    ).toBe(401);
+  });
 });

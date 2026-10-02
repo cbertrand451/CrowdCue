@@ -1,3 +1,4 @@
+import { QueueBoard } from './QueueBoard';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   createPartySchema,
@@ -18,6 +19,7 @@ export function AdminDashboard({
   onChange: (party: PartyDetails) => void;
   onExpired: () => void;
 }) {
+  const [queueRefresh, setQueueRefresh] = useState(0);
   const [name, setName] = useState(party.name);
   const [settings, setSettings] = useState(party.settings);
   const [busy, setBusy] = useState(false);
@@ -72,6 +74,7 @@ export function AdminDashboard({
       const result = (await response.json()) as { party: unknown };
       if (controller?.signal.aborted) return;
       onChange(partyDetailsSchema.parse(result.party));
+      setQueueRefresh((value) => value + 1);
       setFeedback(action === 'end' ? 'Party ended.' : 'Settings saved.');
       setConfirming(false);
     } catch {
@@ -102,6 +105,13 @@ export function AdminDashboard({
         role="admin"
         token={token}
         active={party.status === 'ACTIVE'}
+        onExpired={onExpired}
+        onChange={() => setQueueRefresh((value) => value + 1)}
+      />
+      <QueueBoard
+        role="admin"
+        token={token}
+        refresh={queueRefresh}
         onExpired={onExpired}
       />
       <section aria-label="Party settings">

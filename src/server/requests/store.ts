@@ -1,3 +1,5 @@
+import { queueOrder } from '../queue/ordering.js';
+import type { QueueSnapshot } from '../queue/contracts.js';
 import type pg from 'pg';
 import type { PoolClient } from 'pg';
 import { hashToken } from '../auth/crypto.js';
@@ -64,14 +66,14 @@ export class PostgresRequestStore {
     client: pg.Pool | PoolClient,
     token: string,
     session?: string,
-    lock = false,
+    lock: boolean | 'share' = false,
     mutation = true,
   ) {
     const result = await client.query<Context>(
       `SELECT p.id, p.host_account_id, p.status, s.require_guest_names, s.approval_required, s.voting_enabled, s.allow_explicit_tracks, s.max_active_requests_per_guest, s.request_cooldown_seconds,
       g.id AS guest_id, g.display_name FROM parties p JOIN party_settings s ON s.party_id = p.id
       LEFT JOIN guests g ON g.party_id = p.id AND g.session_token_hash = $2 AND g.expires_at > now()
-      WHERE p.guest_join_token = $1 ${lock ? 'FOR UPDATE OF p' : ''}`,
+      WHERE p.guest_join_token = $1 ${lock ? (lock === 'share' ? 'FOR SHARE OF p' : 'FOR UPDATE OF p') : ''}`,
       [token, session ? hashToken(session) : null],
     );
     const party = result.rows[0];
@@ -221,10 +223,14 @@ export class PostgresRequestStore {
     client: pg.Pool | PoolClient,
     hostId: string,
     token: string,
-    lock = false,
+    lock: boolean | 'share' = false,
   ) {
-    const result = await client.query<{ id: string; status: string }>(
-      `SELECT id, status FROM parties WHERE host_account_id = $1 AND admin_token_hash = $2 ${lock ? 'FOR UPDATE' : ''}`,
+    const result = await client.query<{
+      id: string;
+      status: 'ACTIVE' | 'ENDED';
+      voting_enabled: boolean;
+    }>(
+      `SELECT p.id, p.status, s.voting_enabled FROM parties p JOIN party_settings s ON s.party_id = p.id WHERE p.host_account_id = $1 AND p.admin_token_hash = $2 ${lock ? (lock === 'share' ? 'FOR SHARE OF p' : 'FOR UPDATE OF p') : ''}`,
       [hostId, hashToken(token)],
     );
     if (!result.rows[0]) throw new RequestError(404, 'Party not found.');
@@ -306,6 +312,51 @@ export class PostgresRequestStore {
         )
       ).rows[0];
       return details(saved, party.guest_id);
+    });
+  }
+  private async queue(
+    client: PoolClient,
+    party: { id: string; status: string; voting_enabled: boolean },
+    offset: number,
+    guestId?: string | null,
+  ): Promise<QueueSnapshot> {
+    // A joined settings row can precede a wait for the party lock. Read it again
+    // after acquiring the lock so the policy and ranked songs share one state.
+    const settings = (
+      await client.query<{ voting_enabled: boolean }>(
+        'SELECT voting_enabled FROM party_settings WHERE party_id = $1',
+        [party.id],
+      )
+    ).rows[0];
+    const order = queueOrder(settings.voting_enabled);
+    const result = await client.query<Row & { position: number }>(
+      `WITH ranked AS (
+      SELECT r.*, g.display_name, ${voteColumns} FROM song_requests r JOIN guests g ON g.id = r.requested_by
+      WHERE r.party_id = $1 AND r.status = 'APPROVED'
+    ) SELECT *, row_number() OVER (ORDER BY ${order})::int AS position FROM ranked
+      ORDER BY ${order} LIMIT 51 OFFSET $2`,
+      [party.id, offset, guestId ?? null],
+    );
+    return {
+      items: result.rows.slice(0, 50).map((row) => ({
+        position: row.position,
+        request: details(row, guestId),
+      })),
+      nextOffset: result.rows.length > 50 ? offset + 50 : null,
+      votingEnabled: settings.voting_enabled,
+      status: party.status as 'ACTIVE' | 'ENDED',
+    };
+  }
+  async guestQueue(token: string, session: string | undefined, offset: number) {
+    return inTransaction(this.pool, async (client) => {
+      const party = await this.context(client, token, session, 'share', false);
+      return this.queue(client, party, offset, party.guest_id);
+    });
+  }
+  async adminQueue(hostId: string, token: string, offset: number) {
+    return inTransaction(this.pool, async (client) => {
+      const party = await this.hostParty(client, hostId, token, 'share');
+      return this.queue(client, party, offset);
     });
   }
 }

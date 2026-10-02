@@ -37,7 +37,16 @@ function stubActionFetch(
   vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
     url.includes('/requests?')
       ? Promise.resolve(reply({ requests: [], nextOffset: null }))
-      : fetcher(url, options),
+      : url.includes('/queue?')
+        ? Promise.resolve(
+            reply({
+              items: [],
+              nextOffset: null,
+              votingEnabled: true,
+              status: 'ACTIVE',
+            }),
+          )
+        : fetcher(url, options),
   );
 }
 

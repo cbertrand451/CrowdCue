@@ -19,6 +19,7 @@ export function RequestBoard({
   refresh = 0,
   votingEnabled = true,
   canVote = true,
+  onChange,
   onExpired,
 }: {
   role: 'guest' | 'admin';
@@ -27,6 +28,7 @@ export function RequestBoard({
   refresh?: number;
   votingEnabled?: boolean;
   canVote?: boolean;
+  onChange?: () => void;
   onExpired?: () => void;
 }) {
   const [requests, setRequests] = useState<SongRequest[]>([]);
@@ -124,6 +126,7 @@ export function RequestBoard({
           current.map((row) => (row.id === saved.id ? saved : row)),
         );
         setAttempt((value) => value + 1);
+        onChange?.();
       }
     } catch {
       if (!controller?.signal.aborted)

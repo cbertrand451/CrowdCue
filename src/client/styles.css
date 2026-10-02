@@ -265,3 +265,10 @@ a {
     justify-self: start;
   }
 }
+
+.queue-position {
+  font-size: 1.3rem;
+  min-width: 2rem;
+  font-variant-numeric: tabular-nums;
+  color: #a9ebba;
+}
