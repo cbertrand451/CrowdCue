@@ -34,7 +34,9 @@ export function buildApp(
     display?: PostgresDisplayStore;
   } = {},
 ) {
+  const unsafeMethods = new Set(['DELETE', 'PATCH', 'POST', 'PUT']);
   const app = Fastify({
+    bodyLimit: 16 * 1024,
     routerOptions: { maxParamLength: 128 },
     // Request URLs may eventually contain private party identifiers or OAuth codes.
     logController: new LogController({ disableRequestLogging: true }),
@@ -74,6 +76,17 @@ export function buildApp(
       app.log.error('Live connection failed');
       socket.close(1011, 'Live updates unavailable');
     },
+  });
+  app.addHook('onRequest', async (request, reply) => {
+    if (
+      options.auth &&
+      request.url.startsWith('/api/') &&
+      unsafeMethods.has(request.method) &&
+      request.headers.origin !== options.auth.config.appOrigin
+    )
+      return reply
+        .code(403)
+        .send({ error: 'Open CrowdCue before making changes.' });
   });
   // Reject unrelated upgrades before the WebSocket plugin's fallback can log a private URL.
   app.addHook('onRequest', async (request, reply) => {
@@ -127,7 +140,13 @@ export function buildApp(
       });
     }
   }
-  app.setErrorHandler((_error, request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
+    if (
+      error instanceof Error &&
+      'statusCode' in error &&
+      Number(error.statusCode) === 413
+    )
+      return reply.code(413).send({ error: 'Request body is too large.' });
     // Do not log raw exceptions: future integration errors may contain credentials.
     request.log.error({ requestId: request.id }, 'Request failed');
     reply.code(500).send({ error: 'Internal server error' });
