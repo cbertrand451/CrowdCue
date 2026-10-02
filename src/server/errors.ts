@@ -50,7 +50,8 @@ export function serializeApiError(error: unknown): {
       body: { error: error.message },
       retryAfter: error.retryAfter,
       logCategory: `spotify_${error.kind}`,
-      shouldLog: error.kind === 'unavailable' || error.kind === 'no_active_device',
+      shouldLog:
+        error.kind === 'unavailable' || error.kind === 'no_active_device',
     };
   }
 
@@ -84,6 +85,7 @@ function safeHttpErrorMessage(statusCode: number) {
   if (statusCode === 413) return 'Request body is too large.';
   if (statusCode === 429) return 'Too many attempts. Please try again shortly.';
   if (statusCode === 404) return 'Page not found.';
-  if (statusCode >= 400 && statusCode < 500) return 'Send a valid, bounded request.';
+  if (statusCode >= 400 && statusCode < 500)
+    return 'Send a valid, bounded request.';
   return 'Internal server error';
 }
