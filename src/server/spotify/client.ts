@@ -1,3 +1,4 @@
+import { isSpotifyArtworkUrl } from '../security/urls.js';
 import { z } from 'zod';
 import { SpotifyPlayback } from './playback.js';
 import type { SearchResult } from '../search/contracts.js';
@@ -52,20 +53,9 @@ const providerTrackSchema =
 function normalizedTrack(
   track: z.infer<typeof providerTrackSchema>,
 ): SearchResult['tracks'][number] {
-  const artwork = track.album.images.find((image) => {
-    try {
-      const value = new URL(image.url);
-      return (
-        value.protocol === 'https:' &&
-        !value.username &&
-        !value.password &&
-        (value.hostname === 'i.scdn.co' ||
-          value.hostname.endsWith('.spotifycdn.com'))
-      );
-    } catch {
-      return false;
-    }
-  });
+  const artwork = track.album.images.find((image) =>
+    isSpotifyArtworkUrl(image.url),
+  );
   return {
     id: track.id,
     title: track.name,

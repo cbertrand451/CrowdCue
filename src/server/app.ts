@@ -1,3 +1,4 @@
+import { protectHttp, safeLogSerializers } from './security/http.js';
 import { playbackRoutes } from './playback/routes.js';
 import type { PlaybackService } from './playback/service.js';
 import { requestRoutes } from './requests/routes.js';
@@ -36,6 +37,11 @@ export function buildApp(
 ) {
   const app = Fastify({
     routerOptions: { maxParamLength: 128 },
+    bodyLimit: 4096,
+    requestTimeout: 15000,
+    // Allow sequential Spotify calls while bounding stalled sockets.
+    connectionTimeout: 60000,
+    trustProxy: false,
     // Request URLs may eventually contain private party identifiers or OAuth codes.
     logController: new LogController({ disableRequestLogging: true }),
     logger:
@@ -43,16 +49,26 @@ export function buildApp(
         ? false
         : {
             level: config.LOG_LEVEL,
+            serializers: safeLogSerializers,
             redact: [
               'req.headers.authorization',
+              'req.url',
+              'req.body',
+              'req.query',
+              'req.params',
               'req.headers.cookie',
               'res.headers["set-cookie"]',
             ],
           },
   });
   app.register(helmet, {
+    xFrameOptions: { action: 'deny' },
     contentSecurityPolicy: {
       directives: {
+        frameAncestors: ["'none'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'self'", 'https://accounts.spotify.com'],
         imgSrc: [
           "'self'",
           'data:',
@@ -75,16 +91,8 @@ export function buildApp(
       socket.close(1011, 'Live updates unavailable');
     },
   });
-  // Reject unrelated upgrades before the WebSocket plugin's fallback can log a private URL.
-  app.addHook('onRequest', async (request, reply) => {
-    if (
-      request.headers.upgrade?.toLowerCase() === 'websocket' &&
-      !/^\/api\/party-links\/(guest|admin|display)\/[A-Za-z0-9_-]{32,128}\/live$/.test(
-        request.url,
-      )
-    )
-      return reply.code(404).send({ error: 'Live updates unavailable.' });
-  });
+  // Install after Helmet and the WebSocket request marker so rejected upgrades close cleanly.
+  app.after(() => protectHttp(app, options.auth?.config.appOrigin));
   app.register(realtimeRoutes, {
     pool: options.realtimePool,
     auth: options.auth,
@@ -127,7 +135,15 @@ export function buildApp(
       });
     }
   }
-  app.setErrorHandler((_error, request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
+    if (
+      error instanceof Error &&
+      'statusCode' in error &&
+      [400, 413, 415].includes(Number(error.statusCode))
+    )
+      return reply
+        .code(Number(error.statusCode))
+        .send({ error: 'Send a valid, bounded request.' });
     // Do not log raw exceptions: future integration errors may contain credentials.
     request.log.error({ requestId: request.id }, 'Request failed');
     reply.code(500).send({ error: 'Internal server error' });

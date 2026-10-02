@@ -1,3 +1,4 @@
+import { authorizationStartSchema } from './contracts.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
@@ -55,6 +56,14 @@ export async function authRoutes(
     if (
       error instanceof Error &&
       'statusCode' in error &&
+      [400, 413, 415].includes(Number(error.statusCode))
+    )
+      return reply
+        .code(Number(error.statusCode))
+        .send({ error: 'Send a valid, bounded authentication request.' });
+    if (
+      error instanceof Error &&
+      'statusCode' in error &&
       error.statusCode === 429
     )
       return reply
@@ -69,29 +78,37 @@ export async function authRoutes(
       .send({ error: 'Authentication is unavailable. Please try again.' });
   });
 
-  // HTML forms use this POST without JavaScript and include the browser Origin.
+  // Retain form POST parsing for clients that supply a valid Origin.
   app.addContentTypeParser(
     'application/x-www-form-urlencoded',
     { parseAs: 'string', bodyLimit: 1024 },
     (_request, _body, done) => done(null, {}),
   );
-  app.post('/api/auth/spotify/login', limited(10), async (request, reply) => {
-    if (!service)
-      return reply
-        .code(503)
-        .send({ error: 'Spotify connection is not configured.' });
-    if (request.headers.origin !== service.config.appOrigin) {
-      return reply
-        .code(403)
-        .send({ error: 'Open CrowdCue to connect Spotify.' });
-    }
-    const attempt = await service.start();
-    reply.setCookie(oauthCookie, attempt.browserToken, {
-      ...cookieOptions,
-      maxAge: 600,
-    });
-    return reply.redirect(attempt.url, 303);
-  });
+  app.post(
+    '/api/auth/spotify/login',
+    { ...limited(10), bodyLimit: 1024 },
+    async (request, reply) => {
+      if (!service)
+        return reply
+          .code(503)
+          .send({ error: 'Spotify connection is not configured.' });
+      if (request.headers.origin !== service.config.appOrigin) {
+        return reply
+          .code(403)
+          .send({ error: 'Open CrowdCue to connect Spotify.' });
+      }
+      const attempt = await service.start();
+      reply.setCookie(oauthCookie, attempt.browserToken, {
+        ...cookieOptions,
+        maxAge: 600,
+      });
+      if (request.headers.accept === 'application/json')
+        return authorizationStartSchema.parse({
+          authorizationUrl: attempt.url,
+        });
+      return reply.redirect(attempt.url, 303);
+    },
+  );
 
   app.get('/api/auth/spotify/callback', limited(30), async (request, reply) => {
     if (!service)
@@ -136,15 +153,19 @@ export async function authRoutes(
       ? service.status(request.cookies[hostCookie])
       : { enabled: false, authenticated: false, connected: false };
   });
-  app.post('/api/auth/logout', limited(30), async (request, reply) => {
-    if (!service)
-      return reply
-        .code(503)
-        .send({ error: 'Spotify connection is not configured.' });
-    if (request.headers.origin !== service.config.appOrigin)
-      return reply.code(403).send({ error: 'Open CrowdCue to sign out.' });
-    await service.logout(request.cookies[hostCookie]);
-    reply.clearCookie(hostCookie, cookieOptions);
-    return reply.code(204).send();
-  });
+  app.post(
+    '/api/auth/logout',
+    { ...limited(30), bodyLimit: 1024 },
+    async (request, reply) => {
+      if (!service)
+        return reply
+          .code(503)
+          .send({ error: 'Spotify connection is not configured.' });
+      if (request.headers.origin !== service.config.appOrigin)
+        return reply.code(403).send({ error: 'Open CrowdCue to sign out.' });
+      await service.logout(request.cookies[hostCookie]);
+      reply.clearCookie(hostCookie, cookieOptions);
+      return reply.code(204).send();
+    },
+  );
 }

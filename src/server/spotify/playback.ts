@@ -1,3 +1,4 @@
+import { isSpotifyArtworkUrl } from '../security/urls.js';
 import { z } from 'zod';
 import { SpotifyError } from './error.js';
 import type { SpotifyFetch } from './client.js';
@@ -44,19 +45,7 @@ function normalizedTrack(item: unknown): Track | null {
     return null;
   const t = result.data;
   const artwork =
-    t.album.images.find((x) => {
-      try {
-        const u = new URL(x.url);
-        return (
-          u.protocol === 'https:' &&
-          !u.username &&
-          !u.password &&
-          (u.hostname === 'i.scdn.co' || u.hostname.endsWith('.spotifycdn.com'))
-        );
-      } catch {
-        return false;
-      }
-    })?.url ?? null;
+    t.album.images.find((x) => isSpotifyArtworkUrl(x.url))?.url ?? null;
   return {
     id: t.id,
     title: t.name,

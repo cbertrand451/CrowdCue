@@ -107,3 +107,41 @@ it('disables connection when unavailable and supports retrying failed status req
     await screen.findByRole('button', { name: 'Connect Spotify' }),
   ).toBeEnabled();
 });
+
+it('uses a same-origin JSON sign-in request, prevents duplicates and recovers from failure', async () => {
+  let finish: (value: unknown) => void;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      status({ enabled: true, authenticated: false, connected: false }),
+    )
+    .mockReturnValueOnce(pending)
+    .mockResolvedValueOnce(
+      status({ authorizationUrl: 'https://attacker.example/authorize' }),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  const view = render(<SpotifyConnection />);
+  const button = await screen.findByRole('button', { name: 'Connect Spotify' });
+  fireEvent.click(button);
+  fireEvent.submit(button.closest('form')!);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('button', { name: 'Connecting…' })).toBeDisabled();
+  expect(fetcher.mock.calls[1]).toEqual([
+    '/api/auth/spotify/login',
+    expect.objectContaining({
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+    }),
+  ]);
+  finish!({ ok: false });
+  await screen.findByText('Unable to start Spotify sign-in. Please try again.');
+  fireEvent.click(screen.getByRole('button', { name: 'Connect Spotify' }));
+  await screen.findByText('Unable to start Spotify sign-in. Please try again.');
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  view.unmount();
+  expect(fetcher.mock.calls[2][1].signal.aborted).toBe(true);
+});

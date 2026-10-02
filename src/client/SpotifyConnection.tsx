@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { authorizationStartSchema } from '../server/auth/contracts.js';
 import { z } from 'zod';
 
 const statusSchema = z.object({
@@ -27,6 +28,10 @@ export function SpotifyConnection({
   const [connection, setConnection] = useState<ConnectionStatus>();
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [connecting, setConnecting] = useState(false);
+  const connectionRequest = useRef<AbortController | null>(null);
+  const connectionInFlight = useRef(false);
+  useEffect(() => () => connectionRequest.current?.abort(), []);
   const [signingOut, setSigningOut] = useState(false);
   const [feedback, setFeedback] = useState<string | undefined>(
     () =>
@@ -68,6 +73,35 @@ export function SpotifyConnection({
     void check();
     return () => controller.abort();
   }, [attempt, onAuthenticationChange]);
+  async function connect(event: FormEvent) {
+    event.preventDefault();
+    if (connectionInFlight.current) return;
+    connectionInFlight.current = true;
+    setConnecting(true);
+    setFeedback(undefined);
+    const controller = new AbortController();
+    connectionRequest.current = controller;
+    try {
+      // Fetch preserves the browser Origin with no-referrer; plain form navigation may send null.
+      const response = await fetch('/api/auth/spotify/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      if (!response.ok) throw new Error('Unavailable');
+      const result = authorizationStartSchema.parse(await response.json());
+      if (!controller.signal.aborted)
+        window.location.assign(result.authorizationUrl);
+    } catch {
+      if (!controller.signal.aborted)
+        setFeedback('Unable to start Spotify sign-in. Please try again.');
+    } finally {
+      connectionInFlight.current = false;
+      if (!controller.signal.aborted) setConnecting(false);
+    }
+  }
   async function signOut() {
     setSigningOut(true);
     try {
@@ -117,11 +151,17 @@ export function SpotifyConnection({
                 : 'Connect Spotify to host your party.'}
           </p>
           {!connection.connected && (
-            <form method="post" action="/api/auth/spotify/login">
-              <button type="submit">
-                {connection.authenticated
-                  ? 'Reconnect Spotify'
-                  : 'Connect Spotify'}
+            <form
+              method="post"
+              action="/api/auth/spotify/login"
+              onSubmit={(event) => void connect(event)}
+            >
+              <button type="submit" disabled={connecting}>
+                {connecting
+                  ? 'Connecting…'
+                  : connection.authenticated
+                    ? 'Reconnect Spotify'
+                    : 'Connect Spotify'}
               </button>
             </form>
           )}

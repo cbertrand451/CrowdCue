@@ -103,7 +103,7 @@ Authentication endpoints:
 
 | Endpoint                       | Behavior                                                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| POST /api/auth/spotify/login   | Same-origin browser form; sets a 10-minute OAuth cookie and redirects to Spotify                                          |
+| POST /api/auth/spotify/login   | Same-origin POST; sets a 10-minute OAuth cookie and returns the authorization URL for JSON clients, otherwise redirects   |
 | GET /api/auth/spotify/callback | Consumes browser-bound state, exchanges the code with PKCE, saves encrypted tokens, and rotates the host cookie           |
 | GET /api/auth/spotify/status   | Returns enabled/authenticated/connected flags, optional display name, and safe recovery status; refreshes expiring tokens |
 | POST /api/auth/logout          | Same-origin session revocation and cookie clearing for the current browser                                                |
@@ -361,3 +361,13 @@ Joined guests and hosts can open **View guest leaderboard** for live scores, tie
 A saved observation of a committed guest song earns **5 points**. Each retained vote from another guest on an approved, queued or played request earns **1 point**. Self-votes, pending/rejected/removed vote points, backup songs, unobserved songs and duplicate submissions earn nothing. Removing a vote removes its point. Queue ordering is unchanged. Scores belong to a party guest session, not a verified person; playback observations do not guarantee full listens. Older unobserved history earns no playback points.
 
 Authenticated `GET /api/party-links/guest/:token/leaderboard` and owner-only `GET /api/party-links/admin/:token/leaderboard` accept no query parameters and use existing read limits/private headers. Both read durable data without contacting Spotify or requiring a migration. No client endpoint can set points.
+
+### Task 21: Security and permissions
+
+Existing server-side role protections are covered across all Admin features, including history, statistics and leaderboard: private Admin links also require the unexpired owning-host cookie. Guest cookies never grant host access; Display URLs are read-only. Origin checks now apply centrally to all unsafe API methods, and browser Fetch Metadata rejects cross-site API requests before handlers. Spotify callback navigation remains allowed with its existing cookie-bound single-use OAuth state. Browsers without Fetch Metadata still use cookies, exact mutation Origin checks and normal role authorization.
+
+Every API response uses private caching/referrer/indexing headers, including errors. CSP and DENY framing protect the interfaces; form redirects allow only this app and Spotify’s OAuth destination; camera/microphone/location/payment/USB permissions are disabled while TV fullscreen remains available. Shared track validation only accepts canonical Spotify track links and approved HTTPS artwork hosts. Default bodies are limited to 4 KiB, with 1 KiB authentication limits and existing smaller route limits. HTTP request/connection timeouts are 15/60 seconds. Forwarded client IP headers are ignored; behind a reverse proxy, per-process/IP limits currently share the proxy address. Configure narrowly trusted proxy addresses only as a reviewed deployment change.
+
+Request/error serializers omit private URLs, query strings, bodies, cookies and raw exception messages/stacks; existing logs record safe operation categories/request IDs. Deployment proxy/access logs must still redact private paths, OAuth codes and cookies. No migration is needed. The production dependency audit at implementation reported zero vulnerabilities; rerun `npm audit --omit=dev` as dependencies evolve.
+
+Spotify sign-in now starts with a same-origin POST accepting JSON, followed by navigation to a validated `https://accounts.spotify.com/authorize` URL. This preserves `no-referrer` privacy and exact Origin checks: Chromium may send `Origin: null` for a plain HTML form under that policy. The response contains only the public authorization URL; the OAuth binding cookie stays HttpOnly and grants remain server-side. The login endpoint retains 303 responses for callers without `Accept: application/json` and requires a valid Origin for either response format. Duplicate browser starts are prevented and failures can retry.

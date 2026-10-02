@@ -869,6 +869,82 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       (await requests.guestLeaderboard(join, last.token)).yourEntry?.points,
     ).toBe(0);
   });
+  it('enforces owner, role, session expiry and Origin across every admin feature without side effects', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    const {
+      guest,
+      songs: [g],
+    } = await addGuests(p, ['g']);
+    const expired = await signIn();
+    await pool.query(
+      "UPDATE host_sessions SET created_at=now()-interval '2 days',expires_at=now()-interval '1 day' WHERE token_hash=$1",
+      [hashToken(expired.cookie)],
+    );
+    const readViews = [
+      '',
+      '/requests',
+      '/queue',
+      '/playback',
+      '/history',
+      '/statistics',
+      '/leaderboard',
+    ];
+    const writes = [
+      { view: '/settings', payload: { name: p.name, settings: p.settings } },
+      { view: '/end', payload: {} },
+      { view: '/playback', payload: { action: 'start' } },
+      { view: '/queue', payload: { action: 'reset' } },
+      { view: `/requests/${g.id}`, payload: { action: 'remove' } },
+    ];
+    for (const item of [
+      ...readViews.map((view) => ({ view, payload: undefined })),
+      ...writes,
+    ]) {
+      const method = item.payload === undefined ? 'GET' : 'POST';
+      for (const [cookie, link, expected] of [
+        [undefined, adminToken, 401],
+        [guest.token, adminToken, 401],
+        [expired.cookie, adminToken, 401],
+        [other.cookie, adminToken, 404],
+        [host.cookie, token(p.links.guest), 404],
+        [host.cookie, token(p.links.display!), 404],
+      ] as const) {
+        const response = await app.inject({
+          method,
+          url: `/api/party-links/admin/${link}${item.view}`,
+          headers: { origin: config.appOrigin },
+          cookies: cookie ? { '__Host-crowdcue_host': cookie } : {},
+          ...(item.payload === undefined ? {} : { payload: item.payload }),
+        });
+        expect(response.statusCode, `${method} ${item.view}`).toBe(expected);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body).not.toContain(host.id);
+      }
+      if (item.payload !== undefined) {
+        for (const origin of [undefined, 'null', 'https://attacker.example']) {
+          expect(
+            (
+              await app.inject({
+                method,
+                url: `/api/party-links/admin/${adminToken}${item.view}`,
+                headers: origin ? { origin } : {},
+                cookies: { '__Host-crowdcue_host': host.cookie },
+                payload: item.payload,
+              })
+            ).statusCode,
+          ).toBe(403);
+        }
+      }
+    }
+    expect((await parties.admin(host.id, adminToken)).status).toBe('ACTIVE');
+    expect(
+      (await requests.adminList(host.id, adminToken, 0)).requests[0].status,
+    ).toBe('APPROVED');
+    expect(provider.createPlaylist).not.toHaveBeenCalled();
+    expect(provider.enqueue).not.toHaveBeenCalled();
+    expect(actual).toEqual([]);
+  });
   const readHistory = (
     p: PartyDetails,
     owner = host.cookie,

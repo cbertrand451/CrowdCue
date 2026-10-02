@@ -42,7 +42,15 @@ it('debounces query changes and renders Spotify metadata with paged results', as
     .mockResolvedValueOnce(reply({ tracks: [track], nextOffset: 10 }))
     .mockResolvedValueOnce(
       reply({
-        tracks: [track, { ...track, id: 'b'.repeat(22), title: 'Second song' }],
+        tracks: [
+          track,
+          {
+            ...track,
+            id: 'b'.repeat(22),
+            title: 'Second song',
+            spotifyUrl: `https://open.spotify.com/track/${'b'.repeat(22)}`,
+          },
+        ],
         nextOffset: null,
       }),
     );
