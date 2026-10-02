@@ -1,3 +1,5 @@
+import { PostgresGuestStore } from '../src/server/guests/store.js';
+import { guestCookieName } from '../src/server/guests/routes.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import {
@@ -116,6 +118,7 @@ describe.skipIf(!url)('party creation and authorization', () => {
         new SpotifyClient(config, fetcher),
       ),
       parties: store,
+      guests: new PostgresGuestStore(pool),
     });
   });
   afterEach(async () => {
@@ -574,5 +577,177 @@ describe.skipIf(!url)('party creation and authorization', () => {
     expect(
       (await store.public(tokenFrom(party.links.guest), 'guest')).status,
     ).toBe('ENDED');
+  });
+  it('creates hashed party-scoped guest sessions and recovers or renames the same identity', async () => {
+    const party = await created();
+    const join = tokenFrom(party.links.guest);
+    const path = `/api/party-links/guest/${join}/session`;
+    expect((await app.inject(path)).json()).toEqual({ guest: null });
+    const entered = await app.inject({
+      method: 'POST',
+      url: path,
+      headers: { origin: config.appOrigin },
+      payload: {},
+    });
+    expect(entered.statusCode).toBe(201);
+    const cookie = entered.cookies[0];
+    expect(cookie.name).toBe(guestCookieName(join, true));
+    expect(cookie.httpOnly).toBe(true);
+    expect(cookie.secure).toBe(true);
+    expect(cookie.sameSite).toBe('Lax');
+    expect(cookie.path).toBe('/');
+    expect(entered.body).not.toContain(cookie.value);
+    const row = (
+      await pool.query(
+        'SELECT session_token_hash, display_name FROM guests WHERE id = $1',
+        [entered.json().guest.id],
+      )
+    ).rows[0];
+    expect(row.session_token_hash).toBe(hashToken(cookie.value));
+    expect(row.display_name).toBeNull();
+    const cookies = { [cookie.name]: cookie.value };
+    expect((await app.inject({ url: path, cookies })).json()).toEqual(
+      entered.json(),
+    );
+    const renamed = await app.inject({
+      method: 'POST',
+      url: path,
+      headers: { origin: config.appOrigin },
+      cookies,
+      payload: { displayName: '  Alex  ' },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json().guest.id).toBe(entered.json().guest.id);
+    expect(renamed.json().guest.displayName).toBe('Alex');
+    expect(
+      (await new PostgresGuestStore(pool).session(join, cookie.value))
+        ?.displayName,
+    ).toBe('Alex');
+    expect(
+      (
+        await app.inject({
+          url: `/api/party-links/admin/${tokenFrom(party.links.admin!)}`,
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(401);
+    const second = await created();
+    const secondJoin = tokenFrom(second.links.guest);
+    expect(
+      await new PostgresGuestStore(pool).session(secondJoin, cookie.value),
+    ).toBeNull();
+    expect(
+      (
+        await app.inject({
+          url: `/api/party-links/guest/${secondJoin}/session`,
+          cookies,
+        })
+      ).json(),
+    ).toEqual({ guest: null });
+    for (const response of [entered, renamed]) {
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['referrer-policy']).toBe('no-referrer');
+      expect(response.headers['x-robots-tag']).toContain('noindex');
+      expect(response.body).not.toContain(host.id);
+      expect(response.body).not.toContain(party.links.admin!);
+    }
+  });
+
+  it('enforces guest name rules, Origin, token roles, ended state, and expired-session renewal', async () => {
+    const party = (
+      await create({
+        name: 'Named party',
+        settings: { requireGuestNames: true },
+      })
+    ).json<{ party: PartyDetails }>().party;
+    const join = tokenFrom(party.links.guest);
+    const path = `/api/party-links/guest/${join}/session`;
+    const enter = (
+      payload: unknown,
+      cookies = {},
+      origin = config.appOrigin,
+      url = path,
+    ) =>
+      app.inject({
+        method: 'POST',
+        url,
+        headers: { origin },
+        cookies,
+        payload: JSON.stringify(payload),
+      });
+    // inject needs a JSON content type when sending serialized data.
+    const post = (
+      payload: unknown,
+      cookies = {},
+      origin = config.appOrigin,
+      url = path,
+    ) =>
+      app.inject({
+        method: 'POST',
+        url,
+        headers: { origin, 'content-type': 'application/json' },
+        cookies,
+        payload: JSON.stringify(payload),
+      });
+    expect((await enter({})).statusCode).toBe(415);
+    expect((await post({})).statusCode).toBe(400);
+    expect((await post({ displayName: ' ' })).statusCode).toBe(400);
+    expect((await post({ displayName: 'x'.repeat(81) })).statusCode).toBe(400);
+    expect((await post({ displayName: 'bad\nname' })).statusCode).toBe(400);
+    expect(
+      (await post({ displayName: 'Alex', partyId: party.id })).statusCode,
+    ).toBe(400);
+    expect(
+      (await post({ displayName: 'Alex' }, {}, 'https://foreign.example'))
+        .statusCode,
+    ).toBe(403);
+    for (const link of [party.links.admin!, party.links.display!]) {
+      expect(
+        (
+          await post(
+            { displayName: 'Alex' },
+            {},
+            config.appOrigin,
+            `/api/party-links/guest/${tokenFrom(link)}/session`,
+          )
+        ).statusCode,
+      ).toBe(404);
+    }
+    const entered = await post({ displayName: 'Alex' });
+    expect(entered.statusCode).toBe(201);
+    const cookie = entered.cookies[0];
+    const cookies = { [cookie.name]: cookie.value };
+    expect((await post({ displayName: null }, cookies)).statusCode).toBe(400);
+    expect((await post({}, cookies)).json().guest.id).toBe(
+      entered.json().guest.id,
+    );
+    await pool.query(
+      "UPDATE guests SET created_at = now() - interval '31 days', expires_at = now() - interval '1 day' WHERE id = $1",
+      [entered.json().guest.id],
+    );
+    expect((await app.inject({ url: path, cookies })).json()).toEqual({
+      guest: null,
+    });
+    const renewed = await post({ displayName: 'Alex' }, cookies);
+    expect(renewed.statusCode).toBe(201);
+    expect(renewed.json().guest.id).not.toBe(entered.json().guest.id);
+    await store.end(host.id, tokenFrom(party.links.admin!));
+    expect((await post({ displayName: 'Alex' })).statusCode).toBe(409);
+    expect(
+      (
+        await post(
+          { displayName: 'Alex' },
+          { [cookie.name]: renewed.cookies[0].value },
+        )
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          url: path,
+          cookies: { [cookie.name]: renewed.cookies[0].value },
+        })
+      ).json().guest.id,
+    ).toBe(renewed.json().guest.id);
   });
 });

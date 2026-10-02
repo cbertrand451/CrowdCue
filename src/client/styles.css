@@ -189,3 +189,13 @@ a {
   padding-top: 1.5rem;
   border-top: 1px solid #425148;
 }
+
+.guest-interface {
+  border-top: 1px solid #425148;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+}
+.guest-preferences {
+  margin-top: 2rem;
+  line-height: 1.6;
+}

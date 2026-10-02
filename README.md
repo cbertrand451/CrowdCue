@@ -1,6 +1,6 @@
 # CrowdCue
 
-CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. Guest sessions, song requests, voting, and Spotify queue operations are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
+CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Song search, requests, voting, and Spotify queue operations are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
 ## Architecture and stack
 
@@ -155,7 +155,17 @@ Guest/Admin/Display URLs use independent cryptographically random 256-bit tokens
 
 All party API responses and role pages use no-store/no-referrer headers and `X-Robots-Tag: noindex, nofollow, noarchive`. Crawler directives discourage indexing; authorization still controls private access. Malformed role-page tokens return a generic 404 without echoing the token; syntactically valid links load the page and are verified by the role-specific API. Request bodies, tokens, and raw database errors are not logged. Per-process IP limits allow 10 create attempts, 60 owner/admin reads, and 300 public reads per minute; deployment still needs shared edge limits and trusted proxy configuration.
 
-Production serves the React entry point at all three role URLs so bookmarked links and page refreshes work. The current role pages show persistent party details; guest identity, search, requests, moderation, QR codes, and the full display are later tasks. They poll party state every 15 seconds, with no overlapping requests, so an ended party is reflected on open pages. The owning host can now rename a party, change its request preferences, and end it from the Admin dashboard. Ended parties remain readable and cannot be reopened or edited. Ending a party does not stop Spotify playback.
+Production serves the React entry point at all three role URLs so bookmarked links and page refreshes work. The current role pages show persistent party details; search, requests, moderation, QR codes, and the full display are later tasks. They poll party state every 15 seconds, with no overlapping requests, so an ended party is reflected on open pages. The owning host can now rename a party, change its request preferences, and end it from the Admin dashboard. Ended parties remain readable and cannot be reopened or edited. Ending a party does not stop Spotify playback.
+
+## Guest interface and sessions
+
+Opening a Guest link shows the party name, active/ended state, and current preferences without requiring a Spotify or CrowdCue account. Tap **Join party** to join anonymously or enter an optional name. When the host requires guest names, the server enforces a trimmed name of 1–80 characters. Control characters and extra input fields are rejected. Existing guests can change or clear an optional name; a newly required name prompts them to add one. Search, requesting songs, and voting are the next milestones.
+
+`GET /api/party-links/guest/:token/session` returns this browser's guest identity or `null`. `POST` on the same endpoint joins the party or updates the current guest name. POST requires the configured Origin and bounded JSON, and is limited to 30 attempts per minute per process/IP; GET permits 300. Tokens from Admin or Display links do not resolve a guest party. The guest interface never includes private host links or Spotify credentials.
+
+Each party receives a separate random 256-bit guest session cookie, with HttpOnly, SameSite=Lax, Path=/, a 30-day fixed expiration, and Secure plus the `__Host-` prefix on HTTPS. Cookie names include a digest of the party's join token, allowing simultaneous parties in one browser. Only the SHA-256 session hash is stored in the existing `guests` table; no new migration is required. Sessions survive refreshes and server restarts, and never grant host access. Expired sessions must join again and receive a new identity; expired rows remain for request/vote history. Do not infer guest identity from a link token, client-supplied ID, or name. Cookie-blocking browsers cannot preserve identity across reloads.
+
+Join/name changes lock the party row against simultaneous ending/settings updates. Ended parties reject joining and name changes, but retain read-only session/party context. Public party-state polling updates preferences and ended status. The guest form cancels pending requests on navigation and prevents overlapping submissions. Host sign-out does not revoke independent guest sessions.
 
 ## Admin dashboard
 
@@ -192,7 +202,7 @@ A partial unique index prevents the same track from having multiple REQUESTED, A
 
 Party creation inserts its settings and private links in the same transaction using `inTransaction`. Future mutation code must maintain `updated_at`, authorize operations, enforce party state/settings/session expiry, and implement allowed request transitions. Database row types are internal shapes, not public API responses.
 
-Guest session identifiers still need implementation and must be independent of role-link tokens. Store only SHA-256 hashes of private session tokens. Length/format constraints cannot establish unpredictability or authorization. Host sessions, OAuth encryption, role links, and party creation are implemented as described above. Do not store plaintext Spotify/session tokens or serialize credential rows. Queue coordination provides storage, not exactly-once Spotify delivery: the future worker must atomically claim operations and reconcile uncertain outcomes before retrying.
+Guest session identifiers are implemented and independent of role-link tokens. Store only SHA-256 hashes of private session tokens. Length/format constraints cannot establish unpredictability or authorization. Host sessions, OAuth encryption, role links, and party creation are implemented as described above. Do not store plaintext Spotify/session tokens or serialize credential rows. Queue coordination provides storage, not exactly-once Spotify delivery: the future worker must atomically claim operations and reconcile uncertain outcomes before retrying.
 
 ### Database integration tests
 
@@ -206,6 +216,6 @@ npm run check
 
 The test runner does not load `.env` automatically. Database tests create random isolated schemas and drop only those schemas afterward; the test role needs schema creation privileges. They verify migrations, settings/lifecycle constraints, concurrent duplicate requests/votes, cross-party references, rollback/deletion behavior, OAuth/session behavior, party creation transactions/idempotency, host ownership, role isolation, and link recovery. Frontend tests cover creation preferences, retries, sign-out privacy, link pages, and state polling. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
 
-The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **The Admin dashboard foundation is complete. Next task: build the Guest interface and guest sessions.**
+The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **The Guest interface and sessions are complete. Next task: implement Spotify song search.**
 
 Future request/vote updates can use Server-Sent Events with ordinary HTTP mutations; only party-state polling is implemented. Multi-instance event delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.

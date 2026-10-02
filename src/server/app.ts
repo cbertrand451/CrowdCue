@@ -1,3 +1,5 @@
+import { guestRoutes } from './guests/routes.js';
+import type { PostgresGuestStore } from './guests/store.js';
 import Fastify, { LogController } from 'fastify';
 import helmet from '@fastify/helmet';
 import fastifyStatic from '@fastify/static';
@@ -16,6 +18,7 @@ export function buildApp(
     logger?: boolean;
     auth?: AuthService;
     parties?: PartyStore;
+    guests?: PostgresGuestStore;
   } = {},
 ) {
   const app = Fastify({
@@ -35,6 +38,11 @@ export function buildApp(
           },
   });
   app.register(helmet);
+  app.register(guestRoutes, {
+    store: options.guests,
+    appOrigin: options.auth?.config.appOrigin,
+    secureCookies: options.auth?.config.secureCookies,
+  });
   app.register(authRoutes, { service: options.auth });
   app.register(partyRoutes, { auth: options.auth, store: options.parties });
   app.get('/api/health', async (_request, reply) => {

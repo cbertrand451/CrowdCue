@@ -1,3 +1,4 @@
+import { PostgresGuestStore } from './guests/store.js';
 import { buildApp } from './app.js';
 import { readConfig } from './config.js';
 import { setGlobalProxyFromEnv } from 'node:http';
@@ -39,6 +40,7 @@ const auth =
 const app = buildApp(config, {
   serveFrontend: config.NODE_ENV === 'production',
   auth,
+  guests: pool ? new PostgresGuestStore(pool) : undefined,
   parties:
     authConfig && pool
       ? new PostgresPartyStore(

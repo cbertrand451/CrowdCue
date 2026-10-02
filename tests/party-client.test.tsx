@@ -271,7 +271,7 @@ it('polls public party state without overlapping requests and stops when unmount
       }),
     );
   vi.stubGlobal('fetch', fetcher);
-  const view = render(<PartyPage role="guest" token={'g'.repeat(43)} />);
+  const view = render(<PartyPage role="display" token={'d'.repeat(43)} />);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });

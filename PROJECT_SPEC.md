@@ -273,6 +273,8 @@ The application should assign an internal identifier/session identifier.
 
 Guest identity should persist through ordinary page refreshes when possible.
 
+Guest sessions are party-scoped, last 30 days, and use independent random HttpOnly cookie tokens stored only as hashes. A guest joins explicitly, anonymously when allowed, and can update their name. Required names are enforced server-side. Ended parties retain read-only context and reject joins/name changes. Guest sessions never authorize administration or expose private role links.
+
 ---
 
 # 10. Song Search

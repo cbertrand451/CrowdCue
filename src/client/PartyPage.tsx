@@ -5,6 +5,7 @@ import {
   publicPartySchema,
   type PartyDetails,
 } from '../server/parties/contracts.js';
+import { GuestInterface } from './GuestInterface';
 import { AdminDashboard } from './AdminDashboard';
 import { SpotifyConnection } from './SpotifyConnection';
 
@@ -112,6 +113,9 @@ export function PartyPage({
               ? 'Party is active.'
               : 'This party has ended.'}
           </p>
+          {role === 'guest' && (
+            <GuestInterface key={token} party={party} token={token} />
+          )}
           {role === 'admin' && 'links' in party && (
             <AdminDashboard
               key={party.id}
@@ -136,7 +140,7 @@ export function PartyPage({
               </a>
             </>
           )}
-          {role !== 'admin' && party.status === 'ACTIVE' && (
+          {role === 'display' && party.status === 'ACTIVE' && (
             <p className="muted">Song requests and voting are coming next.</p>
           )}
         </>
