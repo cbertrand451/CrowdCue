@@ -99,7 +99,7 @@ it('clears a protected queue on expired authentication and allows retry', async 
     'This party has ended. Its saved queue is read-only.',
   );
   expect(
-    screen.getByText('Voting is off. Earlier requests play first.'),
+    screen.getByText('Voting is off. Guest songs follow request order.'),
   ).toBeVisible();
   expect(screen.queryByText('First in CrowdCue')).not.toBeInTheDocument();
 });

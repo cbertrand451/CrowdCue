@@ -7,7 +7,7 @@ import {
 const labels: Record<SongRequest['status'], string> = {
   REQUESTED: 'Awaiting host approval',
   APPROVED: 'Approved',
-  QUEUED: 'Queued',
+  QUEUED: 'Locked for playback',
   PLAYED: 'Played',
   REJECTED: 'Rejected',
   REMOVED: 'Removed',
@@ -269,7 +269,8 @@ export function RequestBoard({
         )}
       </div>
       <p className="muted">
-        Approved requests are saved here. Spotify queue delivery is coming next.
+        Approved requests join the party queue. Once locked at #1, a song can no
+        longer be voted on or removed.
       </p>
     </section>
   );

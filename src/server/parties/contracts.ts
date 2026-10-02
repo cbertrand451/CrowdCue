@@ -15,6 +15,12 @@ export const partySettingsSchema = z
       .default(null),
     allowExplicitTracks: z.boolean().default(true),
     requestCooldownSeconds: z.number().int().min(0).max(3600).default(0),
+    backupSourceId: z
+      .string()
+      .regex(/^[A-Za-z0-9]{22}$/)
+      .nullable()
+      .default(null),
+    saveRecapPlaylist: z.boolean().default(false),
     queueBehavior: z
       .enum(['SPOTIFY_QUEUE', 'BACKUP_PLAYLIST'])
       .default('SPOTIFY_QUEUE'),

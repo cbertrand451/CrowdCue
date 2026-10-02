@@ -1,3 +1,5 @@
+import { playbackRoutes } from './playback/routes.js';
+import type { PlaybackService } from './playback/service.js';
 import { requestRoutes } from './requests/routes.js';
 import type { PostgresRequestStore } from './requests/store.js';
 import { guestRoutes } from './guests/routes.js';
@@ -22,6 +24,7 @@ export function buildApp(
     parties?: PartyStore;
     guests?: PostgresGuestStore;
     requests?: PostgresRequestStore;
+    playback?: PlaybackService;
   } = {},
 ) {
   const app = Fastify({
@@ -41,6 +44,10 @@ export function buildApp(
           },
   });
   app.register(helmet);
+  app.register(playbackRoutes, {
+    auth: options.auth,
+    playback: options.playback,
+  });
   app.register(requestRoutes, { auth: options.auth, store: options.requests });
   app.register(guestRoutes, {
     store: options.guests,

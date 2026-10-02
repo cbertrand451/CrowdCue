@@ -4,6 +4,11 @@ export const queueSnapshotSchema = z.object({
   items: z.array(
     z.object({
       position: z.number().int().positive(),
+      source: z.enum(['GUEST', 'BACKUP']).default('GUEST'),
+      locked: z.boolean().default(false),
+      delivery: z
+        .enum(['PENDING', 'SENDING', 'SENT', 'UNKNOWN'])
+        .default('PENDING'),
       request: songRequestSchema,
     }),
   ),

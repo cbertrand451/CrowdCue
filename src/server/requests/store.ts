@@ -1,3 +1,5 @@
+import { fillBackupBuffer, insertGuestEntry } from '../playback/scheduling.js';
+import { upcoming, entryRequest } from '../playback/ordering.js';
 import { queueOrder } from '../queue/ordering.js';
 import type { QueueSnapshot } from '../queue/contracts.js';
 import type pg from 'pg';
@@ -35,9 +37,11 @@ interface Row {
   created_at: Date;
   vote_count?: number;
   has_voted?: boolean;
+  is_locked?: boolean;
 }
 const voteColumns = `(SELECT count(*)::int FROM votes v WHERE v.request_id = r.id) AS vote_count,
-  EXISTS(SELECT 1 FROM votes v WHERE v.request_id = r.id AND v.guest_id = $3) AS has_voted`;
+  EXISTS(SELECT 1 FROM votes v WHERE v.request_id = r.id AND v.guest_id = $3) AS has_voted,
+  EXISTS(SELECT 1 FROM playback_entries pe WHERE pe.request_id=r.id AND pe.locked_at IS NOT NULL) AS is_locked`;
 const active = "('REQUESTED', 'APPROVED', 'QUEUED')";
 function details(row: Row, guestId?: string | null): SongRequest {
   return {
@@ -47,6 +51,7 @@ function details(row: Row, guestId?: string | null): SongRequest {
     isOwn: row.requested_by === guestId,
     voteCount: row.vote_count ?? 0,
     hasVoted: row.has_voted ?? false,
+    locked: row.is_locked ?? false,
     createdAt: row.created_at.toISOString(),
     track: {
       id: row.spotify_track_id,
@@ -201,6 +206,7 @@ export class PostgresRequestStore {
         ],
       );
       const row = { ...saved.rows[0], display_name: party.display_name };
+      await insertGuestEntry(client, party.id, row);
       await this.remember(client, party, track.id, key, row.id);
       return { request: details(row, party.guest_id), created: true };
     });
@@ -270,10 +276,17 @@ export class PostgresRequestStore {
       )
         throw new RequestError(409, 'This request can no longer be changed.');
       await client.query(
+        "UPDATE playback_entries SET status='REMOVED' WHERE request_id=$1 AND status='WAITING'",
+        [id],
+      );
+      await client.query(
         'UPDATE song_requests SET status = $2, updated_at = now() WHERE id = $1',
         [id, target],
       );
-      return details({ ...row, status: target });
+      const changed: Row = { ...row, status: target };
+      await fillBackupBuffer(client, party.id);
+      await insertGuestEntry(client, party.id, changed);
+      return details(changed);
     });
   }
   async vote(
@@ -328,6 +341,32 @@ export class PostgresRequestStore {
         [party.id],
       )
     ).rows[0];
+    const session = (
+      await client.query<{ initialized: boolean }>(
+        'SELECT initialized FROM party_playback WHERE party_id=$1',
+        [party.id],
+      )
+    ).rows[0];
+    if (session?.initialized) {
+      const entries = await upcoming(
+        client,
+        party.id,
+        settings.voting_enabled,
+        guestId,
+      );
+      return {
+        items: entries.slice(offset, offset + 50).map((e, i) => ({
+          position: offset + i + 1,
+          source: e.source,
+          locked: e.status === 'LOCKED',
+          delivery: e.delivery,
+          request: entryRequest(e, guestId),
+        })),
+        nextOffset: entries.length > offset + 50 ? offset + 50 : null,
+        votingEnabled: settings.voting_enabled,
+        status: party.status as 'ACTIVE' | 'ENDED',
+      };
+    }
     const order = queueOrder(settings.voting_enabled);
     const result = await client.query<Row & { position: number }>(
       `WITH ranked AS (
@@ -340,6 +379,9 @@ export class PostgresRequestStore {
     return {
       items: result.rows.slice(0, 50).map((row) => ({
         position: row.position,
+        source: 'GUEST' as const,
+        locked: false,
+        delivery: 'PENDING' as const,
         request: details(row, guestId),
       })),
       nextOffset: result.rows.length > 50 ? offset + 50 : null,

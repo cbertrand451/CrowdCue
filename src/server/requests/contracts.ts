@@ -18,6 +18,7 @@ export const songRequestSchema = z.object({
   isOwn: z.boolean(),
   voteCount: z.number().int().nonnegative().default(0),
   hasVoted: z.boolean().default(false),
+  locked: z.boolean().default(false),
   createdAt: z.string(),
 });
 export const requestResultSchema = z.object({

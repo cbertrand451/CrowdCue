@@ -5,6 +5,7 @@ import {
   partyDetailsSchema,
   type PartyDetails,
 } from '../server/parties/contracts.js';
+import { playlistIdFromInput } from '../server/playback/contracts.js';
 import { PartyLinks } from './PartyLinks';
 
 const listSchema = z.object({
@@ -20,6 +21,8 @@ export function PartyCreation() {
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [name, setName] = useState('');
+  const [backupSource, setBackupSource] = useState('');
+  const [saveRecapPlaylist, setSaveRecapPlaylist] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [votingEnabled, setVotingEnabled] = useState(true);
   const [requireGuestNames, setRequireGuestNames] = useState(false);
@@ -90,6 +93,11 @@ export function PartyCreation() {
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (inFlight.current) return;
+    const backupSourceId = playlistIdFromInput(backupSource);
+    if (backupSourceId === undefined) {
+      setCreationError('Enter a valid Spotify playlist link.');
+      return;
+    }
     const parsed = createPartySchema.safeParse({
       name,
       settings: {
@@ -97,6 +105,8 @@ export function PartyCreation() {
         votingEnabled,
         requireGuestNames,
         allowExplicitTracks,
+        backupSourceId,
+        saveRecapPlaylist,
       },
     });
     if (!parsed.success) {
@@ -168,6 +178,34 @@ export function PartyCreation() {
             placeholder="Friday at Sam’s"
             aria-describedby={creationError ? 'creation-error' : undefined}
           />
+          <label>
+            Backup Spotify playlist
+            <input
+              value={backupSource}
+              onChange={(event) => setBackupSource(event.target.value)}
+              placeholder="https://open.spotify.com/playlist/…"
+            />
+          </label>
+          <p className="muted">
+            Use a playlist you own or can edit. It supplies songs when guests
+            have none waiting. You can add it later.
+          </p>
+          <label>
+            Save the nightly playlist?
+            <select
+              value={saveRecapPlaylist ? 'yes' : 'no'}
+              onChange={(event) =>
+                setSaveRecapPlaylist(event.target.value === 'yes')
+              }
+            >
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+          </label>
+          <p className="muted">
+            A temporary private playlist records locked songs either way. You’ll
+            be asked again at closeout.
+          </p>
           <div className="party-preferences">
             <label>
               <input

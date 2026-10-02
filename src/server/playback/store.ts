@@ -1,0 +1,215 @@
+import {
+  fillBackupBuffer,
+  insertGuestEntry,
+  type GuestEntryRow,
+} from './scheduling.js';
+import type pg from 'pg';
+import type { PoolClient } from 'pg';
+import { hashToken } from '../auth/crypto.js';
+import { inTransaction } from '../db/index.js';
+import { RequestError } from '../requests/contracts.js';
+import { playbackStatusSchema, type PlaybackStatus } from './contracts.js';
+import { upcoming } from './ordering.js';
+import type { SearchResult } from '../search/contracts.js';
+export interface Session {
+  party_id: string;
+  host_account_id: string;
+  enabled: boolean;
+  mode: 'QUEUE' | 'PLAYLIST';
+  initialized: boolean;
+  playlist_id: string | null;
+  playlist_creation: 'NEW' | 'CREATING' | 'UNKNOWN' | 'READY';
+  playlist_removed: boolean;
+  save_at_creation: boolean;
+  save_at_close: boolean | null;
+  close_decided: boolean;
+  source_cursor: number;
+  last_track_id: string | null;
+  last_progress_ms: number | null;
+  error_code: PlaybackStatus['error'];
+  retry_at: Date | null;
+  playlist_synced_at: Date | null;
+  status: 'ACTIVE' | 'ENDED';
+  name: string;
+  backup_source_id: string | null;
+  allow_explicit_tracks: boolean;
+  voting_enabled: boolean;
+}
+export class PlaybackStore {
+  constructor(readonly pool: pg.Pool) {}
+  async owned(hostId: string, token: string) {
+    const row = (
+      await this.pool.query<{ id: string }>(
+        'SELECT id FROM parties WHERE host_account_id=$1 AND admin_token_hash=$2',
+        [hostId, hashToken(token)],
+      )
+    ).rows[0];
+    if (!row) throw new RequestError(404, 'Party not found.');
+    return row.id;
+  }
+  async session(client: pg.Pool | PoolClient, id: string): Promise<Session> {
+    const result = await client.query<Session>(
+      `SELECT b.*,p.status,p.name,s.backup_source_id,s.allow_explicit_tracks,s.voting_enabled FROM party_playback b JOIN parties p ON p.id=b.party_id JOIN party_settings s ON s.party_id=p.id WHERE b.party_id=$1`,
+      [id],
+    );
+    if (!result.rows[0]) throw new RequestError(404, 'Party not found.');
+    return result.rows[0];
+  }
+  async status(hostId: string, token: string): Promise<PlaybackStatus> {
+    const id = await this.owned(hostId, token);
+    const s = await this.session(this.pool, id);
+    const counts = (
+      await this.pool.query<{ locked: number; guest: number; backup: number }>(
+        `SELECT count(*) FILTER (WHERE locked_at IS NOT NULL)::int AS locked,count(*) FILTER (WHERE locked_at IS NOT NULL AND source='GUEST')::int AS guest,count(*) FILTER (WHERE locked_at IS NOT NULL AND source='BACKUP')::int AS backup FROM playback_entries WHERE party_id=$1`,
+        [id],
+      )
+    ).rows[0];
+    return playbackStatusSchema.parse({
+      enabled: s.enabled,
+      mode: s.mode,
+      playlistUrl:
+        s.playlist_id && !s.playlist_removed
+          ? `https://open.spotify.com/playlist/${s.playlist_id}`
+          : null,
+      playlistRemoved: s.playlist_removed,
+      creation: s.playlist_creation,
+      error: s.error_code,
+      retryAt: s.retry_at?.toISOString() ?? null,
+      syncedAt: s.playlist_synced_at?.toISOString() ?? null,
+      lockedCount: counts.locked,
+      guestCount: counts.guest,
+      backupCount: counts.backup,
+      saveAtCreation: s.save_at_creation,
+      saveAtClose: s.save_at_close,
+      closeDecided: s.close_decided,
+      ended: s.status === 'ENDED',
+    });
+  }
+  async change<T>(
+    id: string,
+    work: (client: PoolClient, s: Session) => Promise<T>,
+  ) {
+    return inTransaction(this.pool, async (client) => {
+      await client.query('SELECT id FROM parties WHERE id=$1 FOR UPDATE', [id]);
+      const s = await this.session(client, id);
+      return work(client, s);
+    });
+  }
+  async schedule(
+    id: string,
+    backup: SearchResult['tracks'],
+    currentId?: string | null,
+    progressMs?: number | null,
+    playlistContext = false,
+  ) {
+    return this.change(id, async (client, s) => {
+      if (!s.enabled || s.status !== 'ACTIVE') return;
+      await client.query(
+        "UPDATE playback_entries SET delivery='UNKNOWN' WHERE party_id=$1 AND delivery='SENDING'",
+        [id],
+      );
+      const playing = (
+        await client.query<{
+          id: string;
+          request_id: string | null;
+          track: { id: string };
+        }>(
+          "SELECT id,request_id,track FROM playback_entries WHERE party_id=$1 AND status='PLAYING'",
+          [id],
+        )
+      ).rows[0];
+      if (playing && currentId && currentId !== playing.track.id) {
+        await client.query(
+          "UPDATE playback_entries SET status='PLAYED' WHERE id=$1",
+          [playing.id],
+        );
+        if (playing.request_id)
+          await client.query(
+            "UPDATE song_requests SET status='PLAYED' WHERE id=$1",
+            [playing.request_id],
+          );
+      }
+      let rows = await upcoming(client, id, s.voting_enabled);
+      const restarted =
+        !!currentId &&
+        (currentId !== s.last_track_id ||
+          (progressMs != null &&
+            s.last_progress_ms != null &&
+            progressMs < s.last_progress_ms - 1000));
+      const observed = rows.find(
+        (e) =>
+          e.track.id === currentId &&
+          restarted &&
+          ((e.status === 'LOCKED' && e.delivery === 'SENT') ||
+            (s.mode === 'PLAYLIST' && playlistContext)),
+      );
+      await client.query(
+        'UPDATE party_playback SET last_track_id=$2,last_progress_ms=$3 WHERE party_id=$1',
+        [id, currentId ?? null, progressMs ?? null],
+      );
+      if (observed && restarted) {
+        if (s.mode === 'PLAYLIST') {
+          await client.query(
+            "UPDATE song_requests SET status='PLAYED' WHERE id IN (SELECT request_id FROM playback_entries WHERE party_id=$1 AND status='LOCKED' AND id!=$2)",
+            [id, observed.id],
+          );
+          await client.query(
+            "UPDATE playback_entries SET status='PLAYED' WHERE party_id=$1 AND status='LOCKED' AND id!=$2",
+            [id, observed.id],
+          );
+        }
+        if (playing) {
+          await client.query(
+            "UPDATE playback_entries SET status='PLAYED' WHERE id=$1",
+            [playing.id],
+          );
+          if (playing.request_id)
+            await client.query(
+              "UPDATE song_requests SET status='PLAYED' WHERE id=$1",
+              [playing.request_id],
+            );
+        }
+        // Playlist fallback may start a waiting song directly. Record its commitment.
+        await client.query(
+          "UPDATE playback_entries SET status='PLAYING',locked_at=COALESCE(locked_at,now()),delivery='SENT' WHERE id=$1",
+          [observed.id],
+        );
+        if (observed.request_id)
+          await client.query(
+            "UPDATE song_requests SET status='QUEUED' WHERE id=$1",
+            [observed.request_id],
+          );
+      }
+      await client.query(
+        'UPDATE party_playback SET backup_tracks=$2 WHERE party_id=$1',
+        [id, JSON.stringify(backup)],
+      );
+      await fillBackupBuffer(client, id);
+      if (backup.length)
+        await client.query(
+          'UPDATE party_playback SET initialized=true WHERE party_id=$1',
+          [id],
+        );
+      const requests = (
+        await client.query<GuestEntryRow>(
+          `SELECT r.* FROM song_requests r WHERE party_id=$1 AND status='APPROVED' AND NOT EXISTS(SELECT 1 FROM playback_entries e WHERE e.request_id=r.id) ORDER BY r.created_at,r.id`,
+          [id],
+        )
+      ).rows;
+      for (const r of requests) await insertGuestEntry(client, id, r);
+      rows = await upcoming(client, id, s.voting_enabled);
+      if (!rows.some((e) => e.status === 'LOCKED') && rows[0]) {
+        const e = rows[0];
+        await client.query(
+          "UPDATE playback_entries SET status='LOCKED',locked_at=now() WHERE id=$1",
+          [e.id],
+        );
+        if (e.request_id)
+          await client.query(
+            "UPDATE song_requests SET status='QUEUED' WHERE id=$1",
+            [e.request_id],
+          );
+      }
+    });
+  }
+}

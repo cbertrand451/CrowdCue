@@ -57,7 +57,27 @@ function stubActionFetch(
               status: 'ACTIVE',
             }),
           )
-        : fetcher(url, options),
+        : url.endsWith('/playback')
+          ? Promise.resolve(
+              reply({
+                enabled: false,
+                mode: 'QUEUE',
+                playlistUrl: null,
+                playlistRemoved: false,
+                creation: 'NEW',
+                error: null,
+                retryAt: null,
+                syncedAt: null,
+                lockedCount: 0,
+                guestCount: 0,
+                backupCount: 0,
+                saveAtCreation: false,
+                saveAtClose: null,
+                closeDecided: false,
+                ended: false,
+              }),
+            )
+          : fetcher(url, options),
   );
 }
 

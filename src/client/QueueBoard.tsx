@@ -71,8 +71,8 @@ export function QueueBoard({
         <>
           <p className="muted">
             {snapshot.votingEnabled
-              ? 'Most votes first. Earlier requests win ties.'
-              : 'Voting is off. Earlier requests play first.'}
+              ? 'Guest songs rank by votes. Backup slots stay in place; locked #1 cannot change.'
+              : 'Voting is off. Guest songs follow request order.'}
           </p>
           {snapshot.status === 'ENDED' && (
             <p className="muted">
@@ -90,38 +90,55 @@ export function QueueBoard({
             className="search-results queue-results"
             start={snapshot.items[0]?.position ?? offset + 1}
           >
-            {snapshot.items.map(({ position, request }) => (
-              <li key={request.id}>
-                <span
-                  className="queue-position"
-                  aria-label={`Queue position ${position}`}
-                >
-                  {position}
-                </span>
-                <div className="track-details">
-                  <a
-                    href={request.track.spotifyUrl}
-                    target="_blank"
-                    rel="noreferrer"
+            {snapshot.items.map(
+              ({ position, request, locked, source, delivery }) => (
+                <li key={request.id}>
+                  <span
+                    className="queue-position"
+                    aria-label={`Queue position ${position}`}
                   >
-                    {request.track.title}
-                  </a>
-                  <p>{request.track.artists.join(', ')}</p>
-                  <p className="muted">{request.track.album}</p>
-                  <p>
-                    {request.voteCount}{' '}
-                    {request.voteCount === 1 ? 'vote' : 'votes'} ·{' '}
-                    {Math.floor(request.track.durationMs / 60000)}:
-                    {String(
-                      Math.floor(request.track.durationMs / 1000) % 60,
-                    ).padStart(2, '0')}
-                  </p>
-                  {position === 1 && snapshot.status === 'ACTIVE' && (
-                    <p className="ready">First in CrowdCue</p>
-                  )}
-                </div>
-              </li>
-            ))}
+                    {position}
+                  </span>
+                  <div className="track-details">
+                    <a
+                      href={request.track.spotifyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {request.track.title}
+                    </a>
+                    <p>{request.track.artists.join(', ')}</p>
+                    <p className="muted">{request.track.album}</p>
+                    <p>
+                      {request.voteCount}{' '}
+                      {request.voteCount === 1 ? 'vote' : 'votes'} ·{' '}
+                      {Math.floor(request.track.durationMs / 60000)}:
+                      {String(
+                        Math.floor(request.track.durationMs / 1000) % 60,
+                      ).padStart(2, '0')}
+                    </p>
+                    {source === 'BACKUP' && (
+                      <p className="muted">Backup playlist</p>
+                    )}
+                    {locked && (
+                      <p className="ready">
+                        Locked ·{' '}
+                        {delivery === 'SENT'
+                          ? 'Sent to Spotify'
+                          : delivery === 'UNKNOWN'
+                            ? 'Delivery needs host attention'
+                            : 'Awaiting Spotify delivery'}
+                      </p>
+                    )}
+                    {position === 1 &&
+                      !locked &&
+                      snapshot.status === 'ACTIVE' && (
+                        <p className="ready">First in CrowdCue</p>
+                      )}
+                  </div>
+                </li>
+              ),
+            )}
           </ol>
           <div className="party-actions">
             {offset > 0 && (
@@ -146,8 +163,8 @@ export function QueueBoard({
         </>
       )}
       <p className="muted">
-        Approved songs reorder as votes change. Sending them to Spotify is
-        coming next.
+        Only locked #1 is committed to Spotify. The host can remove guest songs
+        before they reach #1.
       </p>
     </section>
   );

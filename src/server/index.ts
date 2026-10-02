@@ -1,3 +1,5 @@
+import { PlaybackStore } from './playback/store.js';
+import { PlaybackService } from './playback/service.js';
 import { PostgresRequestStore } from './requests/store.js';
 import { PostgresGuestStore } from './guests/store.js';
 import { buildApp } from './app.js';
@@ -38,7 +40,14 @@ const auth =
         new SpotifyClient(authConfig),
       )
     : undefined;
+const playback =
+  pool && auth
+    ? new PlaybackService(new PlaybackStore(pool), auth, () =>
+        app.log.error('Spotify synchronization interrupted'),
+      )
+    : undefined;
 const app = buildApp(config, {
+  playback,
   serveFrontend: config.NODE_ENV === 'production',
   auth,
   requests: pool ? new PostgresRequestStore(pool) : undefined,
@@ -55,6 +64,7 @@ const app = buildApp(config, {
 if (pool) {
   pool.on('error', () => app.log.error('Database connection interrupted'));
   app.addHook('onClose', async () => {
+    await playback?.stop();
     await pool.end();
   });
 }
@@ -67,6 +77,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 try {
   await app.listen({ port: config.PORT, host: config.HOST });
+  playback?.start();
 } catch {
   app.log.fatal(
     'Unable to start CrowdCue; check the host, port and frontend build.',

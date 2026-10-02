@@ -41,6 +41,8 @@ export interface PartySettings {
   allow_explicit_tracks: boolean;
   request_cooldown_seconds: number;
   queue_behavior: 'SPOTIFY_QUEUE' | 'BACKUP_PLAYLIST';
+  backup_source_id: string | null;
+  save_recap_playlist: boolean;
   updated_at: Date;
 }
 export interface Guest {

@@ -145,4 +145,66 @@ export class AuthService {
       return this.spotify.track(refreshed, id);
     }
   }
+  // hostId comes only from a server-verified party, never browser input.
+  private async playbackCall<T>(
+    hostId: string,
+    work: (token: string) => Promise<T>,
+  ) {
+    const token = await this.store.accessToken(hostId, this.spotify);
+    try {
+      return await work(token);
+    } catch (error) {
+      if (!(error instanceof SpotifyError) || error.kind !== 'reauthenticate')
+        throw error;
+      return work(await this.store.accessToken(hostId, this.spotify, token));
+    }
+  }
+  createPlaylist(hostId: string, name: string, marker: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.createPlaylist(t, name, marker),
+    );
+  }
+  findPlaylist(hostId: string, marker: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.findPlaylist(t, marker),
+    );
+  }
+  backupTracks(hostId: string, id: string, allowExplicit: boolean) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.backupTracks(t, id, allowExplicit),
+    );
+  }
+  playlistUris(hostId: string, id: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.playlistUris(t, id),
+    );
+  }
+  writeItems(hostId: string, id: string, uris: string[], replace: boolean) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.writeItems(t, id, uris, replace),
+    );
+  }
+  removePlaylist(hostId: string, id: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.removePlaylist(t, id),
+    );
+  }
+  player(hostId: string) {
+    return this.playbackCall(hostId, (t) => this.spotify.playback.player(t));
+  }
+  queueState(hostId: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.queueState(t),
+    );
+  }
+  enqueue(hostId: string, id: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.enqueue(t, id),
+    );
+  }
+  startPlaylist(hostId: string, id: string, position: number) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.startPlaylist(t, id, position),
+    );
+  }
 }

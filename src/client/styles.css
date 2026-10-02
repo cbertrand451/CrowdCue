@@ -107,7 +107,8 @@ fieldset {
 input[type='text'],
 input[type='search'],
 input[type='number'],
-input:not([type]) {
+input:not([type]),
+select {
   display: block;
   width: 100%;
   padding: 0.8rem;
@@ -118,7 +119,8 @@ input:not([type]) {
   color: #f5f6f2;
   background: #1d2520;
 }
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 2px solid #a9ebba;
   outline-offset: 2px;
 }

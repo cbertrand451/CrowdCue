@@ -6,11 +6,14 @@ import { spotifyAuthSchema } from './migrations/002-spotify-auth.js';
 import { songRequestsSchema } from './migrations/004-song-requests.js';
 import { partyCreationSchema } from './migrations/003-party-creation.js';
 
+import { playbackSchema } from './migrations/005-playback.js';
+
 const migrations = [
   { version: 1, name: 'initial', sql: initialSchema },
   { version: 2, name: 'spotify-auth', sql: spotifyAuthSchema },
   { version: 3, name: 'party-creation', sql: partyCreationSchema },
   { version: 4, name: 'song-requests', sql: songRequestsSchema },
+  { version: 5, name: 'playback', sql: playbackSchema },
 ];
 
 export async function migrate(pool: pg.Pool) {

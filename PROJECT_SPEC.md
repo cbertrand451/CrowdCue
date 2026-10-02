@@ -363,7 +363,7 @@ Votes should be associated with the guest/session identity so refreshing the pag
 
 The UI should update quickly when votes change.
 
-Guests can add or remove a vote on pending or approved requests, including their own. Vote totals and each guest’s selected state persist across refreshes; repeated desired-state mutations are idempotent. The host can disable voting without deleting totals. An active party, unexpired party-scoped guest identity, required name, and enabled voting are checked server-side. Queued/historical requests and ended parties are read-only. Voting never bypasses host approval or automatically sends a track to Spotify. Request boards update after a mutation and poll every five seconds. Vote-based queue ranking is implemented in the live CrowdCue queue. Only approved requests are eligible; pending requests require approval first. Ranking uses votes descending, request time ascending, then request ID for deterministic ties. Disabling voting uses request time and ID without deleting votes. Guest and admin queue snapshots poll every five seconds, update immediately after local mutations, and retain read-only context for ended parties. Spotify delivery is task thirteen.
+Guests can add or remove a vote on pending or approved requests, including their own. Vote totals and each guest’s selected state persist across refreshes; repeated desired-state mutations are idempotent. The host can disable voting without deleting totals. An active party, unexpired party-scoped guest identity, required name, and enabled voting are checked server-side. Queued/historical requests and ended parties are read-only. Voting never bypasses host approval or automatically sends a track to Spotify. Request boards update after a mutation and poll every five seconds. Vote-based queue ranking is implemented in the live CrowdCue queue. Only approved requests are eligible; pending requests require approval first. Ranking uses votes descending, request time ascending, then request ID for deterministic ties. Disabling voting uses request time and ID without deleting votes. Guest and admin queue snapshots poll every five seconds, update immediately after local mutations, and retain read-only context for ended parties. Spotify delivery uses the locked front song and the nightly playlist described below.
 
 ---
 
@@ -390,27 +390,32 @@ Future ranking logic should be easy to extend without rewriting the entire queue
 
 # 15. Spotify Queue Integration
 
-CrowdCue should integrate approved/requested tracks with the host's Spotify queue when Spotify API capabilities permit it.
+The host starts music normally on their chosen Spotify device and starts the CrowdCue queue in the admin dashboard. Spotify Premium, an active unrestricted playback device, and host OAuth permissions are required. CrowdCue never streams audio or requires a device picker.
 
-The backend should handle Spotify queue operations.
+The upcoming queue contains at least three songs in CrowdCue, not three precommitted Spotify queue entries. On initialization, three backup songs reserve the first three positions; a new approved guest request is appended behind them at position four. Backup slots retain their relative position. Votes reorder only unlocked guest slots, with request time and request ID as ties. The server locks the song at position one; it cannot be changed, removed, or voted on. The host can reject/remove an approved guest request until it reaches position one. Approved requests become QUEUED at commitment, then PLAYED after an observed departure; this does not prove a complete listen.
 
-The system must avoid repeatedly adding the same track because of retries, refreshes, duplicate workers, or race conditions.
+Only the locked front song is handed to Spotify through its queue API. After it begins playing, the next front song locks and is handed over. Playback state and Spotify queue observations detect progress and observed skips; the host remains free to skip or change playback outside CrowdCue. The application maintains a minimum three-song buffer using backup songs whenever guest requests are insufficient. Admission, moderation, refill, and locking are serialized by the party row lock.
 
-Queue synchronization should therefore be idempotent where possible.
+Spotify provides no queue idempotency key or remove/reorder endpoint. A durable SENDING marker precedes each queue write, SENT requires an acknowledged command, and a timeout/5xx or interrupted SENDING state becomes UNKNOWN. UNKNOWN writes are never automatically resent. Known rejections can retry after their cooldown, and a rejected 401 can refresh once. A PostgreSQL advisory lock coordinates workers and host actions across processes. Only one CrowdCue session per host may actively feed Spotify. Ended sessions stop feeding the playback queue; already committed Spotify commands cannot be recalled.
 
-If Spotify rejects an operation, CrowdCue should handle the error gracefully rather than corrupting the internal queue state.
+A five-second worker runs within the existing server process and continues while the browser is closed. Credentials remain encrypted and server-only. API failure, lack of active playback, or an unreadable/empty backup source may prevent playback; the dashboard must show the failure and saved queue rather than claim a guaranteed listen. Browser queue/status polling also runs every five seconds.
 
 ---
 
-# 16. Backup Playlist
+# 16. Backup Source and Nightly Playlist
 
-CrowdCue should support a Spotify playlist associated with the party as a backup/fallback mechanism when appropriate.
+Each session has two distinct playlist roles:
 
-The playlist can contain approved/requested songs so that the party has a persistent Spotify representation of the CrowdCue requests.
+- **Backup source:** an existing Spotify playlist owned by the host or available to them as a collaborator. The host supplies its link at creation or later in settings. Playable Spotify tracks are read through the current `/items` endpoints, respect the explicit-song setting, and cycle to replenish the queue. Locked and already reserved slots remain stable.
+- **Nightly playlist:** an application-created private playlist in the host's Spotify account, created regardless of the initial save choice. Every song locked for commitment enters this playlist in commitment order, including backup songs, repeated songs, and songs later skipped in Spotify. It is a record of committed songs rather than guaranteed completed listens. Pending/rejected/removed requests are excluded during normal queue operation.
 
-The exact interaction between direct Spotify queue insertion and the backup playlist should be implemented conservatively to avoid duplicate playback.
+The host answers Yes/No to saving the nightly playlist at creation and again on the ended-session summary. The initial decision is immutable. Any Yes keeps the playlist. Two No decisions clear the temporary playlist and remove it from the host's Spotify library only after the second choice. If the summary has not been answered, retain the playlist. Spotify has no permanent-delete API: clearing and removing it from the library is the supported cleanup. Local session history remains intact.
 
-The Spotify queue should be preferred when technically appropriate.
+Private playlist creation uses a durable marker before its non-idempotent POST. Uncertain creation searches the host's library for the exact session marker and never blindly repeats creation. The host may explicitly confirm replacement after checking Spotify. Playlist writes reconcile current contents before appending, use ordered batches of at most 100, and support up to 10,000 committed songs. Interrupted writes can resume without blindly duplicating an append. Final synchronization/cleanup retries safely and respects Spotify cooldowns.
+
+If queue delivery fails, the host can use the nightly playlist as recovery. The dashboard requires them to clear outstanding manually queued songs in Spotify before explicitly starting recovery. CrowdCue switches to playlist mode, updates the playlist with the committed history followed by the current waiting queue, and starts it at the latest locked song via Spotify's playback API. It never silently starts playback or repeatedly retries an uncertain playback-start command. New requests and vote changes continue updating the playlist. Spotify may not immediately rebuild its active playback order when playlist contents change; CrowdCue does not promise otherwise. Once the session ends, remove uncommitted recovery entries before retaining the final recap.
+
+Playlist operations use host credentials resolved from verified parties. Save/cleanup/recovery controls require the owning host session, private admin token, same-origin POST, strict input validation, and rate limits. New playlist read/removal scopes require existing hosts to reconnect Spotify. The next display-interface milestone remains separate.
 
 ---
 

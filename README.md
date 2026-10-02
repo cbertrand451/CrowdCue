@@ -1,10 +1,10 @@
 # CrowdCue
 
-CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Spotify song search, song requests with host moderation, and voting are implemented. Dynamic CrowdCue queue ordering is implemented; Spotify queue delivery is the next milestone. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
+CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Spotify song search, song requests with host moderation, and voting are implemented. Spotify queue delivery, a three-song backup buffer, locked-front queue ordering, nightly playlists, recovery, and session closeout are implemented. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
 ## Architecture and stack
 
-A TypeScript monolith with React and Vite for the browser and Fastify 5 for the backend. Development runs a Vite server that proxies `/api` to Fastify. Production runs one Node process serving the compiled frontend and API from the same origin. No CORS configuration, microservices, Redis, or background worker infrastructure is needed at this stage.
+A TypeScript monolith with React and Vite for the browser and Fastify 5 for the backend. Development runs a Vite server that proxies `/api` to Fastify. Production runs one Node process serving the compiled frontend and API from the same origin. An in-process Spotify worker coordinates through PostgreSQL; no separate worker infrastructure, Redis, or microservices are needed.
 
 Fastify Helmet supplies security headers; Fastify's Pino logger supplies structured logs. Request logging is disabled to avoid recording private URLs and future OAuth query strings. Errors return a generic response and do not log raw exceptions. Zod validates server configuration without reporting environment values. Browser code receives no server configuration or secrets.
 
@@ -97,7 +97,7 @@ The host clicks **Connect Spotify**, grants Spotify permissions, and returns to 
 4. For local development, run `npm run auth:keygen`. This writes a random encryption key to ignored `.env.token-key` with private permissions, without printing it. Existing key files are never overwritten. Server/start scripts load this file after `.env`; process environment values take precedence over both. Preserve the file across restarts. For deployment, provision `TOKEN_ENCRYPTION_KEYS` and `TOKEN_ENCRYPTION_KEY_ID` through your secret manager; never commit the local file.
 5. Set `SPOTIFY_AUTH_ENABLED=true`, restart with `npm run dev`, and click Connect Spotify. Configuration validation fails safely when required values, matching origins, or encryption keys are missing. When disabled, the app remains runnable and displays an unavailable connection button.
 
-The requested scopes are `user-read-private`, `user-read-playback-state`, `user-modify-playback-state`, and `playlist-modify-private`. They support host identification and the planned playback-state, queue, and private backup-playlist features. Spotify app development-mode access restrictions still apply: use an eligible account allowed by the app configuration. A live browser consent/sign-in is required to confirm provider configuration; automated tests use mocked Spotify responses.
+The requested scopes are `user-read-private`, `user-read-playback-state`, `user-modify-playback-state`, `playlist-modify-private`, `playlist-modify-public`, `playlist-read-private`, and `playlist-read-collaborative`. Existing hosts must reconnect to grant the added playlist scopes. The public playlist modification scope supports Spotify’s unified playlist removal endpoint; nightly playlists are always created private. They support host identification and playback-state, queue delivery, source playlist reads, nightly playlists, and cleanup. Spotify app development-mode access restrictions still apply: use an eligible account allowed by the app configuration. A live browser consent/sign-in is required to confirm provider configuration; automated tests use mocked Spotify responses.
 
 Authentication endpoints:
 
@@ -114,7 +114,7 @@ Access and refresh tokens use AES-256-GCM with random nonces and account/purpose
 
 Tokens refresh automatically within 60 seconds of expiry. PostgreSQL row locks serialize refreshes across processes; omitted refresh tokens retain the previous value and rotated tokens replace it. Invalid grants commit credential removal and request reconnection, while transient errors/rate limits retain credentials for retry. Backend `AuthService.hostProfile` validates the host session and retries a Spotify 401 once with a refreshed token. Future privileged endpoints must use `requireHost` and verify party ownership; no client-supplied account ID grants host access.
 
-Sign out revokes this browser's CrowdCue session. It does not revoke Spotify consent or delete the host's encrypted credentials, so it will not interrupt future party workers. The status endpoint reports locally stored credential availability/refresh results; revocation of an otherwise unexpired token is detected on the next Spotify API call. No playlist, playback, or queue mutation is performed in this milestone.
+Sign out revokes this browser's CrowdCue session. It does not revoke Spotify consent or delete the host's encrypted credentials, so it will not interrupt party workers. The status endpoint reports locally stored credential availability/refresh results; revocation of an otherwise unexpired token is detected on the next Spotify API call. Authentication endpoints do not mutate playback; the separate session worker performs the authorized queue/playlist operations.
 
 Authentication routes have per-process IP rate limits (10 login attempts, 30 callbacks/logout requests, and 60 status requests per minute). Do not trust arbitrary forwarded IP headers. When deploying behind a reverse proxy or across multiple instances, configure trusted proxy handling and shared edge rate limiting as part of deployment hardening. Node's environment proxy support honors configured HTTP/HTTPS proxies and CA trust for backend Spotify calls.
 
@@ -122,7 +122,7 @@ Authentication routes have per-process IP rate limits (10 login attempts, 30 cal
 
 Sign in with Spotify, enter a party name, choose preferences, and click **Create party**. The party becomes ACTIVE immediately. The host receives a guest link to share, a private admin link, and a read-only display link. **Your parties** restores the same links after refresh or a new host login and supports loading older parties, 20 at a time. Hosts may create multiple active parties.
 
-Party creation requires a valid host session and the configured browser Origin; ownership is determined on the server. It does not make Spotify API calls, create playlists, or change playback. A previously authenticated host may create a party while Spotify needs reconnection, but future Spotify operations will require valid credentials.
+Party creation requires a valid host session and the configured browser Origin; ownership is determined on the server. The creation request writes database records without contacting Spotify. The background worker then creates the private nightly playlist; playback begins only after the host starts the session queue. A previously authenticated host may create a party while Spotify needs reconnection, but playlist creation and playback require valid credentials.
 
 Run `npm run db:migrate` before starting the updated server. Migration 003 backfills only missing settings, adds encrypted private link records and creation-key records, and preserves existing parties/settings. Pre-existing manually seeded parties whose private tokens were never saved cannot have those tokens recovered; their guest links remain available and their owner responses have null admin/display links. The migration does not rotate those identifiers.
 
@@ -130,17 +130,19 @@ The create endpoint accepts JSON with a trimmed name of 1–120 characters (no c
 
 Initial preferences:
 
-| Setting                     | Default                                         |
-| --------------------------- | ----------------------------------------------- |
-| `requireGuestNames`         | false                                           |
-| `votingEnabled`             | true                                            |
-| `approvalRequired`          | false                                           |
-| `allowExplicitTracks`       | true                                            |
-| `maxActiveRequestsPerGuest` | null (unlimited); optional integer 1–100        |
-| `requestCooldownSeconds`    | 0; integer 0–3600                               |
-| `queueBehavior`             | SPOTIFY_QUEUE; BACKUP_PLAYLIST is also accepted |
+| Setting                     | Default                                                |
+| --------------------------- | ------------------------------------------------------ |
+| `requireGuestNames`         | false                                                  |
+| `votingEnabled`             | true                                                   |
+| `approvalRequired`          | false                                                  |
+| `allowExplicitTracks`       | true                                                   |
+| `maxActiveRequestsPerGuest` | null (unlimited); optional integer 1–100               |
+| `requestCooldownSeconds`    | 0; integer 0–3600                                      |
+| `queueBehavior`             | SPOTIFY_QUEUE; BACKUP_PLAYLIST is also accepted        |
+| `backupSourceId`            | null; select a Spotify backup playlist before starting |
+| `saveRecapPlaylist`         | false; asked again when the session closes             |
 
-The form exposes the four boolean preferences. Limits, cooldown, and queue behavior can be initialized through the API. These preferences are persisted for the later guest/request/vote/Spotify features; those features are not implemented in this milestone.
+The form exposes guest, voting, approval, explicit-track, backup-playlist, and recap-saving preferences. The dashboard also exposes request limits and cooldown. Guest requests, voting, and Spotify playback use these persisted settings.
 
 | Endpoint                            | Behavior                                                          |
 | ----------------------------------- | ----------------------------------------------------------------- |
@@ -192,7 +194,7 @@ Mutations require an active party, its unexpired guest cookie, a name when requi
 | `GET /api/party-links/admin/:token/requests?offset=0` | All requests; owning host session and Admin token required                         |
 | `POST /api/party-links/admin/:token/requests/:id`     | Submit `{ "action": "approve" }`, `reject`, or `remove`; owner and Origin required |
 
-Lists show 50 records per page, newest first, and poll every five seconds. They expose song metadata, a display name, status, and an own-request flag, while keeping account/session identifiers and credentials private. Admins can approve pending requests or reject/remove pending or approved requests. Repeating an already-applied action is safe; incompatible transitions and changes to queued/played requests return 409. Ended parties retain read-only lists and reject new requests/moderation. Current host controls do not alter Spotify playback or queue state.
+Lists show 50 records per page, newest first, and poll every five seconds. They expose song metadata, a display name, status, and an own-request flag, while keeping account/session identifiers and credentials private. Admins can approve pending requests or reject/remove pending or approved requests. Repeating an already-applied action is safe; incompatible transitions and changes to queued/played requests return 409. Ended parties retain read-only lists and reject new requests/moderation. Normal moderation applies before a song locks; the recovery control explicitly starts playlist playback.
 
 Per-process/IP limits permit 20 submissions, 600 guest list reads, 60 admin list reads, and 30 moderation attempts per minute. Cooldown/provider limits include `Retry-After`. Safe errors and no-store/no-referrer/noindex protections cover request endpoints. Request creation, retries, concurrent duplicates, moderation, policy changes during metadata fetch, and browser interactions are tested with real PostgreSQL and fixture Spotify responses. Live Spotify validation requires host OAuth consent.
 
@@ -208,7 +210,7 @@ The host's **Allow voting** setting defaults to enabled. Turning it off blocks v
 
 Vote controls update totals after a successful response, prevent overlapping mutations, cancel on navigation, and show the guest's selected state. All request boards poll every five seconds so other guests and the host see updated totals. Party settings/status still poll every 15 seconds, and the server checks current rules on every mutation. Guest request reads permit 600 requests per minute per process/IP and vote changes permit 120; shared deployment limits remain a later hardening task. Votes are scoped to the lightweight guest identity, with the same cookie persistence/expiration behavior as other guest features.
 
-The live CrowdCue queue ranks approved songs by votes. The request list remains newest first; automatic request acceptance still defaults to enabled, and Spotify queue delivery remains a separate milestone.
+The live CrowdCue queue ranks approved songs by votes. The request list remains newest first; automatic request acceptance still defaults to enabled, and Spotify delivery commits only the locked front song.
 
 ## Admin dashboard
 
@@ -216,7 +218,7 @@ Open the private Admin link from **Your parties**. The dashboard shows Spotify c
 
 `POST /api/party-links/admin/:token/settings` accepts the validated party name/settings shape; `POST /api/party-links/admin/:token/end` accepts `{}`. Both require the owning host session, the party's Admin token, the exact configured Origin, and bounded JSON. Mutations are limited to 30 attempts per minute per process/IP. Database row locks serialize settings changes against ending; an ended party rejects edits, while repeated end calls retain the original end timestamp. Public guest/display pages reflect the ended state through their existing polling.
 
-The dashboard includes request lists and approval/rejection/removal. The dashboard includes the live ranked queue; currently playing tracks and QR codes depend on upcoming milestones. Queue mode is displayed but preserved during edits until queue delivery is implemented.
+The dashboard includes request lists and approval/rejection/removal. The dashboard includes the live queue, Spotify delivery status, nightly playlist, recovery controls, and an ended-session summary. QR codes and the dedicated Display interface remain separate milestones. Spotify queue delivery is the default; playlist recovery is an explicit host action.
 
 ## Database structure and migrations
 
@@ -246,7 +248,7 @@ A partial unique index prevents the same track from having multiple REQUESTED, A
 
 Party creation inserts its settings and private links in the same transaction using `inTransaction`. Future mutation code must maintain `updated_at`, authorize operations, enforce party state/settings/session expiry, and implement allowed request transitions. Database row types are internal shapes, not public API responses.
 
-Guest session identifiers are implemented and independent of role-link tokens. Store only SHA-256 hashes of private session tokens. Length/format constraints cannot establish unpredictability or authorization. Host sessions, OAuth encryption, role links, and party creation are implemented as described above. Do not store plaintext Spotify/session tokens or serialize credential rows. Queue coordination provides storage, not exactly-once Spotify delivery: the future worker must atomically claim operations and reconcile uncertain outcomes before retrying.
+Guest session identifiers are implemented and independent of role-link tokens. Store only SHA-256 hashes of private session tokens. Length/format constraints cannot establish unpredictability or authorization. Host sessions, OAuth encryption, role links, and party creation are implemented as described above. Do not store plaintext Spotify/session tokens or serialize credential rows. Playback workers use per-host PostgreSQL advisory locks and durable delivery claims. Spotify offers no exactly-once delivery guarantee; uncertain queue writes require host recovery rather than automatic retries.
 
 ### Database integration tests
 
@@ -260,7 +262,7 @@ npm run check
 
 The test runner does not load `.env` automatically. Database tests create random isolated schemas and drop only those schemas afterward; the test role needs schema creation privileges. They verify migrations, settings/lifecycle constraints, concurrent duplicate requests/votes, cross-party references, rollback/deletion behavior, OAuth/session behavior, party creation transactions/idempotency, host ownership, role isolation, and link recovery. Frontend tests cover creation preferences, retries, sign-out privacy, link pages, and state polling. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
 
-The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **Dynamic CrowdCue queue ordering is complete. Next task: Spotify queue delivery (task thirteen).**
+The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **Spotify session queueing, nightly playlists, and backup recovery are complete. Next milestone: the Display interface.**
 
 Future request/vote updates can use Server-Sent Events with ordinary HTTP mutations; party state, requests, votes, and queue snapshots currently use polling. Multi-instance event delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.
 
@@ -272,4 +274,26 @@ With voting enabled, songs rank by vote count descending, then request time asce
 
 Authenticated GET endpoints `/api/party-links/guest/:token/queue` and `/api/party-links/admin/:token/queue` return `{ items: [{ position, request }], nextOffset, votingEnabled, status }`. Guest sessions and host ownership are checked server-side. Pages contain up to 50 songs with global positions; `?offset=50` requests the next page. Each response holds a shared party lock while reading settings and ranking songs. Pagination is live: votes can move songs between page loads; refresh or return to the first page to see the current front.
 
-This is CrowdCue's waiting queue. It does not send songs to Spotify yet; task thirteen implements that delivery boundary.
+Before starting Spotify queueing, the list ranks approved requests by votes. After starting, it uses the reserved backup slots and immutable locked front described below.
+
+## Spotify sessions, backup buffer, and nightly playlists
+
+Run `npm run db:migrate` to apply migration 005 before starting the updated backend. It preserves existing party/request data and adds playback sessions, entry history, save choices, and delivery markers. **Reconnect Spotify** to grant the additional playlist read/removal scopes. The worker starts with the server when OAuth/database configuration is enabled; tests inject providers and do not start live workers.
+
+1. Create a party and optionally supply a backup Spotify playlist link and **Save the nightly playlist? Yes/No**. Automatic guest request approval still defaults to enabled. A private nightly playlist is created either way.
+2. Supply an owned/collaborative playlist containing playable Spotify tracks; an unreadable source or one fully excluded by explicit-track rules cannot fill the buffer. The source cycles when necessary. The source playlist itself is never edited.
+3. Start music normally in Spotify on the host’s usual speaker/device, then click **Start CrowdCue queue**. Only one session per host can actively feed Spotify.
+4. CrowdCue reserves three backup songs. A guest request joins behind them at position four. Votes change only unlocked guest slots; backup slots retain their place. Only #1 locks and is sent to Spotify. The host can remove/reject guest songs before #1. The next lock occurs after playback advances, and the upcoming buffer is refilled to three.
+5. End the party and finish the **Session summary**. Yes at either creation or closeout keeps the nightly playlist. No twice clears it and removes it from the host’s library. Leaving the summary unanswered retains the temporary playlist.
+
+The buffer lives in CrowdCue; Spotify receives only the committed front song. A locked song can no longer be changed in CrowdCue, but network/device failures may still prevent playback. Spotify Premium and active unrestricted playback are required. SENT means Spotify acknowledged the command, not a guarantee the song was heard. Every committed song enters the nightly playlist, including host-skipped songs and repeats. This is a commitment recap rather than a listening-history audit.
+
+The backend polls playback every five seconds independently of connected browsers. It uses durable SENDING/SENT/UNKNOWN markers and a per-host PostgreSQL advisory lock. A timeout, uncertain 5xx response, or crashed worker does not trigger a duplicate queue insertion: UNKNOWN stays stopped and visible. Explicit Spotify rejection can retry safely; 401 refresh is bounded to one retry, 429 honors Retry-After, and transient failures retain session state. Brief playback transitions may be missed; observed queue departures also advance the buffer, and the recovery control remains available when progression is uncertain.
+
+**Playlist recovery:** clear pending manually queued songs in Spotify, confirm that in the dashboard, and choose **Start playlist recovery**. CrowdCue explicitly starts the nightly playlist at the latest locked song. In recovery mode, waiting songs follow the committed history in the playlist, and subsequent requests, votes, and removals synchronize there. Playlist edits do not guarantee Spotify will instantly rebuild playback already underway. Ending removes uncommitted recovery entries from the final saved recap. Queue delivery is disabled in recovery mode to avoid delivering through both paths.
+
+Playlist creation uses `POST /v1/me/playlists`; reading/writing uses `/v1/playlists/:id/items` with at most 100 items per write and a 10,000-song supported session limit. Uncertain creation is recovered by finding the exact session marker on a private playlist owned by the host. Confirming replacement is a deliberate dashboard action. Before appending after an interrupted write, the worker compares actual playlist contents with the desired sequence. Unchanged lists are audited once a minute, and finalized kept sessions stop background work. Spotify’s supported removal is library removal, not permanent deletion: CrowdCue first clears the application-created private playlist, then uses `DELETE /v1/me/library?uris=spotify:playlist:…`. It never clears the backup source.
+
+Authenticated `GET /api/party-links/admin/:token/playback` returns safe delivery/playlist status and summary counts. Same-origin `POST` accepts strict actions `{action:"start"}`, `{action:"retry"}`, `{action:"fallback",confirm:true}`, `{action:"recreate",confirm:true}`, and `{action:"close",save:boolean}`. These actions require the owning host cookie and private admin token; guests cannot control Spotify. Ended sessions accept the summary save decision only. Browser/private APIs use no-store and no-referrer headers. Queue items additionally expose source, locked state, and delivery state; no provider credentials reach browsers.
+
+Automated coverage uses real isolated PostgreSQL schemas and fixture Spotify responses. Live Spotify OAuth consent and playback/device acceptance still require a real host account; passing fixture tests does not establish that Spotify has authorized this app/account in its current quota mode.

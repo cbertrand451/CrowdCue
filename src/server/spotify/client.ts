@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SpotifyPlayback } from './playback.js';
 import type { SearchResult } from '../search/contracts.js';
 import type { AuthConfig } from '../auth/config.js';
 
@@ -7,24 +8,12 @@ export const spotifyScopes = [
   'user-read-playback-state',
   'user-modify-playback-state',
   'playlist-modify-private',
+  'playlist-modify-public',
+  'playlist-read-private',
+  'playlist-read-collaborative',
 ];
-export class SpotifyError extends Error {
-  constructor(
-    public readonly kind:
-      'reauthenticate' | 'rate_limited' | 'unavailable' | 'permissions',
-    public readonly retryAfter?: number,
-  ) {
-    super(
-      kind === 'reauthenticate'
-        ? 'Reconnect Spotify to continue.'
-        : kind === 'permissions'
-          ? 'Spotify permissions are missing. Please reconnect.'
-          : kind === 'rate_limited'
-            ? 'Spotify is busy. Please try again shortly.'
-            : 'Spotify is unavailable. Please try again.',
-    );
-  }
-}
+import { SpotifyError } from './error.js';
+export { SpotifyError } from './error.js';
 const tokenResponse = z.object({
   access_token: z.string().min(1),
   refresh_token: z.string().min(1).optional(),
@@ -101,13 +90,16 @@ export interface SpotifyProfile {
 export type SpotifyFetch = typeof fetch;
 
 export class SpotifyClient {
+  readonly playback: SpotifyPlayback;
   constructor(
     private readonly config: Pick<
       AuthConfig,
       'clientId' | 'clientSecret' | 'redirectUri'
     >,
     private readonly fetcher: SpotifyFetch = fetch,
-  ) {}
+  ) {
+    this.playback = new SpotifyPlayback(fetcher);
+  }
   authorizationUrl(state: string, challenge: string) {
     const url = new URL('https://accounts.spotify.com/authorize');
     url.search = new URLSearchParams({

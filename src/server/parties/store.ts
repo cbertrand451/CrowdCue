@@ -25,12 +25,14 @@ interface PartyRow {
   allow_explicit_tracks: boolean;
   request_cooldown_seconds: number;
   queue_behavior: 'SPOTIFY_QUEUE' | 'BACKUP_PLAYLIST';
+  backup_source_id: string | null;
+  save_recap_playlist: boolean;
   tokens_ciphertext?: Buffer | null;
   encryption_key_id?: string | null;
 }
 const columns = `p.id, p.name, p.status, p.created_at, p.ended_at, p.guest_join_token,
  s.require_guest_names, s.voting_enabled, s.approval_required, s.max_active_requests_per_guest,
- s.allow_explicit_tracks, s.request_cooldown_seconds, s.queue_behavior`;
+ s.allow_explicit_tracks, s.request_cooldown_seconds, s.queue_behavior, s.backup_source_id, s.save_recap_playlist`;
 function publicDetails(row: PartyRow): PublicParty {
   return {
     name: row.name,
@@ -43,6 +45,8 @@ function publicDetails(row: PartyRow): PublicParty {
       allowExplicitTracks: row.allow_explicit_tracks,
       requestCooldownSeconds: row.request_cooldown_seconds,
       queueBehavior: row.queue_behavior,
+      backupSourceId: row.backup_source_id,
+      saveRecapPlaylist: row.save_recap_playlist,
     },
   };
 }
@@ -182,8 +186,8 @@ export class PostgresPartyStore implements PartyStore {
       await client.query(
         `INSERT INTO party_settings
          (party_id, require_guest_names, voting_enabled, approval_required, max_active_requests_per_guest,
-          allow_explicit_tracks, request_cooldown_seconds, queue_behavior)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          allow_explicit_tracks, request_cooldown_seconds, queue_behavior, backup_source_id, save_recap_playlist)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           id,
           settings.requireGuestNames,
@@ -193,7 +197,13 @@ export class PostgresPartyStore implements PartyStore {
           settings.allowExplicitTracks,
           settings.requestCooldownSeconds,
           settings.queueBehavior,
+          settings.backupSourceId,
+          settings.saveRecapPlaylist,
         ],
+      );
+      await client.query(
+        'INSERT INTO party_playback (party_id,host_account_id,save_at_creation) VALUES ($1,$2,$3)',
+        [id, hostId, settings.saveRecapPlaylist],
       );
       const encrypted = this.cipher.encrypt(
         JSON.stringify({ admin: adminToken, display: displayToken }),
@@ -276,7 +286,7 @@ export class PostgresPartyStore implements PartyStore {
         await client.query(
           `UPDATE party_settings SET require_guest_names = $2, voting_enabled = $3,
           approval_required = $4, max_active_requests_per_guest = $5, allow_explicit_tracks = $6,
-          request_cooldown_seconds = $7, queue_behavior = $8 WHERE party_id = $1`,
+          request_cooldown_seconds = $7, queue_behavior = $8, backup_source_id = $9 WHERE party_id = $1`,
           [
             party.id,
             s.requireGuestNames,
@@ -286,6 +296,7 @@ export class PostgresPartyStore implements PartyStore {
             s.allowExplicitTracks,
             s.requestCooldownSeconds,
             s.queueBehavior,
+            s.backupSourceId,
           ],
         );
       } else if (party.status === 'ACTIVE') {
@@ -294,6 +305,11 @@ export class PostgresPartyStore implements PartyStore {
           [party.id],
         );
       }
+      if (!input)
+        await client.query(
+          'UPDATE party_playback SET enabled=false WHERE party_id=$1',
+          [party.id],
+        );
       return this.readOwned(client, hostId, 'p.id', party.id);
     });
   }

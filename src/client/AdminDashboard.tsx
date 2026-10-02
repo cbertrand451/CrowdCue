@@ -1,3 +1,5 @@
+import { PlaybackPanel } from './PlaybackPanel';
+import { playlistIdFromInput } from '../server/playback/contracts.js';
 import { QueueBoard } from './QueueBoard';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
@@ -20,6 +22,11 @@ export function AdminDashboard({
   onExpired: () => void;
 }) {
   const [queueRefresh, setQueueRefresh] = useState(0);
+  const [backupSource, setBackupSource] = useState(
+    party.settings.backupSourceId
+      ? `https://open.spotify.com/playlist/${party.settings.backupSourceId}`
+      : '',
+  );
   const [name, setName] = useState(party.name);
   const [settings, setSettings] = useState(party.settings);
   const [busy, setBusy] = useState(false);
@@ -35,7 +42,15 @@ export function AdminDashboard({
   }, []);
   async function mutate(action: 'settings' | 'end') {
     if (inFlight.current) return;
-    const input = createPartySchema.safeParse({ name, settings });
+    const backupSourceId = playlistIdFromInput(backupSource);
+    if (action === 'settings' && backupSourceId === undefined) {
+      setError('Enter a valid Spotify playlist link.');
+      return;
+    }
+    const input = createPartySchema.safeParse({
+      name,
+      settings: { ...settings, backupSourceId },
+    });
     if (action === 'settings' && !input.success) {
       setError('Check the party name and settings.');
       return;
@@ -101,6 +116,12 @@ export function AdminDashboard({
         <h2>Invite your guests</h2>
         <PartyLinks links={party.links} />
       </section>
+      <PlaybackPanel
+        token={token}
+        active={party.status === 'ACTIVE'}
+        refresh={queueRefresh}
+        onExpired={onExpired}
+      />
       <RequestBoard
         role="admin"
         token={token}
@@ -176,12 +197,17 @@ export function AdminDashboard({
                 })
               }
             />
+            <label>
+              Backup Spotify playlist
+              <input
+                value={backupSource}
+                onChange={(event) => setBackupSource(event.target.value)}
+                placeholder="https://open.spotify.com/playlist/…"
+              />
+            </label>
             <p className="muted">
-              Queue mode:{' '}
-              {settings.queueBehavior === 'SPOTIFY_QUEUE'
-                ? 'Spotify queue'
-                : 'Backup playlist'}
-              . Spotify queue delivery is coming next.
+              Queue mode: Spotify queue. Three songs stay in CrowdCue; only
+              locked #1 is sent to Spotify.
             </p>
             <button type="submit">{busy ? 'Saving…' : 'Save settings'}</button>
           </fieldset>
