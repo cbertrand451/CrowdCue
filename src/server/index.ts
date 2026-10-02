@@ -47,6 +47,7 @@ const playback =
       )
     : undefined;
 const app = buildApp(config, {
+  realtimePool: pool,
   playback,
   serveFrontend: config.NODE_ENV === 'production',
   auth,

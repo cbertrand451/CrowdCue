@@ -13,6 +13,9 @@ import { authRoutes } from './auth/routes.js';
 import type { AuthService } from './auth/service.js';
 import { partyRoutes } from './parties/routes.js';
 import type { PartyStore } from './parties/store.js';
+import websocket from '@fastify/websocket';
+import type { Pool } from 'pg';
+import { realtimeRoutes } from './realtime/routes.js';
 
 export function buildApp(
   config: Config,
@@ -25,6 +28,7 @@ export function buildApp(
     guests?: PostgresGuestStore;
     requests?: PostgresRequestStore;
     playback?: PlaybackService;
+    realtimePool?: Pool;
   } = {},
 ) {
   const app = Fastify({
@@ -44,6 +48,27 @@ export function buildApp(
           },
   });
   app.register(helmet);
+  app.register(websocket, {
+    options: { maxPayload: 1024, perMessageDeflate: false },
+    errorHandler: (_error, socket) => {
+      app.log.error('Live connection failed');
+      socket.close(1011, 'Live updates unavailable');
+    },
+  });
+  // Reject unrelated upgrades before the WebSocket plugin's fallback can log a private URL.
+  app.addHook('onRequest', async (request, reply) => {
+    if (
+      request.headers.upgrade?.toLowerCase() === 'websocket' &&
+      !/^\/api\/party-links\/(guest|admin|display)\/[A-Za-z0-9_-]{32,128}\/live$/.test(
+        request.url,
+      )
+    )
+      return reply.code(404).send({ error: 'Live updates unavailable.' });
+  });
+  app.register(realtimeRoutes, {
+    pool: options.realtimePool,
+    auth: options.auth,
+  });
   app.register(playbackRoutes, {
     auth: options.auth,
     playback: options.playback,

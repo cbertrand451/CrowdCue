@@ -363,7 +363,7 @@ Votes should be associated with the guest/session identity so refreshing the pag
 
 The UI should update quickly when votes change.
 
-Guests can add or remove a vote on pending or approved requests, including their own. Vote totals and each guest’s selected state persist across refreshes; repeated desired-state mutations are idempotent. The host can disable voting without deleting totals. An active party, unexpired party-scoped guest identity, required name, and enabled voting are checked server-side. Queued/historical requests and ended parties are read-only. Voting never bypasses host approval or automatically sends a track to Spotify. Request boards update after a mutation and poll every five seconds. Vote-based queue ranking is implemented in the live CrowdCue queue. Only approved requests are eligible; pending requests require approval first. Ranking uses votes descending, request time ascending, then request ID for deterministic ties. Disabling voting uses request time and ID without deleting votes. Guest and admin queue snapshots poll every five seconds, update immediately after local mutations, and retain read-only context for ended parties. Spotify delivery uses the locked front song and the nightly playlist described below.
+Guests can add or remove a vote on pending or approved requests, including their own. Vote totals and each guest’s selected state persist across refreshes; repeated desired-state mutations are idempotent. The host can disable voting without deleting totals. An active party, unexpired party-scoped guest identity, required name, and enabled voting are checked server-side. Queued/historical requests and ended parties are read-only. Voting never bypasses host approval or automatically sends a track to Spotify. Request boards update after local mutations and remote WebSocket notifications, with five-second polling as a fallback. Vote-based queue ranking is implemented in the live CrowdCue queue. Only approved requests are eligible; pending requests require approval first. Ranking uses votes descending, request time ascending, then request ID for deterministic ties. Disabling voting uses request time and ID without deleting votes. Guest and admin queue snapshots refresh after local mutations and remote WebSocket notifications, retain five-second fallback polling, and preserve read-only context for ended parties. Spotify delivery uses the locked front song and the nightly playlist described below.
 
 ---
 
@@ -398,7 +398,7 @@ Only the locked front song is handed to Spotify through its queue API. After it 
 
 Spotify provides no queue idempotency key or remove/reorder endpoint. A durable SENDING marker precedes each queue write, SENT requires an acknowledged command, and a timeout/5xx or interrupted SENDING state becomes UNKNOWN. UNKNOWN writes are never automatically resent. Known rejections can retry after their cooldown, and a rejected 401 can refresh once. A PostgreSQL advisory lock coordinates workers and host actions across processes. Only one CrowdCue session per host may actively feed Spotify. Ended sessions stop feeding the playback queue; already committed Spotify commands cannot be recalled.
 
-A five-second worker runs within the existing server process and continues while the browser is closed. Credentials remain encrypted and server-only. API failure, lack of active playback, or an unreadable/empty backup source may prevent playback; the dashboard must show the failure and saved queue rather than claim a guaranteed listen. Browser queue/status polling also runs every five seconds.
+A five-second worker runs within the existing server process and continues while the browser is closed. Credentials remain encrypted and server-only. API failure, lack of active playback, or an unreadable/empty backup source may prevent playback; the dashboard must show the failure and saved queue rather than claim a guaranteed listen. Browser queue/status views refresh on WebSocket notifications and retain five-second fallback polling.
 
 ---
 
@@ -472,7 +472,9 @@ Examples:
 - Currently playing track changes.
 - Party ended.
 
-Use an appropriate real-time strategy such as WebSockets, Server-Sent Events, or efficient polling based on the chosen deployment architecture.
+WebSockets now send party-scoped refresh notifications to Guest, Admin, and Display pages. Database triggers publish only committed changes through PostgreSQL LISTEN/NOTIFY, including request, vote, moderation, settings, party lifecycle, and playback changes. Each server instance listens independently; no extra message broker is required. Notifications contain only a message type, never identifiers, credentials, private links, or personalized snapshots. Clients then read their existing authorized HTTP endpoints. Guest share links authorize public invalidations; request/queue reads still require the party-scoped guest identity. Display tokens remain read-only; Admin sockets require both the private link and the owning host session. Exact Origin validation prevents cross-site socket use. Connections periodically recheck authorization and heartbeat liveness, have bounded payloads and backlog, and reject all client commands.
+
+The browser opens one socket per role page, batches rapid updates, reconnects with bounded backoff, and reloads snapshots after reconnection or returning online. Existing polling remains a fallback when the socket or database listener is unavailable. The database listener also reconnects and refreshes its connected rooms after a notification gap. Spotify observations remain limited by the backend’s five-second provider polling interval. The existing Display foundation receives live party name/state updates; the dedicated playback display is the next interface milestone.
 
 Do not introduce unnecessary infrastructure if a simpler reliable solution satisfies the requirements.
 
@@ -803,7 +805,7 @@ A recommended implementation sequence is:
 11. Implement voting.
 12. Implement CrowdCue queue ordering.
 13. Implement Spotify queue integration.
-14. Implement backup playlist behavior.
+14. Implement real-time WebSocket updates (backup playlist behavior included in task 13).
 15. Implement Display interface.
 16. Implement QR-code joining.
 17. Finalize secure Admin/Display URLs.

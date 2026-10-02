@@ -7,6 +7,7 @@ import { songRequestsSchema } from './migrations/004-song-requests.js';
 import { partyCreationSchema } from './migrations/003-party-creation.js';
 
 import { playbackSchema } from './migrations/005-playback.js';
+import { realtimeSchema } from './migrations/006-realtime.js';
 
 const migrations = [
   { version: 1, name: 'initial', sql: initialSchema },
@@ -14,6 +15,7 @@ const migrations = [
   { version: 3, name: 'party-creation', sql: partyCreationSchema },
   { version: 4, name: 'song-requests', sql: songRequestsSchema },
   { version: 5, name: 'playback', sql: playbackSchema },
+  { version: 6, name: 'realtime', sql: realtimeSchema },
 ];
 
 export async function migrate(pool: pg.Pool) {

@@ -1,3 +1,4 @@
+import { useLiveRevision } from './realtime';
 import { useEffect, useRef, useState } from 'react';
 import {
   requestListSchema,
@@ -31,6 +32,7 @@ export function RequestBoard({
   onChange?: () => void;
   onExpired?: () => void;
 }) {
+  const liveRevision = useLiveRevision();
   const [requests, setRequests] = useState<SongRequest[]>([]);
   const [offset, setOffset] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -83,7 +85,7 @@ export function RequestBoard({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [role, token, offset, attempt, refresh, onExpired]);
+  }, [role, token, offset, attempt, refresh, onExpired, liveRevision]);
   async function moderate(
     id: string,
     action: 'approve' | 'reject' | 'remove' | boolean,

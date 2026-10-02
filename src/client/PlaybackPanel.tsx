@@ -1,3 +1,4 @@
+import { useLiveRevision } from './realtime';
 import { useEffect, useRef, useState } from 'react';
 import {
   playbackStatusSchema,
@@ -34,6 +35,7 @@ export function PlaybackPanel({
   refresh?: number;
   onExpired: () => void;
 }) {
+  const liveRevision = useLiveRevision();
   const [status, setStatus] = useState<PlaybackStatus>();
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string>();
@@ -83,7 +85,7 @@ export function PlaybackPanel({
       c.abort();
       clearTimeout(timer);
     };
-  }, [token, active, refresh, attempt, onExpired]);
+  }, [token, active, refresh, attempt, onExpired, liveRevision]);
   async function action(body: unknown) {
     if (pending.current) return;
     pending.current = true;

@@ -1,3 +1,4 @@
+import { useLiveRevision } from './realtime';
 import { useEffect, useState } from 'react';
 import {
   queueSnapshotSchema,
@@ -14,6 +15,7 @@ export function QueueBoard({
   refresh?: number;
   onExpired?: () => void;
 }) {
+  const liveRevision = useLiveRevision();
   const [snapshot, setSnapshot] = useState<QueueSnapshot>();
   const [offset, setOffset] = useState(0);
   const [attempt, setAttempt] = useState(0);
@@ -52,7 +54,7 @@ export function QueueBoard({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [role, token, refresh, offset, attempt, onExpired]);
+  }, [role, token, refresh, offset, attempt, onExpired, liveRevision]);
   return (
     <section className="request-board" aria-label="CrowdCue queue">
       <div className="section-heading">

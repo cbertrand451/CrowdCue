@@ -17,7 +17,7 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
     "db:migrate": "tsx --env-file-if-exists=.env src/server/db/cli.ts",
     "db:migrate:production": "node --env-file-if-exists=.env dist/server/db/cli.js",
-    "test:db": "vitest run tests/database.test.ts tests/auth.database.test.ts tests/parties.database.test.ts tests/playback.database.test.ts",
+    "test:db": "vitest run tests/database.test.ts tests/auth.database.test.ts tests/parties.database.test.ts tests/playback.database.test.ts tests/realtime.database.test.ts",
     "auth:keygen": "tsx src/server/auth/keygen.ts"
   },
   "repository": {
@@ -42,10 +42,12 @@
     "@fastify/helmet": "^13.1.1",
     "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.5",
+    "@fastify/websocket": "^11.3.1",
     "fastify": "^5.12.5",
     "pg": "^8.23.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "ws": "^8.22.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -56,6 +58,7 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.5",
     "eslint": "^10.11.0",
