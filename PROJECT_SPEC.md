@@ -82,6 +82,8 @@ The host should be able to:
 
 The admin interface should be designed primarily for the host's phone or laptop.
 
+The dashboard foundation includes Spotify connection status, private role links, editing the party name/request preferences, and confirmed party ending. Only the owning host with the Admin token may mutate a party. Ending is idempotent, preserves Spotify playback, and makes party settings read-only. Request moderation, queue controls, playback status, and QR codes are added with their respective features.
+
 ---
 
 ## Display

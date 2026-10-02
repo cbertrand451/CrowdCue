@@ -64,6 +64,12 @@ export interface PartyStore {
   ): Promise<{ parties: PartyDetails[]; nextOffset: number | null }>;
   owned(hostId: string, partyId: string): Promise<PartyDetails>;
   admin(hostId: string, token: string): Promise<PartyDetails>;
+  update(
+    hostId: string,
+    token: string,
+    input: CreatePartyInput,
+  ): Promise<PartyDetails>;
+  end(hostId: string, token: string): Promise<PartyDetails>;
   public(
     token: string,
     role: 'guest' | 'display',
@@ -246,5 +252,55 @@ export class PostgresPartyStore implements PartyStore {
         ? { guestUrl: `${this.appOrigin}/join/${row.guest_join_token}` }
         : {}),
     };
+  }
+  private async change(
+    hostId: string,
+    token: string,
+    input?: CreatePartyInput,
+  ) {
+    return inTransaction(this.pool, async (client) => {
+      const result = await client.query<{ id: string; status: string }>(
+        'SELECT id, status FROM parties WHERE host_account_id = $1 AND admin_token_hash = $2 FOR UPDATE',
+        [hostId, hashToken(token)],
+      );
+      const party = result.rows[0];
+      if (!party) throw new PartyError(404, 'Party not found.');
+      if (input) {
+        if (party.status !== 'ACTIVE')
+          throw new PartyError(409, 'This party has ended.');
+        await client.query('UPDATE parties SET name = $2 WHERE id = $1', [
+          party.id,
+          input.name,
+        ]);
+        const s = input.settings;
+        await client.query(
+          `UPDATE party_settings SET require_guest_names = $2, voting_enabled = $3,
+          approval_required = $4, max_active_requests_per_guest = $5, allow_explicit_tracks = $6,
+          request_cooldown_seconds = $7, queue_behavior = $8 WHERE party_id = $1`,
+          [
+            party.id,
+            s.requireGuestNames,
+            s.votingEnabled,
+            s.approvalRequired,
+            s.maxActiveRequestsPerGuest,
+            s.allowExplicitTracks,
+            s.requestCooldownSeconds,
+            s.queueBehavior,
+          ],
+        );
+      } else if (party.status === 'ACTIVE') {
+        await client.query(
+          "UPDATE parties SET status = 'ENDED', ended_at = now() WHERE id = $1",
+          [party.id],
+        );
+      }
+      return this.readOwned(client, hostId, 'p.id', party.id);
+    });
+  }
+  update(hostId: string, token: string, input: CreatePartyInput) {
+    return this.change(hostId, token, input);
+  }
+  end(hostId: string, token: string) {
+    return this.change(hostId, token);
   }
 }

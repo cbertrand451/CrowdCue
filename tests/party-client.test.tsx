@@ -287,3 +287,101 @@ it('polls public party state without overlapping requests and stops when unmount
   });
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+it('saves admin preferences and requires confirmation before ending a party', async () => {
+  const { AdminDashboard } = await import('../src/client/AdminDashboard');
+  const onChange = vi.fn();
+  const onExpired = vi.fn();
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(reply({ party: { ...party, name: 'Saturday party' } }));
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <AdminDashboard
+      party={party}
+      token={'a'.repeat(43)}
+      onChange={onChange}
+      onExpired={onExpired}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Party name'), {
+    target: { value: 'Saturday party' },
+  });
+  fireEvent.click(screen.getByLabelText('Require guest names'));
+  fireEvent.change(screen.getByLabelText('Request cooldown in seconds'), {
+    target: { value: '30' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+  await screen.findByText('Settings saved.');
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({
+    name: 'Saturday party',
+    settings: { requireGuestNames: true, requestCooldownSeconds: 30 },
+  });
+  expect(onChange).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: 'End party' }));
+  expect(fetcher).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: 'Keep party active' }));
+  expect(screen.queryByText('Confirm end party')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'End party' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm end party' }));
+  await screen.findByText('Party ended.');
+  expect(fetcher.mock.calls[1][0]).toMatch(/\/end$/);
+  expect(fetcher.mock.calls[1][1].body).toBe('{}');
+});
+
+it('keeps ended dashboards read-only and clears access on an expired session', async () => {
+  const { AdminDashboard } = await import('../src/client/AdminDashboard');
+  const fetcher = vi.fn().mockResolvedValue(reply({}, 401));
+  vi.stubGlobal('fetch', fetcher);
+  const onExpired = vi.fn();
+  const view = render(
+    <AdminDashboard
+      party={party}
+      token={'a'.repeat(43)}
+      onChange={vi.fn()}
+      onExpired={onExpired}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+  await waitFor(() => expect(onExpired).toHaveBeenCalledOnce());
+  view.rerender(
+    <AdminDashboard
+      party={{ ...party, status: 'ENDED' }}
+      token={'a'.repeat(43)}
+      onChange={vi.fn()}
+      onExpired={onExpired}
+    />,
+  );
+  expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled();
+  expect(
+    screen.queryByRole('button', { name: 'End party' }),
+  ).not.toBeInTheDocument();
+});
+
+it('cancels dashboard mutations on unmount without restoring private details', async () => {
+  const { AdminDashboard } = await import('../src/client/AdminDashboard');
+  let resolve!: (value: ReturnType<typeof reply>) => void;
+  const pending = new Promise<ReturnType<typeof reply>>((done) => {
+    resolve = done;
+  });
+  const fetcher = vi.fn().mockReturnValue(pending);
+  vi.stubGlobal('fetch', fetcher);
+  const onChange = vi.fn();
+  const view = render(
+    <AdminDashboard
+      party={party}
+      token={'a'.repeat(43)}
+      onChange={onChange}
+      onExpired={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+  const signal = fetcher.mock.calls[0][1].signal as AbortSignal;
+  view.unmount();
+  expect(signal.aborted).toBe(true);
+  await act(async () => {
+    resolve(reply({ party }));
+    await pending;
+  });
+  expect(onChange).not.toHaveBeenCalled();
+});

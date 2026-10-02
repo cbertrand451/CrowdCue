@@ -502,4 +502,77 @@ describe.skipIf(!url)('party creation and authorization', () => {
     expect(publicResponse.json().party.links).toBeUndefined();
     expect((await store.owned(host.id, party.id)).endedAt).not.toBeNull();
   });
+  it('secures admin mutations, persists preferences, and ends a party idempotently', async () => {
+    const party = await created();
+    const token = tokenFrom(party.links.admin!);
+    const mutation = (
+      action: string,
+      payload: unknown,
+      owner = host,
+      origin = config.appOrigin,
+      link = token,
+    ) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/party-links/admin/${link}/${action}`,
+        headers: { origin, 'content-type': 'application/json' },
+        cookies: { '__Host-crowdcue_host': owner.token },
+        payload: JSON.stringify(payload),
+      });
+    const input = {
+      name: 'Updated party',
+      settings: {
+        ...party.settings,
+        approvalRequired: true,
+        requestCooldownSeconds: 30,
+        maxActiveRequestsPerGuest: 3,
+      },
+    };
+    expect((await mutation('settings', input, other)).statusCode).toBe(404);
+    expect(
+      (await mutation('settings', input, host, 'https://foreign.example'))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await mutation(
+          'settings',
+          input,
+          host,
+          config.appOrigin,
+          tokenFrom(party.links.guest),
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await mutation(
+          'end',
+          {},
+          host,
+          config.appOrigin,
+          tokenFrom(party.links.display!),
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await mutation('settings', { ...input, hostId: other.id })).statusCode,
+    ).toBe(400);
+    expect((await mutation('end', { unexpected: true })).statusCode).toBe(400);
+    const saved = await mutation('settings', input);
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().party).toMatchObject(input);
+    expect((await store.owned(host.id, party.id)).name).toBe('Updated party');
+    const ended = await mutation('end', {});
+    expect(ended.statusCode).toBe(200);
+    expect(ended.json().party.status).toBe('ENDED');
+    expect(ended.json().party.endedAt).not.toBeNull();
+    expect((await mutation('end', {})).json().party.endedAt).toBe(
+      ended.json().party.endedAt,
+    );
+    expect((await mutation('settings', input)).statusCode).toBe(409);
+    expect(
+      (await store.public(tokenFrom(party.links.guest), 'guest')).status,
+    ).toBe('ENDED');
+  });
 });

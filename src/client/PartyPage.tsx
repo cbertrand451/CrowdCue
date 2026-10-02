@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { z } from 'zod';
 import {
   partyDetailsSchema,
   publicPartySchema,
   type PartyDetails,
 } from '../server/parties/contracts.js';
-import { PartyLinks } from './PartyLinks';
+import { AdminDashboard } from './AdminDashboard';
+import { SpotifyConnection } from './SpotifyConnection';
 
 const publicResponse = z.object({
   party: publicPartySchema.extend({ guestUrl: z.string().url().optional() }),
@@ -22,6 +23,13 @@ export function PartyPage({
   const [party, setParty] = useState<PageParty | PartyDetails>();
   const [error, setError] = useState<string>();
   const [refreshing, setRefreshing] = useState(0);
+  const authenticationChanged = useCallback((authenticated: boolean) => {
+    if (!authenticated) {
+      setRefreshing((value) => value + 1);
+      setParty(undefined);
+      setError('Sign in as this party’s host to manage it.');
+    }
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -70,6 +78,9 @@ export function PartyPage({
   return (
     <main className={`party-page ${role === 'display' ? 'display-page' : ''}`}>
       <p className="wordmark">CrowdCue</p>
+      {role === 'admin' && (
+        <SpotifyConnection onAuthenticationChange={authenticationChanged} />
+      )}
       {error && (
         <div role="alert">
           <p>{error}</p>
@@ -102,7 +113,20 @@ export function PartyPage({
               : 'This party has ended.'}
           </p>
           {role === 'admin' && 'links' in party && (
-            <PartyLinks links={party.links} />
+            <AdminDashboard
+              key={party.id}
+              party={party}
+              token={token}
+              onChange={(updated) => {
+                setParty(updated);
+                setRefreshing((value) => value + 1);
+              }}
+              onExpired={() => {
+                setParty(undefined);
+                setRefreshing((value) => value + 1);
+                setError('Sign in as this party’s host to manage it.');
+              }}
+            />
           )}
           {role === 'display' && 'guestUrl' in party && party.guestUrl && (
             <>
@@ -112,7 +136,7 @@ export function PartyPage({
               </a>
             </>
           )}
-          {party.status === 'ACTIVE' && (
+          {role !== 'admin' && party.status === 'ACTIVE' && (
             <p className="muted">Song requests and voting are coming next.</p>
           )}
         </>

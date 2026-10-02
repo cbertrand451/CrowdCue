@@ -105,6 +105,7 @@ fieldset {
   min-width: 0;
 }
 input[type='text'],
+input[type='number'],
 input:not([type]) {
   display: block;
   width: 100%;
@@ -181,4 +182,10 @@ a {
 [role='alert'] {
   color: #ffd1ad;
   line-height: 1.6;
+}
+
+.admin-dashboard section {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #425148;
 }

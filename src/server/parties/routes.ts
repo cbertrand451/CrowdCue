@@ -136,4 +136,44 @@ export async function partyRoutes(
       },
     );
   }
+  for (const action of ['settings', 'end'] as const) {
+    app.post<{ Params: { token: string } }>(
+      `/api/party-links/admin/:token/${action}`,
+      { ...limited(30), bodyLimit: 4096 },
+      async (request, reply) => {
+        if (!auth || !store)
+          return reply
+            .code(503)
+            .send({ error: 'Parties are not available yet.' });
+        if (request.headers.origin !== auth.config.appOrigin)
+          return reply
+            .code(403)
+            .send({ error: 'Open CrowdCue to manage this party.' });
+        const host = await auth.requireHost(request.cookies[hostCookie]);
+        if (!validToken(request.params.token))
+          throw new PartyError(404, 'Party not found.');
+        if (action === 'end') {
+          if (!z.object({}).strict().safeParse(request.body).success)
+            return reply
+              .code(400)
+              .send({ error: 'Send an empty JSON object to end a party.' });
+          return {
+            party: await store.end(host.accountId, request.params.token),
+          };
+        }
+        const input = createPartySchema.safeParse(request.body);
+        if (!input.success)
+          return reply
+            .code(400)
+            .send({ error: 'Check the party name and settings.' });
+        return {
+          party: await store.update(
+            host.accountId,
+            request.params.token,
+            input.data,
+          ),
+        };
+      },
+    );
+  }
 }

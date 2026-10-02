@@ -155,7 +155,15 @@ Guest/Admin/Display URLs use independent cryptographically random 256-bit tokens
 
 All party API responses and role pages use no-store/no-referrer headers and `X-Robots-Tag: noindex, nofollow, noarchive`. Crawler directives discourage indexing; authorization still controls private access. Malformed role-page tokens return a generic 404 without echoing the token; syntactically valid links load the page and are verified by the role-specific API. Request bodies, tokens, and raw database errors are not logged. Per-process IP limits allow 10 create attempts, 60 owner/admin reads, and 300 public reads per minute; deployment still needs shared edge limits and trusted proxy configuration.
 
-Production serves the React entry point at all three role URLs so bookmarked links and page refreshes work. The current role pages show persistent party details; guest identity, search, requests, moderation, QR codes, and the full display are later tasks. They poll party state every 15 seconds, with no overlapping requests, so an ended party is reflected on open pages. There is no end-party or settings-edit endpoint yet.
+Production serves the React entry point at all three role URLs so bookmarked links and page refreshes work. The current role pages show persistent party details; guest identity, search, requests, moderation, QR codes, and the full display are later tasks. They poll party state every 15 seconds, with no overlapping requests, so an ended party is reflected on open pages. The owning host can now rename a party, change its request preferences, and end it from the Admin dashboard. Ended parties remain readable and cannot be reopened or edited. Ending a party does not stop Spotify playback.
+
+## Admin dashboard
+
+Open the private Admin link from **Your parties**. The dashboard shows Spotify connection status, guest sharing, Display access, party name/preferences, and an explicit end-party confirmation. It works on phones and laptops. Saved preferences persist; edits in progress are retained during polling. Refresh the page to reload a draft from another browser. If multiple hosts' browser sessions edit the same party, the last successful save wins.
+
+`POST /api/party-links/admin/:token/settings` accepts the validated party name/settings shape; `POST /api/party-links/admin/:token/end` accepts `{}`. Both require the owning host session, the party's Admin token, the exact configured Origin, and bounded JSON. Mutations are limited to 30 attempts per minute per process/IP. Database row locks serialize settings changes against ending; an ended party rejects edits, while repeated end calls retain the original end timestamp. Public guest/display pages reflect the ended state through their existing polling.
+
+Request lists, approval/rejection, queue ordering, currently playing tracks, and QR codes depend on upcoming milestones and are not presented as functioning controls. Queue mode is displayed but preserved during edits until queue delivery is implemented.
 
 ## Database structure and migrations
 
@@ -198,6 +206,6 @@ npm run check
 
 The test runner does not load `.env` automatically. Database tests create random isolated schemas and drop only those schemas afterward; the test role needs schema creation privileges. They verify migrations, settings/lifecycle constraints, concurrent duplicate requests/votes, cross-party references, rollback/deletion behavior, OAuth/session behavior, party creation transactions/idempotency, host ownership, role isolation, and link recovery. Frontend tests cover creation preferences, retries, sign-out privacy, link pages, and state polling. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
 
-The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **Secure Guest/Admin/Display URLs are complete. Next task: build the Host/Admin interface foundation**, then the Guest interface and guest sessions.
+The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **The Admin dashboard foundation is complete. Next task: build the Guest interface and guest sessions.**
 
 Future request/vote updates can use Server-Sent Events with ordinary HTTP mutations; only party-state polling is implemented. Multi-instance event delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.
