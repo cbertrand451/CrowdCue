@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from '../src/server/app.js';
 import { readConfig } from '../src/server/config.js';
+import type { AuthService } from '../src/server/auth/service.js';
+
+const auth = {
+  config: { appOrigin: 'https://crowdcue.example' },
+} as AuthService;
 
 describe('application', () => {
   it('serves refreshed party pages without caching or referring private links', async () => {
@@ -66,6 +71,62 @@ describe('application', () => {
       expect(response.statusCode).toBe(500);
       expect(response.json()).toEqual({ error: 'Internal server error' });
       expect(response.body).not.toContain('private internal details');
+    } finally {
+      await app.close();
+    }
+  });
+  it('rejects unsafe cross-origin API writes before route handlers run', async () => {
+    const app = buildApp(readConfig({ NODE_ENV: 'test' }), {
+      logger: false,
+      auth,
+    });
+    let reached = false;
+    app.post('/api/custom-mutation', async () => {
+      reached = true;
+      return { ok: true };
+    });
+    try {
+      for (const headers of [
+        {},
+        { origin: 'https://attacker.example' },
+        { origin: 'null' },
+      ]) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/custom-mutation',
+          headers,
+          payload: {},
+        });
+        expect(response.statusCode).toBe(403);
+        expect(response.json()).toEqual({
+          error: 'Open CrowdCue before making changes.',
+        });
+      }
+      const allowed = await app.inject({
+        method: 'POST',
+        url: '/api/custom-mutation',
+        headers: { origin: 'https://crowdcue.example' },
+        payload: {},
+      });
+      expect(allowed.statusCode).toBe(200);
+      expect(reached).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+  it('caps default API request bodies without exposing parser internals', async () => {
+    const app = buildApp(readConfig({ NODE_ENV: 'test' }), { logger: false });
+    app.post('/api/large-payload', async () => ({ ok: true }));
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/large-payload',
+        headers: { 'content-type': 'application/json' },
+        payload: { value: 'x'.repeat(17 * 1024) },
+      });
+      expect(response.statusCode).toBe(413);
+      expect(response.json()).toEqual({ error: 'Request body is too large.' });
+      expect(response.body).not.toContain('BodyLimitError');
     } finally {
       await app.close();
     }

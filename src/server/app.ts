@@ -141,9 +141,12 @@ export function buildApp(
       'statusCode' in error &&
       [400, 413, 415].includes(Number(error.statusCode))
     )
-      return reply
-        .code(Number(error.statusCode))
-        .send({ error: 'Send a valid, bounded request.' });
+      return reply.code(Number(error.statusCode)).send({
+        error:
+          Number(error.statusCode) === 413
+            ? 'Request body is too large.'
+            : 'Send a valid, bounded request.',
+      });
     // Do not log raw exceptions: future integration errors may contain credentials.
     request.log.error({ requestId: request.id }, 'Request failed');
     reply.code(500).send({ error: 'Internal server error' });

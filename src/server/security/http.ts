@@ -58,6 +58,8 @@ export function protectHttp(app: FastifyInstance, appOrigin?: string) {
       !['GET', 'HEAD', 'OPTIONS'].includes(request.method) &&
       request.headers.origin !== appOrigin
     )
-      return reply.code(403).send({ error: 'Open CrowdCue to make changes.' });
+      return reply
+        .code(403)
+        .send({ error: 'Open CrowdCue before making changes.' });
   });
 }
