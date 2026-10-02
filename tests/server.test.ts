@@ -17,6 +17,17 @@ describe('application', () => {
         expect(response.headers['content-type']).toContain('text/html');
         expect(response.headers['cache-control']).toBe('no-store');
         expect(response.headers['referrer-policy']).toBe('no-referrer');
+        expect(response.headers['x-robots-tag']).toBe(
+          'noindex, nofollow, noarchive',
+        );
+        for (const token of ['short', 'x'.repeat(129), 'invalid%3Ctoken%3E']) {
+          const invalid = await app.inject(`/${role}/${token}`);
+          expect(invalid.statusCode).toBe(404);
+          expect(invalid.json()).toEqual({
+            error: token.length > 128 ? 'Page not found.' : 'Party not found.',
+          });
+          expect(invalid.headers['cache-control']).toBe('no-store');
+        }
       }
       expect((await app.inject('/api/missing')).statusCode).toBe(404);
     } finally {

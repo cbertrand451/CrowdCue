@@ -19,6 +19,7 @@ export function buildApp(
   } = {},
 ) {
   const app = Fastify({
+    routerOptions: { maxParamLength: 128 },
     // Request URLs may eventually contain private party identifiers or OAuth codes.
     logController: new LogController({ disableRequestLogging: true }),
     logger:
@@ -47,9 +48,15 @@ export function buildApp(
         fileURLToPath(new URL('../client/', import.meta.url)),
     });
     for (const route of ['/join/:token', '/admin/:token', '/display/:token']) {
-      app.get(route, async (_request, reply) => {
+      app.get<{ Params: { token: string } }>(route, async (request, reply) => {
         reply.header('Cache-Control', 'no-store');
         reply.header('Referrer-Policy', 'no-referrer');
+        reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
+        const pattern = route.startsWith('/join/')
+          ? /^[A-Za-z0-9_-]{32,128}$/
+          : /^[A-Za-z0-9_-]{43}$/;
+        if (!pattern.test(request.params.token))
+          return reply.code(404).send({ error: 'Party not found.' });
         return reply.sendFile('index.html', { cacheControl: false });
       });
     }
@@ -58,6 +65,12 @@ export function buildApp(
     // Do not log raw exceptions: future integration errors may contain credentials.
     request.log.error({ requestId: request.id }, 'Request failed');
     reply.code(500).send({ error: 'Internal server error' });
+  });
+  app.setNotFoundHandler((_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    reply.header('Referrer-Policy', 'no-referrer');
+    reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    return reply.code(404).send({ error: 'Page not found.' });
   });
   return app;
 }

@@ -382,6 +382,10 @@ describe.skipIf(!url)('party creation and authorization', () => {
         /ciphertext|token_hash|test-access|test-refresh/,
       );
       expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['referrer-policy']).toBe('no-referrer');
+      expect(response.headers['x-robots-tag']).toBe(
+        'noindex, nofollow, noarchive',
+      );
     }
     expect(
       (await app.inject(`/api/party-links/display/${guest}`)).statusCode,
@@ -391,6 +395,9 @@ describe.skipIf(!url)('party creation and authorization', () => {
     ).toBe(404);
     expect(
       (await app.inject(`/api/party-links/guest/${adminToken}`)).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject(`/api/party-links/display/${adminToken}`)).statusCode,
     ).toBe(404);
     expect(
       (await app.inject(`/api/party-links/guest/not-a-token`)).statusCode,

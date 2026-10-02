@@ -22,6 +22,7 @@ export async function partyRoutes(
   app.addHook('onRequest', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
     reply.header('Referrer-Policy', 'no-referrer');
+    reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
   });
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof PartyError)

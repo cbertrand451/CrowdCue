@@ -236,6 +236,8 @@ The Guest URL is intentionally shareable.
 
 The Admin URL is private.
 
+Role pages and APIs must prevent caching and referrer disclosure, discourage search-engine indexing, and reject malformed identifiers without echoing private link material.
+
 ---
 
 # 8. QR Code
@@ -777,23 +779,24 @@ A recommended implementation sequence is:
 2. Create database models and migrations.
 3. Implement Spotify OAuth (including secure host authentication sessions).
 4. Implement Party creation system.
-5. Implement Admin/Host interface foundation.
-6. Implement Guest interface and guest session foundation.
-7. Implement Spotify song search.
-8. Implement song requests.
-9. Implement voting.
-10. Implement CrowdCue queue ordering.
-11. Implement Spotify queue integration.
-12. Implement backup playlist behavior.
-13. Implement Display interface.
-14. Implement QR-code joining.
-15. Finalize secure Admin/Display URLs.
-16. Implement party controls/settings.
-17. Refine professional responsive UI.
-18. Harden security and error handling.
-19. Expand automated testing.
-20. Perform complete end-to-end testing.
-21. Prepare production deployment.
+5. Implement secure Guest/Admin/Display URLs.
+6. Implement Admin/Host interface foundation.
+7. Implement Guest interface and guest session foundation.
+8. Implement Spotify song search.
+9. Implement song requests.
+10. Implement voting.
+11. Implement CrowdCue queue ordering.
+12. Implement Spotify queue integration.
+13. Implement backup playlist behavior.
+14. Implement Display interface.
+15. Implement QR-code joining.
+16. Finalize secure Admin/Display URLs.
+17. Implement party controls/settings.
+18. Refine professional responsive UI.
+19. Harden security and error handling.
+20. Expand automated testing.
+21. Perform complete end-to-end testing.
+22. Prepare production deployment.
 
 Codex should implement these incrementally rather than attempting to generate the entire application at once.
 
