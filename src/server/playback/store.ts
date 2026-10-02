@@ -1,3 +1,4 @@
+import { readEventHistory } from '../history/store.js';
 import {
   fillBackupBuffer,
   insertGuestEntry,
@@ -57,6 +58,9 @@ export class PlaybackStore {
     );
     if (!result.rows[0]) throw new RequestError(404, 'Party not found.');
     return result.rows[0];
+  }
+  history(hostId: string, token: string, offset: number) {
+    return readEventHistory(this.pool, hostId, token, offset);
   }
   async status(hostId: string, token: string): Promise<PlaybackStatus> {
     const id = await this.owned(hostId, token);
@@ -122,6 +126,26 @@ export class PlaybackStore {
         const parsed = trackSchema.safeParse(cached);
         if (parsed.success) track = parsed.data;
       }
+      if (
+        player?.is_playing &&
+        player.item?.id &&
+        player.item.uri === `spotify:track:${player.item.id}`
+      ) {
+        const restarted =
+          player.item.id !== s.last_track_id ||
+          (player.progress_ms != null &&
+            s.last_progress_ms != null &&
+            player.progress_ms < s.last_progress_ms - 1000);
+        // Prefer the newly locked occurrence on a repeat/restart; otherwise
+        // keep the currently playing occurrence. Never mark two repeats at once.
+        await client.query(
+          `UPDATE playback_entries SET observed_at=now() WHERE observed_at IS NULL AND id=(
+           SELECT id FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL
+           AND status IN ('PLAYING','LOCKED') AND track->>'id'=$2
+           ORDER BY (status=CASE WHEN $3 THEN 'LOCKED' ELSE 'PLAYING' END) DESC,sequence LIMIT 1)`,
+          [id, player.item.id, restarted],
+        );
+      }
       const state =
         !player || (!player.item && !player.is_playing)
           ? 'IDLE'
@@ -149,6 +173,7 @@ export class PlaybackStore {
     progressMs?: number | null,
     playlistContext = false,
     expectedBackup?: { sourceId: string | null; allowExplicit: boolean },
+    isPlaying = false,
   ) {
     return this.change(id, async (client, s) => {
       if (!s.enabled || s.status !== 'ACTIVE') return false;
@@ -225,8 +250,8 @@ export class PlaybackStore {
         }
         // Playlist fallback may start a waiting song directly. Record its commitment.
         await client.query(
-          "UPDATE playback_entries SET status='PLAYING',locked_at=COALESCE(locked_at,now()),delivery='SENT' WHERE id=$1",
-          [observed.id],
+          "UPDATE playback_entries SET status='PLAYING',locked_at=COALESCE(locked_at,now()),delivery='SENT',observed_at=CASE WHEN $2 THEN COALESCE(observed_at,now()) ELSE observed_at END WHERE id=$1",
+          [observed.id, isPlaying],
         );
         if (observed.request_id)
           await client.query(

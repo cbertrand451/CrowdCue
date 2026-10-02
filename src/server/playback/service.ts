@@ -269,6 +269,9 @@ export class PlaybackService {
       player?.progress_ms,
       player?.context?.uri === `spotify:playlist:${playlistId}`,
       { sourceId: s.backup_source_id, allowExplicit: s.allow_explicit_tracks },
+      !!player?.is_playing &&
+        !!player.item?.id &&
+        player.item.uri === `spotify:track:${player.item.id}`,
     );
     if (!scheduled) return;
     s = await this.store.session(client, s.party_id);

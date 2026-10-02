@@ -59,38 +59,48 @@ function stubActionFetch(
   fetcher: (url: string, options?: RequestInit) => unknown,
 ) {
   vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
-    url.includes('/requests?')
-      ? Promise.resolve(reply({ requests: [], nextOffset: null }))
-      : url.includes('/queue?')
-        ? Promise.resolve(
-            reply({
-              items: [],
-              nextOffset: null,
-              votingEnabled: true,
-              status: 'ACTIVE',
-            }),
-          )
-        : url.endsWith('/playback')
+    url.includes('/history?')
+      ? Promise.resolve(
+          reply({
+            items: [],
+            committedCount: 0,
+            observedCount: 0,
+            nextOffset: null,
+            status: 'ACTIVE',
+          }),
+        )
+      : url.includes('/requests?')
+        ? Promise.resolve(reply({ requests: [], nextOffset: null }))
+        : url.includes('/queue?')
           ? Promise.resolve(
               reply({
-                enabled: false,
-                mode: 'QUEUE',
-                playlistUrl: null,
-                playlistRemoved: false,
-                creation: 'NEW',
-                error: null,
-                retryAt: null,
-                syncedAt: null,
-                lockedCount: 0,
-                guestCount: 0,
-                backupCount: 0,
-                saveAtCreation: false,
-                saveAtClose: null,
-                closeDecided: false,
-                ended: false,
+                items: [],
+                nextOffset: null,
+                votingEnabled: true,
+                status: 'ACTIVE',
               }),
             )
-          : fetcher(url, options),
+          : url.endsWith('/playback')
+            ? Promise.resolve(
+                reply({
+                  enabled: false,
+                  mode: 'QUEUE',
+                  playlistUrl: null,
+                  playlistRemoved: false,
+                  creation: 'NEW',
+                  error: null,
+                  retryAt: null,
+                  syncedAt: null,
+                  lockedCount: 0,
+                  guestCount: 0,
+                  backupCount: 0,
+                  saveAtCreation: false,
+                  saveAtClose: null,
+                  closeDecided: false,
+                  ended: false,
+                }),
+              )
+            : fetcher(url, options),
   );
 }
 

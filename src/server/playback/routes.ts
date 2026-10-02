@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
@@ -41,6 +42,40 @@ export async function playbackRoutes(
       .code(503)
       .send({ error: 'Session playback is unavailable. Try again shortly.' });
   });
+  app.get<{ Params: { token: string } }>(
+    '/api/party-links/admin/:token/history',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      if (!options.auth || !options.playback)
+        return reply
+          .code(503)
+          .send({ error: 'Song history is not configured.' });
+      if (!validToken(request.params.token))
+        throw new RequestError(404, 'Party not found.');
+      const host = await options.auth
+        .requireHost(
+          request.cookies[
+            `${options.auth.config.secureCookies ? '__Host-' : ''}crowdcue_host`
+          ],
+        )
+        .catch(() => {
+          throw new RequestError(401, 'Sign in as this session’s host.');
+        });
+      const page = z
+        .object({
+          offset: z.coerce.number().int().min(0).max(100000).default(0),
+        })
+        .strict()
+        .safeParse(request.query);
+      if (!page.success)
+        throw new RequestError(400, 'Choose a valid song history page.');
+      return options.playback.store.history(
+        host.accountId,
+        request.params.token,
+        page.data.offset,
+      );
+    },
+  );
   for (const method of ['GET', 'POST'] as const)
     app.route<{ Params: { token: string } }>({
       method,

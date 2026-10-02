@@ -697,3 +697,21 @@ a {
     width: 192px;
   }
 }
+
+.history-results li {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+}
+
+.history-results a {
+  overflow-wrap: anywhere;
+}
+
+.event-history {
+  margin-top: 2rem;
+}
+.event-history summary {
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: 650;
+}

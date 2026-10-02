@@ -8,6 +8,7 @@ import { partyCreationSchema } from './migrations/003-party-creation.js';
 
 import { playbackSchema } from './migrations/005-playback.js';
 import { realtimeSchema } from './migrations/006-realtime.js';
+import { eventHistorySchema } from './migrations/008-event-history.js';
 import { displaySchema } from './migrations/007-display.js';
 
 const migrations = [
@@ -18,6 +19,7 @@ const migrations = [
   { version: 5, name: 'playback', sql: playbackSchema },
   { version: 6, name: 'realtime', sql: realtimeSchema },
   { version: 7, name: 'display', sql: displaySchema },
+  { version: 8, name: 'event-history', sql: eventHistorySchema },
 ];
 
 export async function migrate(pool: pg.Pool) {
