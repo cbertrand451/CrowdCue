@@ -5,13 +5,17 @@ import { fileURLToPath } from 'node:url';
 import type { Config } from './config.js';
 import { authRoutes } from './auth/routes.js';
 import type { AuthService } from './auth/service.js';
+import { partyRoutes } from './parties/routes.js';
+import type { PartyStore } from './parties/store.js';
 
 export function buildApp(
   config: Config,
   options: {
     serveFrontend?: boolean;
+    frontendRoot?: string;
     logger?: boolean;
     auth?: AuthService;
+    parties?: PartyStore;
   } = {},
 ) {
   const app = Fastify({
@@ -31,14 +35,24 @@ export function buildApp(
   });
   app.register(helmet);
   app.register(authRoutes, { service: options.auth });
+  app.register(partyRoutes, { auth: options.auth, store: options.parties });
   app.get('/api/health', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
     return { status: 'ok', service: 'crowdcue' };
   });
   if (options.serveFrontend) {
     app.register(fastifyStatic, {
-      root: fileURLToPath(new URL('../client/', import.meta.url)),
+      root:
+        options.frontendRoot ??
+        fileURLToPath(new URL('../client/', import.meta.url)),
     });
+    for (const route of ['/join/:token', '/admin/:token', '/display/:token']) {
+      app.get(route, async (_request, reply) => {
+        reply.header('Cache-Control', 'no-store');
+        reply.header('Referrer-Policy', 'no-referrer');
+        return reply.sendFile('index.html', { cacheControl: false });
+      });
+    }
   }
   app.setErrorHandler((_error, request, reply) => {
     // Do not log raw exceptions: future integration errors may contain credentials.

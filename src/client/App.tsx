@@ -1,7 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { SpotifyConnection } from './SpotifyConnection';
+import { PartyCreation } from './PartyCreation';
+import { PartyPage } from './PartyPage';
 
 export function App() {
+  const route = /^\/(join|admin|display)\/([^/]+)\/?$/.exec(
+    window.location.pathname,
+  );
+  if (route)
+    return (
+      <PartyPage
+        role={route[1] === 'join' ? 'guest' : (route[1] as 'admin' | 'display')}
+        token={route[2]}
+      />
+    );
+  return <HostHome />;
+}
+function HostHome() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const authenticationChanged = useCallback(
+    (value: boolean) => setAuthenticated(value),
+    [],
+  );
   const [status, setStatus] = useState<'checking' | 'ready' | 'unavailable'>(
     'checking',
   );
@@ -37,7 +57,7 @@ export function App() {
         <br />
         Together.
       </h1>
-      <p className="intro">The foundation for your shared party queue.</p>
+      <p className="intro">Create a party and share it with your guests.</p>
       <p role="status" className={`status ${status}`}>
         {status === 'checking'
           ? 'Checking connection…'
@@ -45,7 +65,8 @@ export function App() {
             ? 'CrowdCue is running.'
             : 'Unable to reach CrowdCue. Please refresh to try again.'}
       </p>
-      <SpotifyConnection />
+      <SpotifyConnection onAuthenticationChange={authenticationChanged} />
+      {authenticated && <PartyCreation />}
     </main>
   );
 }

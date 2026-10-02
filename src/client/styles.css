@@ -77,3 +77,108 @@ button:focus-visible {
   outline: 2px solid #f5f6f2;
   outline-offset: 4px;
 }
+.party-creation {
+  border-top: 1px solid #425148;
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+}
+h2 {
+  font-size: 1.65rem;
+  letter-spacing: -0.03em;
+}
+h3 {
+  font-size: 1.3rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: #b8c3bc;
+  line-height: 1.6;
+}
+.label {
+  font-weight: 650;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+input[type='text'],
+input:not([type]) {
+  display: block;
+  width: 100%;
+  padding: 0.8rem;
+  margin: 0.6rem 0 1.25rem;
+  font: inherit;
+  border: 1px solid #718078;
+  border-radius: 0.3rem;
+  color: #f5f6f2;
+  background: #1d2520;
+}
+input:focus-visible {
+  outline: 2px solid #a9ebba;
+  outline-offset: 2px;
+}
+.party-preferences {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 1.5rem;
+}
+.party-preferences label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: #a9ebba;
+  flex-shrink: 0;
+}
+.party-list {
+  margin-top: 3rem;
+}
+.section-heading {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.party-summary {
+  padding: 1.75rem 0;
+  border-top: 1px solid #425148;
+}
+.party-links {
+  line-height: 1.6;
+}
+a {
+  color: #a9ebba;
+  overflow-wrap: anywhere;
+}
+.party-links > a {
+  display: block;
+  margin-bottom: 1rem;
+}
+.party-actions {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+.party-page {
+  overflow-wrap: anywhere;
+}
+.display-page {
+  width: min(100%, 90rem);
+}
+.display-page h1 {
+  font-size: clamp(3rem, 7vw, 7rem);
+}
+[role='alert'] {
+  color: #ffd1ad;
+  line-height: 1.6;
+}

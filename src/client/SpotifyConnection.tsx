@@ -21,7 +21,9 @@ const messages: Record<string, string> = {
   unavailable: 'Spotify is unavailable. Please try again.',
 };
 
-export function SpotifyConnection() {
+export function SpotifyConnection({
+  onAuthenticationChange,
+}: { onAuthenticationChange?: (authenticated: boolean) => void } = {}) {
   const [connection, setConnection] = useState<ConnectionStatus>();
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -52,14 +54,20 @@ export function SpotifyConnection() {
         });
         if (!response.ok) throw new Error('Unavailable');
         const status = statusSchema.parse(await response.json());
-        if (!controller.signal.aborted) setConnection(status);
+        if (!controller.signal.aborted) {
+          setConnection(status);
+          onAuthenticationChange?.(status.authenticated);
+        }
       } catch {
-        if (!controller.signal.aborted) setFailed(true);
+        if (!controller.signal.aborted) {
+          setFailed(true);
+          onAuthenticationChange?.(false);
+        }
       }
     }
     void check();
     return () => controller.abort();
-  }, [attempt]);
+  }, [attempt, onAuthenticationChange]);
   async function signOut() {
     setSigningOut(true);
     try {
@@ -69,6 +77,7 @@ export function SpotifyConnection() {
       });
       if (!response.ok) throw new Error('Unavailable');
       setConnection({ enabled: true, authenticated: false, connected: false });
+      onAuthenticationChange?.(false);
       setFeedback(undefined);
     } catch {
       setFeedback('Unable to sign out. Please try again.');

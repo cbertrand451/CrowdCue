@@ -187,6 +187,8 @@ ENDED
 
 Additional states may be added if technically useful.
 
+Party creation belongs to the signed-in Spotify host. The party, initial settings, and role-specific links are saved atomically. Retrying the same creation key with the same normalized details returns the existing party; changing details with that key is rejected. A host can create multiple simultaneous parties.
+
 ---
 
 # 7. Party URLs
@@ -225,6 +227,8 @@ For example, this is unacceptable:
 Do not rely on simple numeric offsets or reversible transformations.
 
 Use cryptographically random identifiers/tokens.
+
+Admin access requires both the private Admin link and the signed-in owning host. Possessing a Guest or Display link never grants administration. Private link material is encrypted for owner-only recovery after refresh or server restart.
 
 The Display URL should also use an identifier that cannot simply be guessed from the Guest URL.
 
@@ -772,9 +776,9 @@ A recommended implementation sequence is:
 1. Initialize application architecture.
 2. Create database models and migrations.
 3. Implement Spotify OAuth (including secure host authentication sessions).
-4. Implement Party/guest session system.
+4. Implement Party creation system.
 5. Implement Admin/Host interface foundation.
-6. Implement Guest interface foundation.
+6. Implement Guest interface and guest session foundation.
 7. Implement Spotify song search.
 8. Implement song requests.
 9. Implement voting.

@@ -7,6 +7,7 @@ import { PostgresAuthStore } from './auth/store.js';
 import { AuthService } from './auth/service.js';
 import { SpotifyClient } from './spotify/client.js';
 import { createDatabase } from './db/index.js';
+import { PostgresPartyStore } from './parties/store.js';
 
 const config = readConfig(
   process.argv.includes('--production')
@@ -38,6 +39,14 @@ const auth =
 const app = buildApp(config, {
   serveFrontend: config.NODE_ENV === 'production',
   auth,
+  parties:
+    authConfig && pool
+      ? new PostgresPartyStore(
+          pool,
+          new TokenCipher(authConfig.keyId, authConfig.keys),
+          authConfig.appOrigin,
+        )
+      : undefined,
 });
 if (pool) {
   pool.on('error', () => app.log.error('Database connection interrupted'));

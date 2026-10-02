@@ -17,7 +17,7 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
     "db:migrate": "tsx --env-file-if-exists=.env src/server/db/cli.ts",
     "db:migrate:production": "node --env-file-if-exists=.env dist/server/db/cli.js",
-    "test:db": "vitest run tests/database.test.ts tests/auth.database.test.ts",
+    "test:db": "vitest run tests/database.test.ts tests/auth.database.test.ts tests/parties.database.test.ts",
     "auth:keygen": "tsx src/server/auth/keygen.ts"
   },
   "repository": {

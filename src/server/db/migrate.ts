@@ -3,10 +3,12 @@ import type pg from 'pg';
 import { inTransaction } from './index.js';
 import { initialSchema } from './migrations/001-initial.js';
 import { spotifyAuthSchema } from './migrations/002-spotify-auth.js';
+import { partyCreationSchema } from './migrations/003-party-creation.js';
 
 const migrations = [
   { version: 1, name: 'initial', sql: initialSchema },
   { version: 2, name: 'spotify-auth', sql: spotifyAuthSchema },
+  { version: 3, name: 'party-creation', sql: partyCreationSchema },
 ];
 
 export async function migrate(pool: pg.Pool) {

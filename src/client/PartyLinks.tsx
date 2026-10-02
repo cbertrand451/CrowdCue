@@ -1,0 +1,47 @@
+import { useState } from 'react';
+import type { PartyDetails } from '../server/parties/contracts.js';
+
+export function PartyLinks({ links }: { links: PartyDetails['links'] }) {
+  const [feedback, setFeedback] = useState<string>();
+  async function copyGuestLink() {
+    try {
+      await navigator.clipboard.writeText(links.guest);
+      setFeedback('Guest link copied.');
+    } catch {
+      setFeedback('Copy the guest link below to share it.');
+    }
+  }
+  return (
+    <div className="party-links">
+      <p className="label">Share with your guests</p>
+      <a href={links.guest} rel="noreferrer">
+        {links.guest}
+      </a>
+      <button
+        type="button"
+        className="secondary"
+        onClick={() => void copyGuestLink()}
+      >
+        Copy guest link
+      </button>
+      <div className="party-actions">
+        {links.admin && (
+          <a href={links.admin} rel="noreferrer">
+            Open admin
+          </a>
+        )}
+        {links.display && (
+          <a href={links.display} rel="noreferrer" target="_blank">
+            Open display
+          </a>
+        )}
+      </div>
+      {links.admin && (
+        <p className="muted">
+          Keep your admin link private. Sign in as the host to use it.
+        </p>
+      )}
+      {feedback && <p aria-live="polite">{feedback}</p>}
+    </div>
+  );
+}

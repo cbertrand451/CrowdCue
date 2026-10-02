@@ -1,6 +1,6 @@
 # CrowdCue
 
-CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, and Spotify OAuth authentication are implemented. Party/guest session APIs, song requests, voting, and Spotify queue operations are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
+CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. Guest sessions, song requests, voting, and Spotify queue operations are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
 ## Architecture and stack
 
@@ -52,8 +52,8 @@ If your local `.env` enables OAuth with an HTTP loopback callback, use `SPOTIFY_
 ## Project structure
 
 ```text
-src/client/         React entry point, status UI, styles
-src/server/         App factory, environment validation, server entry point
+src/client/         React entry point, authentication, party creation/link pages
+src/server/         App factory, configuration, authentication, party APIs, database
 tests/             API/configuration and browser component tests
 index.html          Vite HTML entry point
 vite.config.ts      Frontend build and development API proxy
@@ -110,13 +110,52 @@ Authentication endpoints:
 
 OAuth state is random, stored as a SHA-256 hash, bound to a separate HttpOnly browser cookie, and consumed atomically once. PKCE verifiers are also encrypted in the database. Private host sessions last 30 days and are stored only as token hashes. HTTPS cookies use Secure, HttpOnly, SameSite=Lax, Path=/, and the __Host- prefix. Mutating endpoints require the exact configured Origin. Authentication responses use no-store and no-referrer headers. Reverse-proxy/access logs must also avoid recording OAuth codes and private URLs.
 
-Access and refresh tokens use AES-256-GCM with random nonces and account/purpose binding. The key ring permits old and active key IDs: retain old keys while their ciphertext exists, switch the active ID for new writes, and refresh/reconnect to re-encrypt credentials before retiring an old key. Database errors, provider messages, and token values never reach browser responses or raw application logs.
+Access and refresh tokens use AES-256-GCM with random nonces and account/purpose binding. The key ring permits old and active key IDs: retain old keys while their ciphertext exists, switch the active ID for new writes, and refresh/reconnect to re-encrypt Spotify credentials. Party link records also use this key ring; refreshing Spotify credentials does not re-encrypt party links, so keep their old keys until those records are deliberately re-encrypted. Database errors, provider messages, and Spotify token values never reach browser responses or raw application logs.
 
 Tokens refresh automatically within 60 seconds of expiry. PostgreSQL row locks serialize refreshes across processes; omitted refresh tokens retain the previous value and rotated tokens replace it. Invalid grants commit credential removal and request reconnection, while transient errors/rate limits retain credentials for retry. Backend `AuthService.hostProfile` validates the host session and retries a Spotify 401 once with a refreshed token. Future privileged endpoints must use `requireHost` and verify party ownership; no client-supplied account ID grants host access.
 
 Sign out revokes this browser's CrowdCue session. It does not revoke Spotify consent or delete the host's encrypted credentials, so it will not interrupt future party workers. The status endpoint reports locally stored credential availability/refresh results; revocation of an otherwise unexpired token is detected on the next Spotify API call. No playlist, playback, or queue mutation is performed in this milestone.
 
 Authentication routes have per-process IP rate limits (10 login attempts, 30 callbacks/logout requests, and 60 status requests per minute). Do not trust arbitrary forwarded IP headers. When deploying behind a reverse proxy or across multiple instances, configure trusted proxy handling and shared edge rate limiting as part of deployment hardening. Node's environment proxy support honors configured HTTP/HTTPS proxies and CA trust for backend Spotify calls.
+
+## Party creation
+
+Sign in with Spotify, enter a party name, choose preferences, and click **Create party**. The party becomes ACTIVE immediately. The host receives a guest link to share, a private admin link, and a read-only display link. **Your parties** restores the same links after refresh or a new host login and supports loading older parties, 20 at a time. Hosts may create multiple active parties.
+
+Party creation requires a valid host session and the configured browser Origin; ownership is determined on the server. It does not make Spotify API calls, create playlists, or change playback. A previously authenticated host may create a party while Spotify needs reconnection, but future Spotify operations will require valid credentials.
+
+Run `npm run db:migrate` before starting the updated server. Migration 003 backfills only missing settings, adds encrypted private link records and creation-key records, and preserves existing parties/settings. Pre-existing manually seeded parties whose private tokens were never saved cannot have those tokens recovered; their guest links remain available and their owner responses have null admin/display links. The migration does not rotate those identifiers.
+
+The create endpoint accepts JSON with a trimmed name of 1–120 characters (no control characters), optional `settings`, and a UUID `Idempotency-Key` header. Unknown fields and client-supplied ownership/status/identifiers are rejected. A database transaction saves the party, settings, encrypted links, and creation key together. Concurrent requests with the same host/key and normalized payload return the same party and links; reuse with different details returns 409. The frontend prevents overlapping submissions and keeps its key for retries after uncertain failures. Refresh your party list before starting a different attempt after an uncertain result.
+
+Initial preferences:
+
+| Setting                     | Default                                         |
+| --------------------------- | ----------------------------------------------- |
+| `requireGuestNames`         | false                                           |
+| `votingEnabled`             | true                                            |
+| `approvalRequired`          | false                                           |
+| `allowExplicitTracks`       | true                                            |
+| `maxActiveRequestsPerGuest` | null (unlimited); optional integer 1–100        |
+| `requestCooldownSeconds`    | 0; integer 0–3600                               |
+| `queueBehavior`             | SPOTIFY_QUEUE; BACKUP_PLAYLIST is also accepted |
+
+The form exposes the four boolean preferences. Limits, cooldown, and queue behavior can be initialized through the API. These preferences are persisted for the later guest/request/vote/Spotify features; those features are not implemented in this milestone.
+
+| Endpoint                            | Behavior                                                          |
+| ----------------------------------- | ----------------------------------------------------------------- |
+| POST /api/parties                   | Create for the authenticated host: 201 when new, 200 for a replay |
+| GET /api/parties?offset=0           | List only the authenticated host's parties and recover role links |
+| GET /api/parties/:id                | Owner-only party details                                          |
+| GET /api/party-links/admin/:token   | Private party details, requiring the owning host session          |
+| GET /api/party-links/guest/:token   | Public party name, status, and settings                           |
+| GET /api/party-links/display/:token | Public party details and the shareable guest URL                  |
+
+Guest/Admin/Display URLs use independent cryptographically random 256-bit tokens: `/join/<token>`, `/admin/<token>`, and `/display/<token>`. Guest identifiers are intentionally shareable. Admin/display token hashes support role lookup; an AES-256-GCM envelope bound to the party ID lets the host recover the original private links. Public responses never decrypt link records or include private links, host identifiers, OAuth credentials, or session tokens. An Admin URL by itself does not grant host privileges. Unknown parties and other hosts' parties return the same 404 response.
+
+All party API responses and role pages use no-store/no-referrer headers. Request bodies, tokens, and raw database errors are not logged. Per-process IP limits allow 10 create attempts, 60 owner/admin reads, and 300 public reads per minute; deployment still needs shared edge limits and trusted proxy configuration.
+
+Production serves the React entry point at all three role URLs so bookmarked links and page refreshes work. The current role pages show persistent party details; guest identity, search, requests, moderation, QR codes, and the full display are later tasks. They poll party state every 15 seconds, with no overlapping requests, so an ended party is reflected on open pages. There is no end-party or settings-edit endpoint yet.
 
 ## Database structure and migrations
 
@@ -143,9 +182,9 @@ The initial schema includes:
 
 A partial unique index prevents the same track from having multiple REQUESTED, APPROVED, or QUEUED requests in one party, including concurrent inserts. PLAYED, REJECTED, and REMOVED requests remain as history and permit requesting the track again. Request authors must belong to the request's party. Indexes support party/host lookup, queue reads, guest requests, votes, and pending queue operations. Party deletion cascades party-owned data; deleting a host with parties is restricted and deleting a guest who authored requests is restricted. Ending a party preserves history.
 
-Future party creation must insert its settings in the same transaction using `inTransaction`. Application code must maintain `updated_at`, authorize mutations, enforce party state/settings/session expiry, and implement allowed request transitions. Database row types are internal shapes, not public API responses.
+Party creation inserts its settings and private links in the same transaction using `inTransaction`. Future mutation code must maintain `updated_at`, authorize operations, enforce party state/settings/session expiry, and implement allowed request transitions. Database row types are internal shapes, not public API responses.
 
-Generate independent cryptographically random join/admin/display/guest-session tokens in the party/session task. Store only SHA-256 hashes of private admin/display/session tokens. Length/format constraints cannot establish unpredictability or authorization. Host sessions and OAuth encryption are implemented as described above. Do not store plaintext tokens or serialize credential rows. Queue coordination provides storage, not exactly-once Spotify delivery: the future worker must atomically claim operations and reconcile uncertain outcomes before retrying.
+Guest session identifiers still need implementation and must be independent of role-link tokens. Store only SHA-256 hashes of private session tokens. Length/format constraints cannot establish unpredictability or authorization. Host sessions, OAuth encryption, role links, and party creation are implemented as described above. Do not store plaintext Spotify/session tokens or serialize credential rows. Queue coordination provides storage, not exactly-once Spotify delivery: the future worker must atomically claim operations and reconcile uncertain outcomes before retrying.
 
 ### Database integration tests
 
@@ -157,8 +196,8 @@ npm run test:db
 npm run check
 ```
 
-The test runner does not load `.env` automatically. Database tests create random isolated schemas and drop only those schemas afterward; the test role needs schema creation privileges. They verify migrations, settings/lifecycle constraints, concurrent duplicate requests/votes, cross-party references, rollback/deletion behavior, OAuth replay/browser binding, encrypted persistence, session expiry/revocation, refresh serialization, and invalid-grant/transient-error handling. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
+The test runner does not load `.env` automatically. Database tests create random isolated schemas and drop only those schemas afterward; the test role needs schema creation privileges. They verify migrations, settings/lifecycle constraints, concurrent duplicate requests/votes, cross-party references, rollback/deletion behavior, OAuth/session behavior, party creation transactions/idempotency, host ownership, role isolation, and link recovery. Frontend tests cover creation preferences, retries, sign-out privacy, link pages, and state polling. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
 
-The server remains runnable without database configuration when OAuth is disabled. The health endpoint reports process liveness, not database readiness. **Next task: implement the Party/guest session system** using the authenticated host, database tables, and transaction helpers.
+The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **Next task: build the Host/Admin interface foundation**, then the Guest interface and guest sessions.
 
-Future real-time behavior can use Server-Sent Events from this backend with ordinary HTTP mutations; no real-time functionality is implemented. Multi-instance delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.
+Future request/vote updates can use Server-Sent Events with ordinary HTTP mutations; only party-state polling is implemented. Multi-instance event delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.

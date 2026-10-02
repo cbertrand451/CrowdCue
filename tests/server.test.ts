@@ -1,8 +1,28 @@
 import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
 import { buildApp } from '../src/server/app.js';
 import { readConfig } from '../src/server/config.js';
 
 describe('application', () => {
+  it('serves refreshed party pages without caching or referring private links', async () => {
+    const app = buildApp(readConfig({ NODE_ENV: 'production' }), {
+      logger: false,
+      serveFrontend: true,
+      frontendRoot: fileURLToPath(new URL('../', import.meta.url)),
+    });
+    try {
+      for (const role of ['join', 'admin', 'display']) {
+        const response = await app.inject(`/${role}/${'x'.repeat(43)}`);
+        expect(response.statusCode).toBe(200);
+        expect(response.headers['content-type']).toContain('text/html');
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.headers['referrer-policy']).toBe('no-referrer');
+      }
+      expect((await app.inject('/api/missing')).statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
   it('provides a public, uncached health check without configuration details', async () => {
     const app = buildApp(readConfig({ NODE_ENV: 'test' }), { logger: false });
     try {
