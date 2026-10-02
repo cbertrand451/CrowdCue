@@ -83,6 +83,9 @@ it('shows observed music separately from locked upcoming songs and exposes only 
   expect(
     screen.getByText('1 request awaits host approval.'),
   ).toBeInTheDocument();
+  expect(
+    screen.getByRole('img', { name: 'Guest join QR code' }),
+  ).toBeInTheDocument();
   expect(screen.getByRole('link')).toHaveAttribute(
     'href',
     state().party.guestUrl,
@@ -120,6 +123,9 @@ it('retains the last snapshot on a connection failure and clears it when the dis
   expect(
     screen.queryByRole('heading', { name: 'Song a' }),
   ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('img', { name: 'Guest join QR code' }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByRole('link')).not.toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent('Display not found');
 });
@@ -152,6 +158,9 @@ it('handles missing artwork, idle playback, and an ended party without a mislead
   expect(
     screen.getByRole('heading', { name: 'Saved queue' }),
   ).toBeInTheDocument();
+  expect(
+    screen.queryByRole('img', { name: 'Guest join QR code' }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByRole('link')).not.toBeInTheDocument();
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   view.unmount();

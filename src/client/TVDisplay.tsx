@@ -1,3 +1,4 @@
+import { GuestQRCode } from './GuestQRCode';
 import { useEffect, useRef, useState } from 'react';
 import {
   displaySnapshotSchema,
@@ -301,18 +302,23 @@ export function TVDisplay({ token }: { token: string }) {
       )}
       {snapshot && (
         <footer className="tv-footer">
-          <div className="tv-join">
-            <h2>{ended ? 'This party has ended.' : 'Join from your phone'}</h2>
-            <p>
-              {ended
-                ? 'Ask the host for the next one.'
-                : 'Open the guest link. Request a song. Vote for your favorites.'}
-            </p>
-            {!ended && (
-              <a href={snapshot.party.guestUrl} rel="noreferrer">
-                {snapshot.party.guestUrl.replace(/^https?:\/\//, '')}
-              </a>
-            )}
+          <div className="tv-invite">
+            {!ended && <GuestQRCode url={snapshot.party.guestUrl} />}
+            <div className="tv-join">
+              <h2>
+                {ended ? 'This party has ended.' : 'Join from your phone'}
+              </h2>
+              <p>
+                {ended
+                  ? 'Ask the host for the next one.'
+                  : 'Scan the QR code. Request a song. Vote for your favorites.'}
+              </p>
+              {!ended && (
+                <a href={snapshot.party.guestUrl} rel="noreferrer">
+                  {snapshot.party.guestUrl.replace(/^https?:\/\//, '')}
+                </a>
+              )}
+            </div>
           </div>
           <p className="tv-connection" role="status">
             {connected

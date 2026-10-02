@@ -286,7 +286,10 @@ export function PartyCreation() {
                 {party.status === 'ACTIVE' ? 'Active' : 'Ended'}
               </span>
             </div>
-            <PartyLinks links={party.links} />
+            <PartyLinks
+              links={party.links}
+              active={party.status === 'ACTIVE'}
+            />
           </article>
         ))}
         {nextOffset !== null && (

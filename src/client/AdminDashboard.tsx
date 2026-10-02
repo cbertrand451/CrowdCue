@@ -114,7 +114,7 @@ export function AdminDashboard({
     <div className="admin-dashboard">
       <section aria-label="Party links">
         <h2>Invite your guests</h2>
-        <PartyLinks links={party.links} />
+        <PartyLinks links={party.links} active={party.status === 'ACTIVE'} />
       </section>
       <PlaybackPanel
         token={token}

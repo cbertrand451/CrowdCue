@@ -454,7 +454,7 @@ a {
   display: flex;
   align-items: center;
   gap: clamp(0.5rem, 1vw, 2rem);
-  padding: clamp(0.4rem, 0.4vw, 1.1rem) 0;
+  padding: clamp(0.4rem, 0.3vw, 1.1rem) 0;
   border-top: 1px solid #425148;
 }
 .tv-position {
@@ -482,7 +482,7 @@ a {
   text-overflow: ellipsis;
 }
 .tv-queue-track p {
-  margin: 0.3rem 0;
+  margin: 0.1rem 0;
   color: #b8c3bc;
   font-size: clamp(0.9rem, 1vw, 2.3rem);
   white-space: nowrap;
@@ -653,5 +653,47 @@ a {
   }
   .queue-controls {
     grid-column: 2 / -1;
+  }
+}
+
+.guest-qr {
+  margin: 1rem 0;
+  width: fit-content;
+  max-width: 100%;
+}
+.guest-qr svg {
+  display: block;
+  width: 216px;
+  max-width: 100%;
+  height: auto;
+}
+.guest-qr figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+.tv-invite {
+  display: flex;
+  gap: clamp(1rem, 1.5vw, 3rem);
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+.tv-invite .guest-qr {
+  flex-shrink: 0;
+  margin: 0;
+}
+.tv-invite .guest-qr svg {
+  width: clamp(128px, 10vw, 320px);
+}
+.tv-invite .guest-qr figcaption {
+  display: none;
+}
+@media (max-width: 600px) {
+  .tv-invite {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .tv-invite .guest-qr svg {
+    width: 192px;
   }
 }

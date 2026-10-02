@@ -108,7 +108,7 @@ It should be visually useful from several feet away.
 
 The Display interface is read-only.
 
-The implemented TV interface shows the observed Spotify song, artwork, artist/album, paused/idle states, a bounded progress estimate, and six upcoming songs with locked/backup labels and guest vote totals. Pending requests expose only an approval count. A shared backend observation cache prevents extra Spotify calls per screen; it also observes music before the CrowdCue queue starts. Stale/provider-failed playback is labeled last-seen and never replaced with the locked next song. Ended parties show a finished-session message and saved queue, with no active joining prompt. Display snapshots contain no private links, credentials, host/guest identifiers, request authors, personal vote selections, or admin controls. WebSockets and five-second fallback reads keep the page current. Browser full screen is a presentation-only option. QR-code rendering for the displayed guest link is a separate upcoming milestone.
+The implemented TV interface shows the observed Spotify song, artwork, artist/album, paused/idle states, a bounded progress estimate, and six upcoming songs with locked/backup labels and guest vote totals. Pending requests expose only an approval count. A shared backend observation cache prevents extra Spotify calls per screen; it also observes music before the CrowdCue queue starts. Stale/provider-failed playback is labeled last-seen and never replaced with the locked next song. Ended parties show a finished-session message and saved queue, with no active joining prompt. Display snapshots contain no private links, credentials, host/guest identifiers, request authors, personal vote selections, or admin controls. WebSockets and five-second fallback reads keep the page current. Browser full screen is a presentation-only option. Active displays render a locally generated QR code for the guest joining URL.
 
 
 ---
@@ -257,6 +257,8 @@ The QR code should be prominently available:
 Scanning the QR code should immediately take a guest to the correct party.
 
 Guests should not need to create CrowdCue accounts.
+
+Implemented after task 16: active host invitations and TV displays render local SVG QR codes for the exact Guest URL, with black/white contrast and a four-module quiet zone. No external QR service receives party links. Admin/Display links cannot be encoded. Plain guest links remain available; ended parties hide QR codes.
 
 ---
 
@@ -814,7 +816,7 @@ A recommended implementation sequence is:
 15. Implement Display interface.
 16. Implement admin party controls (host queue ordering, alongside existing settings/moderation).
 17. Finalize secure Admin/Display URLs.
-18. Implement QR-code joining (party controls/settings completed in task 16).
+18. Implement QR-code joining (completed after task 16 at user request).
 19. Refine professional responsive UI.
 20. Harden security and error handling.
 21. Expand automated testing.

@@ -1,7 +1,14 @@
+import { GuestQRCode } from './GuestQRCode';
 import { useState } from 'react';
 import type { PartyDetails } from '../server/parties/contracts.js';
 
-export function PartyLinks({ links }: { links: PartyDetails['links'] }) {
+export function PartyLinks({
+  links,
+  active,
+}: {
+  links: PartyDetails['links'];
+  active: boolean;
+}) {
   const [feedback, setFeedback] = useState<string>();
   async function copyGuestLink() {
     try {
@@ -13,7 +20,10 @@ export function PartyLinks({ links }: { links: PartyDetails['links'] }) {
   }
   return (
     <div className="party-links">
-      <p className="label">Share with your guests</p>
+      <p className="label">
+        {active ? 'Share with your guests' : 'Party links'}
+      </p>
+      {active && <GuestQRCode url={links.guest} />}
       <a href={links.guest} rel="noreferrer">
         {links.guest}
       </a>
