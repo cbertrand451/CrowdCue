@@ -178,6 +178,9 @@ describe.skipIf(!database)(
       return { socket, messages };
     }
     it('rejects missing/wrong origins, wrong roles, forged tokens, and non-owning admin sessions', async () => {
+      expect(
+        (await first.inject('/api/health')).headers['content-security-policy'],
+      ).toContain("connect-src 'self' wss://crowdcue.example");
       const path = `/api/party-links/admin/${token(party.links.admin!)}/live`;
       for (const headers of [{}, { origin: 'https://attacker.example' }])
         await expect(upgrade(first, path, { headers })).rejects.toThrow('403');
@@ -265,6 +268,10 @@ describe.skipIf(!database)(
         guest.messages.length = 0;
         await pool.query(
           'UPDATE party_settings SET updated_at=now() WHERE party_id=$1',
+          [party.id],
+        );
+        await pool.query(
+          'UPDATE party_playback SET display_progress_ms=100,display_observed_at=now() WHERE party_id=$1',
           [party.id],
         );
         await delay(200);

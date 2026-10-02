@@ -143,6 +143,20 @@ export class PlaybackService {
     return tracks;
   }
   private async process(client: PoolClient, s: Session) {
+    let player: Awaited<ReturnType<PlaybackProvider['player']>> = null;
+    let observationError: unknown;
+    if (s.status === 'ACTIVE') {
+      try {
+        player = await this.spotify.player(s.host_account_id);
+        await this.store.observe(s.party_id, player);
+      } catch (error) {
+        observationError = error;
+        await client.query(
+          "UPDATE party_playback SET display_state='UNAVAILABLE' WHERE party_id=$1",
+          [s.party_id],
+        );
+      }
+    }
     if (
       s.status === 'ENDED' &&
       s.close_decided &&
@@ -175,6 +189,7 @@ export class PlaybackService {
     }
     if (!s.enabled || s.status !== 'ACTIVE') {
       if (!(await this.playlists.sync(client, s, playlistId))) return;
+      if (observationError) throw observationError;
       if (
         s.status === 'ENDED' &&
         s.close_decided &&
@@ -205,7 +220,7 @@ export class PlaybackService {
       );
       return;
     }
-    const player = await this.spotify.player(s.host_account_id);
+    if (observationError) throw observationError;
     const queue =
       s.mode === 'QUEUE'
         ? await this.spotify.queueState(s.host_account_id)

@@ -10,7 +10,6 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { usePartyRealtime } from '../src/client/realtime';
 import { PartyPage } from '../src/client/PartyPage';
-import { createPartySchema } from '../src/server/parties/contracts.js';
 
 class FakeSocket {
   static sockets: FakeSocket[] = [];
@@ -105,9 +104,18 @@ it('updates the display page immediately after remote settings and party-end not
       party: {
         name,
         status,
-        settings: createPartySchema.parse({ name: 'Party' }).settings,
         guestUrl: `${window.location.origin}/join/${'g'.repeat(43)}`,
       },
+      nowPlaying: {
+        state: 'UNKNOWN',
+        track: null,
+        progressMs: null,
+        observedAt: null,
+      },
+      queue: [],
+      hasMore: false,
+      votingEnabled: true,
+      pendingCount: 0,
     }),
   }));
   vi.stubGlobal('fetch', fetcher);
@@ -134,15 +142,25 @@ it('keeps periodic page reads when sockets are unavailable', async () => {
       party: {
         name: 'Fallback party',
         status: 'ACTIVE',
-        settings: createPartySchema.parse({ name: 'Party' }).settings,
+        guestUrl: `${window.location.origin}/join/${'g'.repeat(43)}`,
       },
+      nowPlaying: {
+        state: 'UNKNOWN',
+        track: null,
+        progressMs: null,
+        observedAt: null,
+      },
+      queue: [],
+      hasMore: false,
+      votingEnabled: true,
+      pendingCount: 0,
     }),
   }));
   vi.stubGlobal('fetch', fetcher);
   render(<PartyPage role="display" token={'d'.repeat(43)} />);
   await advance(0);
   expect(fetcher).toHaveBeenCalledOnce();
-  await advance(15000);
+  await advance(5000);
   expect(fetcher).toHaveBeenCalledTimes(2);
   expect(
     screen.getByText(

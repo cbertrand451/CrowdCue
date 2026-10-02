@@ -16,6 +16,8 @@ import type { PartyStore } from './parties/store.js';
 import websocket from '@fastify/websocket';
 import type { Pool } from 'pg';
 import { realtimeRoutes } from './realtime/routes.js';
+import { displayRoutes } from './display/routes.js';
+import type { PostgresDisplayStore } from './display/store.js';
 
 export function buildApp(
   config: Config,
@@ -29,6 +31,7 @@ export function buildApp(
     requests?: PostgresRequestStore;
     playback?: PlaybackService;
     realtimePool?: Pool;
+    display?: PostgresDisplayStore;
   } = {},
 ) {
   const app = Fastify({
@@ -47,7 +50,24 @@ export function buildApp(
             ],
           },
   });
-  app.register(helmet);
+  app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        imgSrc: [
+          "'self'",
+          'data:',
+          'https://i.scdn.co',
+          'https://*.spotifycdn.com',
+        ],
+        connectSrc: [
+          "'self'",
+          ...(options.auth
+            ? [options.auth.config.appOrigin.replace(/^http/, 'ws')]
+            : []),
+        ],
+      },
+    },
+  });
   app.register(websocket, {
     options: { maxPayload: 1024, perMessageDeflate: false },
     errorHandler: (_error, socket) => {
@@ -69,6 +89,7 @@ export function buildApp(
     pool: options.realtimePool,
     auth: options.auth,
   });
+  app.register(displayRoutes, { store: options.display });
   app.register(playbackRoutes, {
     auth: options.auth,
     playback: options.playback,

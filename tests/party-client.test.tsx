@@ -36,6 +36,19 @@ const party: PartyDetails = {
     display: `https://crowdcue.example/display/${'d'.repeat(43)}`,
   },
 };
+const displayData = (status: 'ACTIVE' | 'ENDED' = 'ACTIVE') => ({
+  party: { name: party.name, status, guestUrl: party.links.guest },
+  nowPlaying: {
+    state: 'UNKNOWN',
+    track: null,
+    progressMs: null,
+    observedAt: null,
+  },
+  queue: [],
+  hasMore: false,
+  votingEnabled: true,
+  pendingCount: 0,
+});
 const reply = (data: unknown, status = 200) => ({
   ok: status >= 200 && status < 300,
   status,
@@ -261,22 +274,12 @@ it('shows guest/display pages without host controls and handles an ended party',
     screen.queryByRole('link', { name: 'Open admin' }),
   ).not.toBeInTheDocument();
   guest.unmount();
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(
-      reply({
-        party: {
-          name: party.name,
-          status: 'ACTIVE',
-          settings: party.settings,
-          guestUrl: party.links.guest,
-        },
-      }),
-    ),
-  );
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(displayData())));
   render(<PartyPage role="display" token={'d'.repeat(43)} />);
   expect(
-    await screen.findByRole('link', { name: party.links.guest }),
+    await screen.findByRole('link', {
+      name: party.links.guest.replace(/^https?:\/\//, ''),
+    }),
   ).toBeInTheDocument();
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
@@ -299,24 +302,18 @@ it('polls public party state without overlapping requests and stops when unmount
   vi.useFakeTimers();
   const fetcher = vi
     .fn()
-    .mockResolvedValueOnce(
-      reply({
-        party: { name: party.name, status: 'ACTIVE', settings: party.settings },
-      }),
-    )
-    .mockResolvedValueOnce(
-      reply({
-        party: { name: party.name, status: 'ENDED', settings: party.settings },
-      }),
-    );
+    .mockResolvedValueOnce(reply(displayData()))
+    .mockResolvedValueOnce(reply(displayData('ENDED')));
   stubActionFetch(fetcher);
   const view = render(<PartyPage role="display" token={'d'.repeat(43)} />);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });
-  expect(screen.getByText('Party is active.')).toBeInTheDocument();
+  expect(
+    screen.getByRole('heading', { name: 'Ready when you are' }),
+  ).toBeInTheDocument();
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(15000);
+    await vi.advanceTimersByTimeAsync(5000);
   });
   expect(screen.getByText('This party has ended.')).toBeInTheDocument();
   expect(fetcher).toHaveBeenCalledTimes(2);

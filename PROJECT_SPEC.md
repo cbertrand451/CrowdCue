@@ -108,6 +108,9 @@ It should be visually useful from several feet away.
 
 The Display interface is read-only.
 
+The implemented TV interface shows the observed Spotify song, artwork, artist/album, paused/idle states, a bounded progress estimate, and six upcoming songs with locked/backup labels and guest vote totals. Pending requests expose only an approval count. A shared backend observation cache prevents extra Spotify calls per screen; it also observes music before the CrowdCue queue starts. Stale/provider-failed playback is labeled last-seen and never replaced with the locked next song. Ended parties show a finished-session message and saved queue, with no active joining prompt. Display snapshots contain no private links, credentials, host/guest identifiers, request authors, personal vote selections, or admin controls. WebSockets and five-second fallback reads keep the page current. Browser full screen is a presentation-only option. QR-code rendering for the displayed guest link is the separate task 16 milestone.
+
+
 ---
 
 # 4. Spotify Responsibilities
@@ -415,7 +418,7 @@ Private playlist creation uses a durable marker before its non-idempotent POST. 
 
 If queue delivery fails, the host can use the nightly playlist as recovery. The dashboard requires them to clear outstanding manually queued songs in Spotify before explicitly starting recovery. CrowdCue switches to playlist mode, updates the playlist with the committed history followed by the current waiting queue, and starts it at the latest locked song via Spotify's playback API. It never silently starts playback or repeatedly retries an uncertain playback-start command. New requests and vote changes continue updating the playlist. Spotify may not immediately rebuild its active playback order when playlist contents change; CrowdCue does not promise otherwise. Once the session ends, remove uncommitted recovery entries before retaining the final recap.
 
-Playlist operations use host credentials resolved from verified parties. Save/cleanup/recovery controls require the owning host session, private admin token, same-origin POST, strict input validation, and rate limits. New playlist read/removal scopes require existing hosts to reconnect Spotify. The next display-interface milestone remains separate.
+Playlist operations use host credentials resolved from verified parties. Save/cleanup/recovery controls require the owning host session, private admin token, same-origin POST, strict input validation, and rate limits. New playlist read/removal scopes require existing hosts to reconnect Spotify. The TV Display interface reads cached observations and the same CrowdCue ordering through its independent read-only snapshot.
 
 ---
 
@@ -474,7 +477,7 @@ Examples:
 
 WebSockets now send party-scoped refresh notifications to Guest, Admin, and Display pages. Database triggers publish only committed changes through PostgreSQL LISTEN/NOTIFY, including request, vote, moderation, settings, party lifecycle, and playback changes. Each server instance listens independently; no extra message broker is required. Notifications contain only a message type, never identifiers, credentials, private links, or personalized snapshots. Clients then read their existing authorized HTTP endpoints. Guest share links authorize public invalidations; request/queue reads still require the party-scoped guest identity. Display tokens remain read-only; Admin sockets require both the private link and the owning host session. Exact Origin validation prevents cross-site socket use. Connections periodically recheck authorization and heartbeat liveness, have bounded payloads and backlog, and reject all client commands.
 
-The browser opens one socket per role page, batches rapid updates, reconnects with bounded backoff, and reloads snapshots after reconnection or returning online. Existing polling remains a fallback when the socket or database listener is unavailable. The database listener also reconnects and refreshes its connected rooms after a notification gap. Spotify observations remain limited by the backend’s five-second provider polling interval. The existing Display foundation receives live party name/state updates; the dedicated playback display is the next interface milestone.
+The browser opens one socket per role page, batches rapid updates, reconnects with bounded backoff, and reloads snapshots after reconnection or returning online. Existing polling remains a fallback when the socket or database listener is unavailable. The database listener also reconnects and refreshes its connected rooms after a notification gap. Spotify observations remain limited by the backend’s five-second provider polling interval. The TV Display reads its unified snapshot after notifications and on five-second fallback polling, including observed Spotify playback, queue order, party name/state, and joining instructions.
 
 Do not introduce unnecessary infrastructure if a simpler reliable solution satisfies the requirements.
 

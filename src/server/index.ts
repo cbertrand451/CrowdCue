@@ -12,6 +12,7 @@ import { AuthService } from './auth/service.js';
 import { SpotifyClient } from './spotify/client.js';
 import { createDatabase } from './db/index.js';
 import { PostgresPartyStore } from './parties/store.js';
+import { PostgresDisplayStore } from './display/store.js';
 
 const config = readConfig(
   process.argv.includes('--production')
@@ -47,6 +48,10 @@ const playback =
       )
     : undefined;
 const app = buildApp(config, {
+  display:
+    pool && authConfig
+      ? new PostgresDisplayStore(pool, authConfig.appOrigin)
+      : undefined,
   realtimePool: pool,
   playback,
   serveFrontend: config.NODE_ENV === 'production',

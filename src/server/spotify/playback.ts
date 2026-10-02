@@ -25,6 +25,49 @@ const remoteTrack = z.object({
   is_local: z.boolean().optional(),
   is_playable: z.boolean().optional(),
 });
+type Track = SearchResult['tracks'][number];
+export interface SpotifyPlayer {
+  is_playing: boolean;
+  progress_ms?: number | null;
+  item: { id: string | null; uri: string } | null;
+  context?: { uri: string } | null;
+  device?: { is_restricted?: boolean };
+  track?: Track | null;
+}
+function normalizedTrack(item: unknown): Track | null {
+  const result = remoteTrack.safeParse(item);
+  if (
+    !result.success ||
+    result.data.is_local ||
+    result.data.is_playable === false
+  )
+    return null;
+  const t = result.data;
+  const artwork =
+    t.album.images.find((x) => {
+      try {
+        const u = new URL(x.url);
+        return (
+          u.protocol === 'https:' &&
+          !u.username &&
+          !u.password &&
+          (u.hostname === 'i.scdn.co' || u.hostname.endsWith('.spotifycdn.com'))
+        );
+      } catch {
+        return false;
+      }
+    })?.url ?? null;
+  return {
+    id: t.id,
+    title: t.name,
+    artists: t.artists.map((x) => x.name),
+    album: t.album.name,
+    artworkUrl: artwork,
+    durationMs: t.duration_ms,
+    explicit: t.explicit,
+    spotifyUrl: `https://open.spotify.com/track/${t.id}`,
+  };
+}
 export class SpotifyPlayback {
   constructor(private readonly fetcher: SpotifyFetch) {}
   private async call(
@@ -153,40 +196,8 @@ export class SpotifyPlayback {
   ): Promise<SearchResult['tracks']> {
     const tracks: SearchResult['tracks'] = [];
     for (const item of await this.items(token, id)) {
-      const result = remoteTrack.safeParse(item);
-      if (!result.success) continue;
-      const t = result.data;
-      if (
-        t.is_local ||
-        t.is_playable === false ||
-        (!allowExplicit && t.explicit)
-      )
-        continue;
-      const artwork =
-        t.album.images.find((x) => {
-          try {
-            const u = new URL(x.url);
-            return (
-              u.protocol === 'https:' &&
-              !u.username &&
-              !u.password &&
-              (u.hostname === 'i.scdn.co' ||
-                u.hostname.endsWith('.spotifycdn.com'))
-            );
-          } catch {
-            return false;
-          }
-        })?.url ?? null;
-      tracks.push({
-        id: t.id,
-        title: t.name,
-        artists: t.artists.map((x) => x.name),
-        album: t.album.name,
-        artworkUrl: artwork,
-        durationMs: t.duration_ms,
-        explicit: t.explicit,
-        spotifyUrl: `https://open.spotify.com/track/${t.id}`,
-      });
+      const track = normalizedTrack(item);
+      if (track && (allowExplicit || !track.explicit)) tracks.push(track);
     }
     return tracks;
   }
@@ -225,7 +236,7 @@ export class SpotifyPlayback {
       'DELETE',
     );
   }
-  async player(token: string) {
+  async player(token: string): Promise<SpotifyPlayer | null> {
     const result = await this.call('me/player', token);
     if (result === null) return null;
     const parsed = z
@@ -234,13 +245,14 @@ export class SpotifyPlayback {
         progress_ms: z.number().nullable().optional(),
         item: z
           .object({ id: z.string().nullable(), uri: z.string() })
+          .passthrough()
           .nullable(),
         context: z.object({ uri: z.string() }).nullable().optional(),
         device: z.object({ is_restricted: z.boolean().optional() }).optional(),
       })
       .safeParse(result);
     if (!parsed.success) throw new SpotifyError('unavailable');
-    return parsed.data;
+    return { ...parsed.data, track: normalizedTrack(parsed.data.item) };
   }
   async queueState(token: string) {
     const result = z

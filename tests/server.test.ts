@@ -17,6 +17,15 @@ describe('application', () => {
         expect(response.headers['content-type']).toContain('text/html');
         expect(response.headers['cache-control']).toBe('no-store');
         expect(response.headers['referrer-policy']).toBe('no-referrer');
+        expect(response.headers['content-security-policy']).toContain(
+          'https://i.scdn.co',
+        );
+        expect(response.headers['content-security-policy']).toContain(
+          'https://*.spotifycdn.com',
+        );
+        expect(response.headers['content-security-policy']).toContain(
+          "default-src 'self'",
+        );
         expect(response.headers['x-robots-tag']).toBe(
           'noindex, nofollow, noarchive',
         );

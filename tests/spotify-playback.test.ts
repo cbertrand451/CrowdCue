@@ -208,3 +208,46 @@ it('accepts only Spotify playlist links, URIs, or IDs', () => {
     ),
   ).toBeUndefined();
 });
+it('normalizes observed track metadata and filters unsafe artwork and private device fields', async () => {
+  const raw = {
+    id,
+    uri: `spotify:track:${id}`,
+    name: 'Current song',
+    artists: [{ name: 'Current artist' }],
+    album: {
+      name: 'Current album',
+      images: [
+        { url: 'https://attacker.example/image' },
+        { url: 'https://i.scdn.co/image/album' },
+      ],
+    },
+    duration_ms: 180000,
+    explicit: true,
+  };
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    response({
+      is_playing: false,
+      progress_ms: 45000,
+      item: raw,
+      context: null,
+      device: { is_restricted: false, name: 'Private device' },
+    }),
+  );
+  const api = new SpotifyPlayback(fetcher);
+  const player = await api.player('fixture-access');
+  expect(player?.track).toMatchObject({
+    title: 'Current song',
+    artists: ['Current artist'],
+    artworkUrl: 'https://i.scdn.co/image/album',
+    explicit: true,
+  });
+  expect(player?.device).not.toHaveProperty('name');
+  fetcher.mockResolvedValue(
+    response({
+      is_playing: true,
+      item: { id: null, uri: 'spotify:local:unsupported' },
+      progress_ms: 1,
+    }),
+  );
+  expect((await api.player('fixture-access'))?.track).toBeNull();
+});

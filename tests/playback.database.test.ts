@@ -191,6 +191,43 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       await admin.end();
     }
   });
+  it('observes music before queue start and retains last-seen playback on provider failure', async () => {
+    const party = await create();
+    vi.mocked(provider.player).mockResolvedValue({
+      is_playing: true,
+      progress_ms: 12000,
+      item: { id: track('h').id, uri: `spotify:track:${track('h').id}` },
+      track: track('h'),
+    });
+    await service.tick();
+    let state = (
+      await pool.query(
+        'SELECT display_track,display_state,display_progress_ms,enabled FROM party_playback WHERE party_id=$1',
+        [party.id],
+      )
+    ).rows[0];
+    expect(state).toMatchObject({
+      display_track: { title: 'Song h' },
+      display_state: 'PLAYING',
+      display_progress_ms: 12000,
+      enabled: false,
+    });
+    expect(provider.enqueue).not.toHaveBeenCalled();
+    vi.mocked(provider.player).mockRejectedValue(
+      new SpotifyError('unavailable'),
+    );
+    await service.tick();
+    state = (
+      await pool.query(
+        'SELECT display_track,display_state FROM party_playback WHERE party_id=$1',
+        [party.id],
+      )
+    ).rows[0];
+    expect(state).toMatchObject({
+      display_track: { title: 'Song h' },
+      display_state: 'UNAVAILABLE',
+    });
+  });
   it('keeps three upcoming songs, appends guests in fourth place, and locks only the front across restarts', async () => {
     const p = await create(),
       join = token(p.links.guest),

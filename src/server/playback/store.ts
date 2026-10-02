@@ -11,6 +11,8 @@ import { RequestError } from '../requests/contracts.js';
 import { playbackStatusSchema, type PlaybackStatus } from './contracts.js';
 import { upcoming } from './ordering.js';
 import type { SearchResult } from '../search/contracts.js';
+import { trackSchema } from '../search/contracts.js';
+import type { SpotifyPlayer } from '../spotify/playback.js';
 export interface Session {
   party_id: string;
   host_account_id: string;
@@ -93,6 +95,44 @@ export class PlaybackStore {
       await client.query('SELECT id FROM parties WHERE id=$1 FOR UPDATE', [id]);
       const s = await this.session(client, id);
       return work(client, s);
+    });
+  }
+  async observe(id: string, player: SpotifyPlayer | null) {
+    await this.change(id, async (client, s) => {
+      if (s.status !== 'ACTIVE') return;
+      let track = player?.track ?? null;
+      if (
+        !track &&
+        player?.item?.id &&
+        player.item.uri === `spotify:track:${player.item.id}`
+      ) {
+        const cached = (
+          await client.query<{ track: unknown }>(
+            "SELECT track FROM playback_entries WHERE party_id=$1 AND track->>'id'=$2 ORDER BY sequence DESC LIMIT 1",
+            [id, player.item.id],
+          )
+        ).rows[0]?.track;
+        const parsed = trackSchema.safeParse(cached);
+        if (parsed.success) track = parsed.data;
+      }
+      const state =
+        !player || (!player.item && !player.is_playing)
+          ? 'IDLE'
+          : player.is_playing
+            ? 'PLAYING'
+            : 'PAUSED';
+      const progress = player?.progress_ms;
+      await client.query(
+        'UPDATE party_playback SET display_track=$2,display_state=$3,display_progress_ms=$4,display_observed_at=now() WHERE party_id=$1',
+        [
+          id,
+          track ? JSON.stringify(track) : null,
+          state,
+          progress != null && Number.isFinite(progress)
+            ? Math.max(0, Math.floor(progress))
+            : null,
+        ],
+      );
     });
   }
   async schedule(

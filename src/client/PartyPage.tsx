@@ -1,3 +1,4 @@
+import { TVDisplay } from './TVDisplay';
 import { LiveRevision, usePartyRealtime } from './realtime';
 import { useCallback, useEffect, useState } from 'react';
 import { z } from 'zod';
@@ -15,13 +16,17 @@ const publicResponse = z.object({
 });
 const adminResponse = z.object({ party: partyDetailsSchema });
 type PageParty = z.infer<typeof publicResponse>['party'];
-export function PartyPage({
-  role,
-  token,
-}: {
+export function PartyPage(props: {
   role: 'guest' | 'admin' | 'display';
   token: string;
 }) {
+  return props.role === 'display' ? (
+    <TVDisplay key={props.token} token={props.token} />
+  ) : (
+    <RolePage role={props.role} token={props.token} />
+  );
+}
+function RolePage({ role, token }: { role: 'guest' | 'admin'; token: string }) {
   const { revision, connected } = usePartyRealtime(role, token);
   const [party, setParty] = useState<PageParty | PartyDetails>();
   const [error, setError] = useState<string>();
@@ -80,9 +85,7 @@ export function PartyPage({
   }, [role, token, refreshing, revision]);
   return (
     <LiveRevision.Provider value={revision}>
-      <main
-        className={`party-page ${role === 'display' ? 'display-page' : ''}`}
-      >
+      <main className="party-page">
         <p className="wordmark">CrowdCue</p>
         {party && (
           <p className="muted" role="status">
@@ -110,11 +113,7 @@ export function PartyPage({
         {party && (
           <>
             <p className="label">
-              {role === 'admin'
-                ? 'Your party'
-                : role === 'display'
-                  ? 'Party display'
-                  : 'You’re invited'}
+              {role === 'admin' ? 'Your party' : 'You’re invited'}
             </p>
             <h1>{party.name}</h1>
             <p
@@ -144,26 +143,15 @@ export function PartyPage({
                 }}
               />
             )}
-            {role === 'display' && 'guestUrl' in party && party.guestUrl && (
-              <>
-                <p>Join the party</p>
-                <a href={party.guestUrl} rel="noreferrer">
-                  {party.guestUrl}
-                </a>
-              </>
-            )}
-            {role === 'display' && party.status === 'ACTIVE' && (
-              <p className="muted">Live playback display is coming next.</p>
-            )}
           </>
         )}
-        {role !== 'display' && (
+        {
           <p>
             <a href="/" rel="noreferrer">
               {role === 'admin' ? 'Back to your parties' : 'CrowdCue home'}
             </a>
           </p>
-        )}
+        }
       </main>
     </LiveRevision.Provider>
   );
