@@ -82,7 +82,7 @@ The host should be able to:
 
 The admin interface should be designed primarily for the host's phone or laptop.
 
-The dashboard foundation includes Spotify connection status, private role links, editing the party name/request preferences, and confirmed party ending. Only the owning host with the Admin token may mutate a party. Ending is idempotent, preserves Spotify playback, and makes party settings read-only. Request moderation, queue controls, playback status, and QR codes are added with their respective features.
+The dashboard foundation includes Spotify connection status, private role links, editing the party name/request preferences, and confirmed party ending. Only the owning host with the Admin token may mutate a party. Ending is idempotent, preserves Spotify playback, and makes party settings read-only. Request lists and approval/rejection/removal are implemented with song requests. Queue controls, playback status, and QR codes are added with their respective features.
 
 ---
 
@@ -342,6 +342,8 @@ Exact implementation may differ if a cleaner model is appropriate.
 # 12. Duplicate Requests
 
 The same Spotify track should generally not appear multiple times as separate active requests within the same party.
+
+Song request creation accepts only a Spotify track ID and a guest-scoped idempotency key. The backend fetches canonical metadata and revalidates party rules before saving. Active duplicates return the existing request, without automatically voting or changing its author. Required names, explicit-song restrictions, per-guest active limits, and cooldowns are enforced on the server. Requests start pending when approval is required, and approved otherwise. The owning host may approve, reject, or remove pending/approved requests; ended parties are read-only. Guest lists include active requests and their own history. Approval does not itself send a song to Spotify; delivery is a later task.
 
 If another guest attempts to request an already-requested song, the application should direct them toward the existing request and/or treat their action as support for that request.
 

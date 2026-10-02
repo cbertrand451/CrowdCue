@@ -58,6 +58,36 @@ const searchResponse = z.object({
     next: z.string().nullable(),
   }),
 });
+const providerTrackSchema =
+  searchResponse.shape.tracks.shape.items.element.unwrap();
+function normalizedTrack(
+  track: z.infer<typeof providerTrackSchema>,
+): SearchResult['tracks'][number] {
+  const artwork = track.album.images.find((image) => {
+    try {
+      const value = new URL(image.url);
+      return (
+        value.protocol === 'https:' &&
+        !value.username &&
+        !value.password &&
+        (value.hostname === 'i.scdn.co' ||
+          value.hostname.endsWith('.spotifycdn.com'))
+      );
+    } catch {
+      return false;
+    }
+  });
+  return {
+    id: track.id,
+    title: track.name,
+    artists: track.artists.map((artist) => artist.name),
+    album: track.album.name,
+    artworkUrl: artwork?.url ?? null,
+    durationMs: track.duration_ms,
+    explicit: track.explicit,
+    spotifyUrl: `https://open.spotify.com/track/${track.id}`,
+  };
+}
 export interface TokenGrant {
   accessToken: string;
   refreshToken: string;
@@ -229,35 +259,30 @@ export class SpotifyClient {
             (allowExplicit || !track.explicit),
         )
         .map((track) => {
-          const artwork = track.album.images.find((image) => {
-            try {
-              const value = new URL(image.url);
-              return (
-                value.protocol === 'https:' &&
-                !value.username &&
-                !value.password &&
-                (value.hostname === 'i.scdn.co' ||
-                  value.hostname.endsWith('.spotifycdn.com'))
-              );
-            } catch {
-              return false;
-            }
-          });
-          return {
-            id: track.id,
-            title: track.name,
-            artists: track.artists.map((artist) => artist.name),
-            album: track.album.name,
-            artworkUrl: artwork?.url ?? null,
-            durationMs: track.duration_ms,
-            explicit: track.explicit,
-            spotifyUrl: `https://open.spotify.com/track/${track.id}`,
-          };
+          return normalizedTrack(track);
         }),
       nextOffset:
         page.next && page.items.length > 0 && offset + 10 <= 990
           ? offset + 10
           : null,
     };
+  }
+  async track(accessToken: string, id: string) {
+    const parsed = providerTrackSchema.safeParse(
+      await this.request(`https://api.spotify.com/v1/tracks/${id}`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      }),
+    );
+    if (
+      !parsed.success ||
+      parsed.data.id !== id ||
+      parsed.data.is_local ||
+      parsed.data.is_playable === false ||
+      !parsed.data.name.trim() ||
+      !parsed.data.artists.some((artist) => artist.name.trim()) ||
+      parsed.data.duration_ms <= 0
+    )
+      throw new SpotifyError('unavailable');
+    return normalizedTrack(parsed.data);
   }
 }

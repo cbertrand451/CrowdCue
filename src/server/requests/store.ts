@@ -1,0 +1,266 @@
+import type pg from 'pg';
+import type { PoolClient } from 'pg';
+import { hashToken } from '../auth/crypto.js';
+import { inTransaction } from '../db/index.js';
+import type { SearchResult } from '../search/contracts.js';
+import { RequestError, type SongRequest } from './contracts.js';
+type Track = SearchResult['tracks'][number];
+interface Context {
+  id: string;
+  host_account_id: string;
+  status: string;
+  require_guest_names: boolean;
+  approval_required: boolean;
+  allow_explicit_tracks: boolean;
+  max_active_requests_per_guest: number | null;
+  request_cooldown_seconds: number;
+  guest_id: string | null;
+  display_name: string | null;
+}
+interface Row {
+  id: string;
+  spotify_track_id: string;
+  track_name: string;
+  artist_name: string;
+  album_name: string;
+  album_art_url: string | null;
+  duration_ms: number;
+  is_explicit: boolean;
+  status: SongRequest['status'];
+  display_name: string | null;
+  requested_by: string;
+  created_at: Date;
+}
+const active = "('REQUESTED', 'APPROVED', 'QUEUED')";
+function details(row: Row, guestId?: string | null): SongRequest {
+  return {
+    id: row.id,
+    status: row.status,
+    requestedBy: row.display_name,
+    isOwn: row.requested_by === guestId,
+    createdAt: row.created_at.toISOString(),
+    track: {
+      id: row.spotify_track_id,
+      title: row.track_name,
+      artists: [row.artist_name],
+      album: row.album_name,
+      artworkUrl: row.album_art_url,
+      durationMs: row.duration_ms,
+      explicit: row.is_explicit,
+      spotifyUrl: `https://open.spotify.com/track/${row.spotify_track_id}`,
+    },
+  };
+}
+export class PostgresRequestStore {
+  constructor(private readonly pool: pg.Pool) {}
+  private async context(
+    client: pg.Pool | PoolClient,
+    token: string,
+    session?: string,
+    lock = false,
+    mutation = true,
+  ) {
+    const result = await client.query<Context>(
+      `SELECT p.id, p.host_account_id, p.status, s.require_guest_names, s.approval_required, s.allow_explicit_tracks, s.max_active_requests_per_guest, s.request_cooldown_seconds,
+      g.id AS guest_id, g.display_name FROM parties p JOIN party_settings s ON s.party_id = p.id
+      LEFT JOIN guests g ON g.party_id = p.id AND g.session_token_hash = $2 AND g.expires_at > now()
+      WHERE p.guest_join_token = $1 ${lock ? 'FOR UPDATE OF p' : ''}`,
+      [token, session ? hashToken(session) : null],
+    );
+    const party = result.rows[0];
+    if (!party) throw new RequestError(404, 'Party not found.');
+    if (!party.guest_id)
+      throw new RequestError(401, 'Join this party again to request songs.');
+    if (mutation && party.status !== 'ACTIVE')
+      throw new RequestError(409, 'This party has ended.');
+    if (mutation && party.require_guest_names && !party.display_name)
+      throw new RequestError(
+        400,
+        'Add your guest name before requesting songs.',
+      );
+    return party;
+  }
+  private async existing(
+    client: pg.Pool | PoolClient,
+    party: Context,
+    id: string,
+    key: string,
+  ) {
+    const attempt = await client.query<{
+      request_id: string;
+      spotify_track_id: string;
+    }>(
+      'SELECT request_id, spotify_track_id FROM song_request_attempts WHERE guest_id = $1 AND idempotency_key = $2',
+      [party.guest_id, key],
+    );
+    if (attempt.rows[0] && attempt.rows[0].spotify_track_id !== id)
+      throw new RequestError(
+        409,
+        'This request attempt already used a different song. Start a new attempt.',
+      );
+    const result = await client.query<Row>(
+      `SELECT r.*, g.display_name FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND ${attempt.rows[0] ? 'r.id = $2' : `r.spotify_track_id = $2 AND r.status IN ${active}`}`,
+      [party.id, attempt.rows[0]?.request_id ?? id],
+    );
+    return result.rows[0];
+  }
+  private async remember(
+    client: PoolClient,
+    party: Context,
+    id: string,
+    key: string,
+    requestId: string,
+  ) {
+    await client.query(
+      'INSERT INTO song_request_attempts (party_id, guest_id, idempotency_key, spotify_track_id, request_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (guest_id, idempotency_key) DO NOTHING',
+      [party.id, party.guest_id, key, id, requestId],
+    );
+  }
+  async prepare(
+    token: string,
+    session: string | undefined,
+    id: string,
+    key: string,
+  ) {
+    return inTransaction(this.pool, async (client) => {
+      const party = await this.context(client, token, session, true);
+      const row = await this.existing(client, party, id, key.toLowerCase());
+      if (row) {
+        await this.remember(client, party, id, key.toLowerCase(), row.id);
+        return {
+          result: { request: details(row, party.guest_id), created: false },
+          hostId: party.host_account_id,
+        };
+      }
+      return { result: null, hostId: party.host_account_id };
+    });
+  }
+  async create(
+    token: string,
+    session: string | undefined,
+    track: Track,
+    key: string,
+  ) {
+    key = key.toLowerCase();
+    return inTransaction(this.pool, async (client) => {
+      const party = await this.context(client, token, session, true);
+      const old = await this.existing(client, party, track.id, key);
+      if (old) {
+        await this.remember(client, party, track.id, key, old.id);
+        return { request: details(old, party.guest_id), created: false };
+      }
+      if (track.explicit && !party.allow_explicit_tracks)
+        throw new RequestError(
+          400,
+          'Explicit songs are turned off for this party.',
+        );
+      const usage = (
+        await client.query<{ count: string; wait: number }>(
+          `SELECT count(*) FILTER (WHERE status IN ${active}) AS count,
+        greatest(0, ceil($3 - extract(epoch FROM (now() - max(created_at)))))::int AS wait FROM song_requests WHERE party_id = $1 AND requested_by = $2`,
+          [party.id, party.guest_id, party.request_cooldown_seconds],
+        )
+      ).rows[0];
+      if (
+        party.max_active_requests_per_guest !== null &&
+        Number(usage.count) >= party.max_active_requests_per_guest
+      )
+        throw new RequestError(
+          409,
+          'You have reached this party’s active request limit.',
+        );
+      if (usage.wait > 0)
+        throw new RequestError(
+          429,
+          `Wait ${usage.wait} seconds before requesting another song.`,
+          usage.wait,
+        );
+      const saved = await client.query<Row>(
+        `INSERT INTO song_requests (party_id, requested_by, spotify_track_id, track_name, artist_name, album_name, album_art_url, duration_ms, is_explicit, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [
+          party.id,
+          party.guest_id,
+          track.id,
+          track.title,
+          track.artists.join(', '),
+          track.album,
+          track.artworkUrl,
+          track.durationMs,
+          track.explicit,
+          party.approval_required ? 'REQUESTED' : 'APPROVED',
+        ],
+      );
+      const row = { ...saved.rows[0], display_name: party.display_name };
+      await this.remember(client, party, track.id, key, row.id);
+      return { request: details(row, party.guest_id), created: true };
+    });
+  }
+  private async list(partyId: string, offset: number, guestId?: string | null) {
+    const result = await this.pool.query<Row>(
+      `SELECT r.*, g.display_name FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 ${guestId ? `AND (r.status IN ${active} OR r.requested_by = $3)` : ''} ORDER BY r.created_at DESC, r.id DESC LIMIT 51 OFFSET $2`,
+      guestId ? [partyId, offset, guestId] : [partyId, offset],
+    );
+    return {
+      requests: result.rows.slice(0, 50).map((row) => details(row, guestId)),
+      nextOffset: result.rows.length > 50 ? offset + 50 : null,
+    };
+  }
+  async guestList(token: string, session: string | undefined, offset: number) {
+    const party = await this.context(this.pool, token, session, false, false);
+    return this.list(party.id, offset, party.guest_id);
+  }
+  private async hostParty(
+    client: pg.Pool | PoolClient,
+    hostId: string,
+    token: string,
+    lock = false,
+  ) {
+    const result = await client.query<{ id: string; status: string }>(
+      `SELECT id, status FROM parties WHERE host_account_id = $1 AND admin_token_hash = $2 ${lock ? 'FOR UPDATE' : ''}`,
+      [hostId, hashToken(token)],
+    );
+    if (!result.rows[0]) throw new RequestError(404, 'Party not found.');
+    return result.rows[0];
+  }
+  async adminList(hostId: string, token: string, offset: number) {
+    const party = await this.hostParty(this.pool, hostId, token);
+    return this.list(party.id, offset);
+  }
+  async moderate(
+    hostId: string,
+    token: string,
+    id: string,
+    action: 'approve' | 'reject' | 'remove',
+  ) {
+    return inTransaction(this.pool, async (client) => {
+      const party = await this.hostParty(client, hostId, token, true);
+      if (party.status !== 'ACTIVE')
+        throw new RequestError(409, 'This party has ended.');
+      const row = (
+        await client.query<Row>(
+          'SELECT r.*, g.display_name FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND r.id = $2 FOR UPDATE OF r',
+          [party.id, id],
+        )
+      ).rows[0];
+      if (!row) throw new RequestError(404, 'Request not found.');
+      const target =
+        action === 'approve'
+          ? 'APPROVED'
+          : action === 'reject'
+            ? 'REJECTED'
+            : 'REMOVED';
+      if (row.status === target) return details(row);
+      if (
+        !['REQUESTED', 'APPROVED'].includes(row.status) ||
+        (action === 'approve' && row.status !== 'REQUESTED')
+      )
+        throw new RequestError(409, 'This request can no longer be changed.');
+      await client.query(
+        'UPDATE song_requests SET status = $2, updated_at = now() WHERE id = $1',
+        [id, target],
+      );
+      return details({ ...row, status: target });
+    });
+  }
+}

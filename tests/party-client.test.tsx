@@ -42,6 +42,16 @@ const reply = (data: unknown, status = 200) => ({
   json: async () => data,
 });
 
+function stubActionFetch(
+  fetcher: (url: string, options?: RequestInit) => unknown,
+) {
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/requests?')
+      ? Promise.resolve(reply({ requests: [], nextOffset: null }))
+      : fetcher(url, options),
+  );
+}
+
 it('creates a party with chosen preferences and blocks double submission', async () => {
   let resolveCreation!: (value: ReturnType<typeof reply>) => void;
   const pending = new Promise<ReturnType<typeof reply>>((resolve) => {
@@ -54,7 +64,7 @@ it('creates a party with chosen preferences and blocks double submission', async
         ? pending
         : Promise.resolve(reply({ parties: [], nextOffset: null })),
     );
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   render(<PartyCreation />);
   await screen.findByText('No parties yet. Create your first one.');
   const name = screen.getByLabelText('Party name');
@@ -108,7 +118,7 @@ it('reuses the same creation key after an uncertain network failure', async () =
         ? Promise.reject(new Error('offline'))
         : Promise.resolve(reply({ party }));
     });
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   render(<PartyCreation />);
   await screen.findByText('No parties yet. Create your first one.');
   fireEvent.change(screen.getByLabelText('Party name'), {
@@ -153,7 +163,7 @@ it('shows useful recovery for list failures and expired create sessions', async 
         options?.method === 'POST' ? reply({}, 401) : reply({}, 503),
       ),
     );
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   render(<PartyCreation />);
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Unable to load your parties',
@@ -270,7 +280,7 @@ it('polls public party state without overlapping requests and stops when unmount
         party: { name: party.name, status: 'ENDED', settings: party.settings },
       }),
     );
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   const view = render(<PartyPage role="display" token={'d'.repeat(43)} />);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
@@ -295,7 +305,7 @@ it('saves admin preferences and requires confirmation before ending a party', as
   const fetcher = vi
     .fn()
     .mockResolvedValue(reply({ party: { ...party, name: 'Saturday party' } }));
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   render(
     <AdminDashboard
       party={party}
@@ -332,7 +342,7 @@ it('saves admin preferences and requires confirmation before ending a party', as
 it('keeps ended dashboards read-only and clears access on an expired session', async () => {
   const { AdminDashboard } = await import('../src/client/AdminDashboard');
   const fetcher = vi.fn().mockResolvedValue(reply({}, 401));
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   const onExpired = vi.fn();
   const view = render(
     <AdminDashboard
@@ -365,7 +375,7 @@ it('cancels dashboard mutations on unmount without restoring private details', a
     resolve = done;
   });
   const fetcher = vi.fn().mockReturnValue(pending);
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   const onChange = vi.fn();
   const view = render(
     <AdminDashboard

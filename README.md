@@ -1,6 +1,6 @@
 # CrowdCue
 
-CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Spotify song search is implemented; requests, voting, and Spotify queue operations are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
+CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Spotify song search and song requests with host moderation are implemented; voting and Spotify queue operations are upcoming milestones. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
 ## Architecture and stack
 
@@ -155,11 +155,11 @@ Guest/Admin/Display URLs use independent cryptographically random 256-bit tokens
 
 All party API responses and role pages use no-store/no-referrer headers and `X-Robots-Tag: noindex, nofollow, noarchive`. Crawler directives discourage indexing; authorization still controls private access. Malformed role-page tokens return a generic 404 without echoing the token; syntactically valid links load the page and are verified by the role-specific API. Request bodies, tokens, and raw database errors are not logged. Per-process IP limits allow 10 create attempts, 60 owner/admin reads, and 300 public reads per minute; deployment still needs shared edge limits and trusted proxy configuration.
 
-Production serves the React entry point at all three role URLs so bookmarked links and page refreshes work. The current role pages show persistent party details and joined guests can search Spotify; requests, moderation, QR codes, and the full display are later tasks. They poll party state every 15 seconds, with no overlapping requests, so an ended party is reflected on open pages. The owning host can now rename a party, change its request preferences, and end it from the Admin dashboard. Ended parties remain readable and cannot be reopened or edited. Ending a party does not stop Spotify playback.
+Production serves the React entry point at all three role URLs so bookmarked links and page refreshes work. The current role pages show persistent party details and joined guests can search Spotify; QR codes and the full display are later tasks. They poll party state every 15 seconds, with no overlapping requests, so an ended party is reflected on open pages. The owning host can now rename a party, change its request preferences, and end it from the Admin dashboard. Ended parties remain readable and cannot be reopened or edited. Ending a party does not stop Spotify playback.
 
 ## Guest interface and sessions
 
-Opening a Guest link shows the party name, active/ended state, and current preferences without requiring a Spotify or CrowdCue account. Tap **Join party** to join anonymously or enter an optional name. When the host requires guest names, the server enforces a trimmed name of 1–80 characters. Control characters and extra input fields are rejected. Existing guests can change or clear an optional name; a newly required name prompts them to add one. Joined guests can search Spotify; requesting songs and voting are upcoming milestones.
+Opening a Guest link shows the party name, active/ended state, and current preferences without requiring a Spotify or CrowdCue account. Tap **Join party** to join anonymously or enter an optional name. When the host requires guest names, the server enforces a trimmed name of 1–80 characters. Control characters and extra input fields are rejected. Existing guests can change or clear an optional name; a newly required name prompts them to add one. Joined guests can search Spotify, request songs, and view request status. Voting is an upcoming milestone.
 
 `GET /api/party-links/guest/:token/session` returns this browser's guest identity or `null`. `POST` on the same endpoint joins the party or updates the current guest name. POST requires the configured Origin and bounded JSON, and is limited to 30 attempts per minute per process/IP; GET permits 300. Tokens from Admin or Display links do not resolve a guest party. The guest interface never includes private host links or Spotify credentials.
 
@@ -169,11 +169,32 @@ Join/name changes lock the party row against simultaneous ending/settings update
 
 ## Spotify song search
 
-Joined guests in active parties can search songs, artists, or albums. Search waits 400 ms after typing, requires 2–200 characters, and shows title, artists, album/artwork, duration, explicit status, and a link to the track on Spotify. Paging loads 10 provider items at a time, removes duplicate displayed IDs, and stops before Spotify's bounded offset range. Unavailable/local tracks and explicit songs disallowed by the host are filtered on the backend. A page may be empty after filtering while more results remain. Requests and votes are not submitted by this milestone.
+Joined guests in active parties can search songs, artists, or albums. Search waits 400 ms after typing, requires 2–200 characters, and shows title, artists, album/artwork, duration, explicit status, and a link to the track on Spotify. Paging loads 10 provider items at a time, removes duplicate displayed IDs, and stops before Spotify's bounded offset range. Unavailable/local tracks and explicit songs disallowed by the host are filtered on the backend. A page may be empty after filtering while more results remain. Results include song-request buttons; voting remains an upcoming milestone.
 
 `GET /api/party-links/guest/:token/search?q=...&offset=...` requires this party's unexpired guest cookie, an active party, and a name when required. Client-supplied host IDs and unexpected query fields are rejected. The host account is resolved only through the verified party. The server calls Spotify's track-search API with that host's encrypted credentials, proactively refreshes expiring tokens, and retries one Spotify 401 after refresh. No host login cookie is needed by a guest; host sign-out does not disconnect the party's stored Spotify credentials.
 
 Search is limited to 30 requests per minute per process/IP, times out provider calls after 10 seconds, and returns safe errors. Spotify 429s preserve bounded `Retry-After` guidance. Guests are told when search is unavailable or a host reconnect may be needed. The client cancels obsolete searches and ignores stale responses on query changes, navigation, and party ending. Only normalized track metadata is returned; provider errors, next-page URLs, and credentials stay on the backend. Artwork uses HTTPS Spotify image hosts, with a fallback when unavailable. Existing no-store/no-referrer/noindex protections also cover search. Production still needs shared edge rate limits; browser cancellation does not cancel an already-started provider request.
+
+## Song requests and host moderation
+
+Run `npm run db:migrate` before starting this build. Migration 004 adds persistent guest-scoped request-attempt keys and a cooldown index without changing existing requests, parties, or credentials.
+
+Use **Request song** on a search result. The client sends only the Spotify track ID plus a UUID `Idempotency-Key`; the backend resolves the party host and fetches canonical track metadata from Spotify before saving a new request. Titles, artists, artwork, duration, explicit status, author, and status cannot be supplied by the browser. Metadata is cached in the request row for later display. New requests use `REQUESTED` when host approval is required and `APPROVED` otherwise; approval means accepted by CrowdCue, and does not place a song in Spotify's queue yet.
+
+A duplicate active track returns its existing request and directs the guest to **View requests**, without adding a duplicate or voting automatically. The original requester remains the author. A retry of the same guest/key/track returns the saved request even after moderation, with no provider call; reusing a key for a different track returns 409. A fresh attempt may request a previously rejected, removed, or played song again. The frontend prevents overlapping submissions and retains a key after an uncertain failure. After a confirmed success, requesting that song again starts a new intent, which still collapses against any active duplicate.
+
+Mutations require an active party, its unexpired guest cookie, a name when required, and the exact configured Origin. The server enforces explicit-song restrictions, active-request limits, and a cooldown measured from the guest's latest request, including moderated history. Duplicate/replayed requests do not consume another slot or restart the cooldown. A party-row lock serializes insertion and moderation against rule changes and ending; Spotify I/O happens outside the transaction, with all rules revalidated before insert. The existing database unique index is the final guard against duplicate active tracks.
+
+| Endpoint                                              | Behavior                                                                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /api/party-links/guest/:token/requests?offset=0` | Active party requests plus this guest's own history; guest session required        |
+| `POST /api/party-links/guest/:token/requests`         | Submit `{ "trackId": "..." }` with a UUID request key                              |
+| `GET /api/party-links/admin/:token/requests?offset=0` | All requests; owning host session and Admin token required                         |
+| `POST /api/party-links/admin/:token/requests/:id`     | Submit `{ "action": "approve" }`, `reject`, or `remove`; owner and Origin required |
+
+Lists show 50 records per page, newest first, and poll every 15 seconds. They expose song metadata, a display name, status, and an own-request flag, while keeping account/session identifiers and credentials private. Admins can approve pending requests or reject/remove pending or approved requests. Repeating an already-applied action is safe; incompatible transitions and changes to queued/played requests return 409. Ended parties retain read-only lists and reject new requests/moderation. Current host controls do not alter Spotify playback or queue state.
+
+Per-process/IP limits permit 20 submissions, 120 guest list reads, 60 admin list reads, and 30 moderation attempts per minute. Cooldown/provider limits include `Retry-After`. Safe errors and no-store/no-referrer/noindex protections cover request endpoints. Request creation, retries, concurrent duplicates, moderation, policy changes during metadata fetch, and browser interactions are tested with real PostgreSQL and fixture Spotify responses. Live Spotify validation requires host OAuth consent.
 
 ## Admin dashboard
 
@@ -181,7 +202,7 @@ Open the private Admin link from **Your parties**. The dashboard shows Spotify c
 
 `POST /api/party-links/admin/:token/settings` accepts the validated party name/settings shape; `POST /api/party-links/admin/:token/end` accepts `{}`. Both require the owning host session, the party's Admin token, the exact configured Origin, and bounded JSON. Mutations are limited to 30 attempts per minute per process/IP. Database row locks serialize settings changes against ending; an ended party rejects edits, while repeated end calls retain the original end timestamp. Public guest/display pages reflect the ended state through their existing polling.
 
-Request lists, approval/rejection, queue ordering, currently playing tracks, and QR codes depend on upcoming milestones and are not presented as functioning controls. Queue mode is displayed but preserved during edits until queue delivery is implemented.
+The dashboard includes request lists and approval/rejection/removal. Queue ordering, currently playing tracks, and QR codes depend on upcoming milestones. Queue mode is displayed but preserved during edits until queue delivery is implemented.
 
 ## Database structure and migrations
 
@@ -203,6 +224,7 @@ The initial schema includes:
 - `parties` and `party_settings`: host ownership, active/ended lifecycle, separate join/admin/display identifiers, backup playlist reference, and typed settings.
 - `guests`: party-scoped expiring guest sessions and optional display names.
 - `song_requests`: cached Spotify metadata, moderation states, optional manual ordering, and timestamps.
+- `song_request_attempts`: guest-scoped creation keys pointing to the canonical request for duplicate/retry recovery.
 - `votes`: one vote per guest/request, with foreign keys requiring the voter and request to belong to the same party.
 - `spotify_queue_operations`: one durable queue coordination record per request, including an UNKNOWN state for uncertain external outcomes.
 
@@ -224,6 +246,6 @@ npm run check
 
 The test runner does not load `.env` automatically. Database tests create random isolated schemas and drop only those schemas afterward; the test role needs schema creation privileges. They verify migrations, settings/lifecycle constraints, concurrent duplicate requests/votes, cross-party references, rollback/deletion behavior, OAuth/session behavior, party creation transactions/idempotency, host ownership, role isolation, and link recovery. Frontend tests cover creation preferences, retries, sign-out privacy, link pages, and state polling. Ordinary `npm test` skips database tests when `TEST_DATABASE_URL` is absent; `npm run test:db` fails if it is absent.
 
-The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **Spotify song search is complete. Next task: implement song requests.**
+The server remains runnable without database configuration when OAuth is disabled; party APIs then report unavailability. The health endpoint reports process liveness, not database readiness. **Song requests and host moderation are complete. Next task: implement voting.**
 
 Future request/vote updates can use Server-Sent Events with ordinary HTTP mutations; only party-state polling is implemented. Multi-instance event delivery and Spotify queue synchronization will need explicit coordination when those tasks begin.

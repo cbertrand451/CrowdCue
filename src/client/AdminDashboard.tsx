@@ -4,6 +4,7 @@ import {
   partyDetailsSchema,
   type PartyDetails,
 } from '../server/parties/contracts.js';
+import { RequestBoard } from './RequestBoard';
 import { PartyLinks } from './PartyLinks';
 
 export function AdminDashboard({
@@ -97,6 +98,12 @@ export function AdminDashboard({
         <h2>Invite your guests</h2>
         <PartyLinks links={party.links} />
       </section>
+      <RequestBoard
+        role="admin"
+        token={token}
+        active={party.status === 'ACTIVE'}
+        onExpired={onExpired}
+      />
       <section aria-label="Party settings">
         <h2>Party settings</h2>
         <form onSubmit={save}>
@@ -164,7 +171,7 @@ export function AdminDashboard({
               {settings.queueBehavior === 'SPOTIFY_QUEUE'
                 ? 'Spotify queue'
                 : 'Backup playlist'}
-              . Song requests, voting, and queue delivery are coming next.
+              . Voting and queue delivery are coming next.
             </p>
             <button type="submit">{busy ? 'Saving…' : 'Save settings'}</button>
           </fieldset>

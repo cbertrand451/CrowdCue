@@ -240,3 +240,28 @@ a {
   margin: 0.35rem 0;
   overflow-wrap: anywhere;
 }
+
+.request-board {
+  margin-top: 2rem;
+  border-top: 1px solid #425148;
+  padding-top: 1rem;
+}
+.search-results > li > button {
+  align-self: flex-start;
+}
+.song-search .search-results li {
+  flex-wrap: wrap;
+}
+.song-search .track-details {
+  flex: 1;
+}
+@media (max-width: 560px) {
+  .song-search .search-results li {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .song-search .search-results li > button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

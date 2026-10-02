@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { requestResultSchema } from '../server/requests/contracts.js';
 import {
   searchQuerySchema,
   searchResultSchema,
@@ -8,10 +9,12 @@ export function SongSearch({
   token,
   allowExplicit,
   onExpired,
+  onRequested,
 }: {
   token: string;
   allowExplicit: boolean;
   onExpired: () => void;
+  onRequested?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [offset, setOffset] = useState(0);
@@ -21,6 +24,76 @@ export function SongSearch({
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string>();
   const [attempt, setAttempt] = useState(0);
+  const [requestBusy, setRequestBusy] = useState<string>();
+  const [requestFeedback, setRequestFeedback] = useState<string>();
+  const [requestError, setRequestError] = useState<string>();
+  const requestKeys = useRef(new Map<string, string>());
+  const requestPending = useRef(false);
+  const requestController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    requestController.current = controller;
+    return () => controller.abort();
+  }, [token]);
+  async function requestSong(trackId: string) {
+    if (requestPending.current) return;
+    const key = requestKeys.current.get(trackId) ?? crypto.randomUUID();
+    requestKeys.current.set(trackId, key);
+    const controller = requestController.current;
+    requestPending.current = true;
+    setRequestBusy(trackId);
+    setRequestError(undefined);
+    setRequestFeedback(undefined);
+    try {
+      const response = await fetch(
+        `/api/party-links/guest/${encodeURIComponent(token)}/requests`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          signal: controller?.signal,
+          headers: {
+            'content-type': 'application/json',
+            'idempotency-key': key,
+          },
+          body: JSON.stringify({ trackId }),
+        },
+      );
+      if (controller?.signal.aborted) return;
+      if (!response.ok) {
+        if (response.status === 401) {
+          onExpired();
+          return;
+        }
+        const body = (await response.json()) as { error?: unknown };
+        setRequestError(
+          typeof body.error === 'string'
+            ? body.error
+            : 'Could not confirm the request. Retry the same song or refresh requests.',
+        );
+        return;
+      }
+      const result = requestResultSchema.parse(await response.json());
+      if (!controller?.signal.aborted) {
+        requestKeys.current.delete(trackId);
+        setRequestFeedback(
+          !result.created
+            ? 'This song is already requested.'
+            : result.request.status === 'REQUESTED'
+              ? 'Request sent for host approval.'
+              : 'Your request is added.',
+        );
+        onRequested?.();
+      }
+    } catch {
+      if (!controller?.signal.aborted)
+        setRequestError(
+          'Could not confirm the request. Retry the same song or refresh requests.',
+        );
+    } finally {
+      requestPending.current = false;
+      if (!controller?.signal.aborted) setRequestBusy(undefined);
+    }
+  }
   useEffect(() => {
     const controller = new AbortController();
     const input = searchQuerySchema.safeParse({ q: query, offset });
@@ -175,6 +248,14 @@ export function SongSearch({
                     {track.explicit ? ' · Explicit' : ''}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={!!requestBusy}
+                  onClick={() => void requestSong(track.id)}
+                >
+                  {requestBusy === track.id ? 'Requesting…' : 'Request song'}
+                </button>
               </li>
             ))}
           </ul>
@@ -190,7 +271,13 @@ export function SongSearch({
           Load more songs
         </button>
       )}
-      <p className="muted">Song requests and voting are coming next.</p>
+      {requestFeedback && (
+        <p role="status" className="ready">
+          {requestFeedback} <a href="#song-requests">View requests</a>
+        </p>
+      )}
+      {requestError && <p role="alert">{requestError}</p>}
+      <p className="muted">Voting is coming next.</p>
     </section>
   );
 }

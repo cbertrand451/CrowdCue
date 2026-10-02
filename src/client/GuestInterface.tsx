@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
 } from 'react';
+import { RequestBoard } from './RequestBoard';
 import { SongSearch } from './SongSearch';
 import { z } from 'zod';
 import {
@@ -28,6 +29,7 @@ export function GuestInterface({
   const [error, setError] = useState<string>();
   const [feedback, setFeedback] = useState<string>();
   const [attempt, setAttempt] = useState(0);
+  const [requestRefresh, setRequestRefresh] = useState(0);
   const inFlight = useRef(false);
   const sessionExpired = useCallback(() => {
     setGuest(null);
@@ -214,9 +216,19 @@ export function GuestInterface({
                     token={token}
                     allowExplicit={party.settings.allowExplicitTracks}
                     onExpired={sessionExpired}
+                    onRequested={() => setRequestRefresh((value) => value + 1)}
                   />
                 )}
             </>
+          )}
+          {guest && (
+            <RequestBoard
+              role="guest"
+              token={token}
+              active={party.status === 'ACTIVE'}
+              refresh={requestRefresh}
+              onExpired={sessionExpired}
+            />
           )}
           {party.status === 'ENDED' && (
             <p className="muted">

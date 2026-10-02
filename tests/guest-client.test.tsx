@@ -31,6 +31,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+function stubActionFetch(
+  fetcher: (url: string, options?: RequestInit) => unknown,
+) {
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/requests?')
+      ? Promise.resolve(reply({ requests: [], nextOffset: null }))
+      : fetcher(url, options),
+  );
+}
+
 it('joins anonymously once and lets a guest save a name without host controls', async () => {
   let resolve!: (value: ReturnType<typeof reply>) => void;
   const pending = new Promise<ReturnType<typeof reply>>((done) => {
@@ -41,7 +51,7 @@ it('joins anonymously once and lets a guest save a name without host controls', 
     .mockResolvedValueOnce(reply({ guest: null }))
     .mockReturnValueOnce(pending)
     .mockResolvedValueOnce(reply({ guest }));
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   render(<GuestInterface party={party} token={'g'.repeat(43)} />);
   await screen.findByRole('button', { name: 'Join party' });
   const form = screen.getByLabelText('Your name (optional)').closest('form')!;
@@ -113,7 +123,12 @@ it('shows ended-party state without join or edit controls', async () => {
   );
   await screen.findByText('Joined as Alex.');
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Join party' }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Save name' }),
+  ).not.toBeInTheDocument();
 });
 it('recovers from session errors and handles a party ending during joining', async () => {
   const fetcher = vi
@@ -121,7 +136,7 @@ it('recovers from session errors and handles a party ending during joining', asy
     .mockResolvedValueOnce(reply({}, 503))
     .mockResolvedValueOnce(reply({ guest: null }))
     .mockResolvedValueOnce(reply({}, 409));
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   render(<GuestInterface party={party} token={'g'.repeat(43)} />);
   await screen.findByText('Unable to check your guest session. Try again.');
   fireEvent.click(screen.getByRole('button', { name: 'Check session again' }));
@@ -140,7 +155,7 @@ it('cancels a pending join on navigation without updating a departed page', asyn
     .fn()
     .mockResolvedValueOnce(reply({ guest: null }))
     .mockReturnValueOnce(pending);
-  vi.stubGlobal('fetch', fetcher);
+  stubActionFetch(fetcher);
   const view = render(<GuestInterface party={party} token={'g'.repeat(43)} />);
   await screen.findByRole('button', { name: 'Join party' });
   fireEvent.click(screen.getByRole('button', { name: 'Join party' }));

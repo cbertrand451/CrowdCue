@@ -1,3 +1,4 @@
+import { PostgresRequestStore } from '../src/server/requests/store.js';
 import { PostgresGuestStore } from '../src/server/guests/store.js';
 import { guestCookieName } from '../src/server/guests/routes.js';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -119,6 +120,7 @@ describe.skipIf(!url)('party creation and authorization', () => {
       ),
       parties: store,
       guests: new PostgresGuestStore(pool),
+      requests: new PostgresRequestStore(pool),
     });
   });
   afterEach(async () => {
@@ -852,5 +854,274 @@ describe.skipIf(!url)('party creation and authorization', () => {
     const calls = fetcher.mock.calls.length;
     expect((await app.inject({ url: path, cookies })).statusCode).toBe(409);
     expect(fetcher).toHaveBeenCalledTimes(calls);
+  });
+  it('stores canonical song requests, replays attempts, collapses concurrent duplicates, and moderates securely', async () => {
+    const party = (
+      await create({ name: 'Requests', settings: { approvalRequired: true } })
+    ).json<{ party: PartyDetails }>().party;
+    const join = tokenFrom(party.links.guest),
+      adminLink = tokenFrom(party.links.admin!);
+    const path = `/api/party-links/guest/${join}/requests`;
+    const guest = await new PostgresGuestStore(pool).join(
+      join,
+      undefined,
+      'Alex',
+    );
+    const another = await new PostgresGuestStore(pool).join(
+      join,
+      undefined,
+      'Sam',
+    );
+    const cookies = { [guestCookieName(join, true)]: guest.token };
+    const song = {
+      id: 'a'.repeat(22),
+      name: 'Canonical song',
+      artists: [{ name: 'Artist' }],
+      album: { name: 'Album', images: [] },
+      duration_ms: 185000,
+      explicit: false,
+    };
+    fetcher.mockImplementation(async () => new Response(JSON.stringify(song)));
+    const key = randomUUID();
+    const post = (
+      trackId = song.id,
+      attempt: string = key,
+      browser = cookies,
+      origin = config.appOrigin,
+      payload: unknown = { trackId },
+    ) =>
+      app.inject({
+        method: 'POST',
+        url: path,
+        headers: {
+          origin,
+          'idempotency-key': attempt,
+          'content-type': 'application/json',
+        },
+        cookies: browser,
+        payload: JSON.stringify(payload),
+      });
+    expect((await post(song.id, key, {})).statusCode).toBe(401);
+    expect(
+      (await post(song.id, key, cookies, 'https://foreign.example')).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await post(song.id, key, cookies, config.appOrigin, {
+          trackId: song.id,
+          title: 'Forged metadata',
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
+    const responses = await Promise.all([
+      post(),
+      post(song.id, key.toUpperCase()),
+      post(song.id, randomUUID(), {
+        [guestCookieName(join, true)]: another.token,
+      }),
+    ]);
+    expect(responses.map((response) => response.statusCode).sort()).toEqual([
+      200, 200, 201,
+    ]);
+    const saved = responses[0].json().request;
+    for (const response of responses)
+      expect(response.json().request.id).toBe(saved.id);
+    expect(saved.track.title).toBe('Canonical song');
+    expect(saved.status).toBe('REQUESTED');
+    expect(
+      (
+        await pool.query('SELECT * FROM song_requests WHERE party_id = $1', [
+          party.id,
+        ])
+      ).rowCount,
+    ).toBe(1);
+    const calls = fetcher.mock.calls.length;
+    expect((await post()).statusCode).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(calls);
+    expect((await post('b'.repeat(22))).statusCode).toBe(409);
+    const list = await app.inject({ url: path, cookies });
+    expect(list.json().requests[0]).toMatchObject({
+      id: saved.id,
+      isOwn: saved.isOwn,
+    });
+    expect(list.body).not.toMatch(
+      /test-access|test-refresh|host_account_id|session_token_hash/,
+    );
+    expect(list.headers['cache-control']).toBe('no-store');
+    const moderate = (
+      action: string,
+      owner = host,
+      link = adminLink,
+      id = saved.id,
+    ) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/party-links/admin/${link}/requests/${id}`,
+        headers: { origin: config.appOrigin },
+        cookies: { '__Host-crowdcue_host': owner.token },
+        payload: { action },
+      });
+    expect((await moderate('approve', other)).statusCode).toBe(404);
+    expect((await moderate('approve', host, join)).statusCode).toBe(404);
+    expect(
+      (await moderate('approve', host, adminLink, randomUUID())).statusCode,
+    ).toBe(404);
+    expect((await moderate('approve')).json().request.status).toBe('APPROVED');
+    expect((await moderate('approve')).statusCode).toBe(200);
+    expect((await moderate('remove')).json().request.status).toBe('REMOVED');
+    expect((await post()).json().request.status).toBe('REMOVED');
+    expect((await moderate('approve')).statusCode).toBe(409);
+    const restarted = new PostgresRequestStore(pool);
+    expect(
+      (await restarted.guestList(join, guest.token, 0)).requests.some(
+        (row) => row.id === saved.id,
+      ),
+    ).toBe(saved.isOwn);
+    expect(
+      (await restarted.adminList(host.id, adminLink, 0)).requests[0].status,
+    ).toBe('REMOVED');
+  });
+
+  it('enforces request limits, cooldowns, explicit/name rules, session scope, and ended-party rejection', async () => {
+    const party = (
+      await create({
+        name: 'Limited requests',
+        settings: {
+          maxActiveRequestsPerGuest: 1,
+          requestCooldownSeconds: 60,
+          allowExplicitTracks: false,
+        },
+      })
+    ).json<{ party: PartyDetails }>().party;
+    const join = tokenFrom(party.links.guest),
+      adminLink = tokenFrom(party.links.admin!);
+    const guest = await new PostgresGuestStore(pool).join(join, undefined);
+    const cookies = { [guestCookieName(join, true)]: guest.token };
+    const path = `/api/party-links/guest/${join}/requests`;
+    fetcher.mockImplementation(
+      async (input) =>
+        new Response(
+          JSON.stringify({
+            id: new URL(String(input)).pathname.split('/').at(-1),
+            name: 'Song',
+            artists: [{ name: 'Artist' }],
+            album: { name: 'Album', images: [] },
+            duration_ms: 120000,
+            explicit: String(input).endsWith('e'.repeat(22)),
+          }),
+        ),
+    );
+    const post = (trackId: string, browser = cookies) =>
+      app.inject({
+        method: 'POST',
+        url: path,
+        headers: { origin: config.appOrigin, 'idempotency-key': randomUUID() },
+        cookies: browser,
+        payload: { trackId },
+      });
+    expect((await post('e'.repeat(22))).statusCode).toBe(400);
+    const accepted = await post('a'.repeat(22));
+    expect(accepted.statusCode).toBe(201);
+    expect(accepted.json().request.status).toBe('APPROVED');
+    expect((await post('b'.repeat(22))).statusCode).toBe(409);
+    await new PostgresRequestStore(pool).moderate(
+      host.id,
+      adminLink,
+      accepted.json().request.id,
+      'reject',
+    );
+    const cooled = await post('b'.repeat(22));
+    expect(cooled.statusCode).toBe(429);
+    expect(Number(cooled.headers['retry-after'])).toBeGreaterThan(0);
+    const foreign = await created();
+    expect(
+      (
+        await app.inject({
+          url: `/api/party-links/guest/${tokenFrom(foreign.links.guest)}/requests`,
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(401);
+    const nameless = createPartySchema.parse({
+      name: party.name,
+      settings: { ...party.settings, requireGuestNames: true },
+    });
+    await store.update(host.id, adminLink, nameless);
+    expect((await post('c'.repeat(22))).statusCode).toBe(400);
+    await pool.query(
+      "UPDATE guests SET created_at = now() - interval '31 days', expires_at = now() - interval '1 day' WHERE id = $1",
+      [guest.guest.id],
+    );
+    expect((await post('c'.repeat(22))).statusCode).toBe(401);
+    await store.end(host.id, adminLink);
+    const otherGuest = await new PostgresGuestStore(pool).session(
+      join,
+      guest.token,
+    );
+    expect(otherGuest).toBeNull();
+    expect(
+      (
+        await pool.query('SELECT * FROM song_requests WHERE party_id = $1', [
+          party.id,
+        ])
+      ).rowCount,
+    ).toBe(1);
+  });
+  it('revalidates party rules after Spotify metadata returns without holding a database lock across the call', async () => {
+    const party = await created();
+    const join = tokenFrom(party.links.guest),
+      adminLink = tokenFrom(party.links.admin!);
+    const guest = await new PostgresGuestStore(pool).join(join, undefined);
+    let complete!: (value: Response) => void;
+    const pending = () =>
+      new Promise<Response>((resolve) => {
+        complete = resolve;
+      });
+    fetcher.mockImplementation(() => pending());
+    const submit = (trackId: string) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/party-links/guest/${join}/requests`,
+        headers: { origin: config.appOrigin, 'idempotency-key': randomUUID() },
+        cookies: { [guestCookieName(join, true)]: guest.token },
+        payload: { trackId },
+      });
+    const song = {
+      id: 'a'.repeat(22),
+      name: 'Song',
+      artists: [{ name: 'Artist' }],
+      album: { name: 'Album', images: [] },
+      duration_ms: 120000,
+      explicit: true,
+    };
+    const first = submit(song.id);
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    await store.update(
+      host.id,
+      adminLink,
+      createPartySchema.parse({
+        name: party.name,
+        settings: { allowExplicitTracks: false },
+      }),
+    );
+    complete(new Response(JSON.stringify(song)));
+    expect((await first).statusCode).toBe(400);
+    const second = submit('b'.repeat(22));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    await store.end(host.id, adminLink);
+    complete(
+      new Response(
+        JSON.stringify({ ...song, id: 'b'.repeat(22), explicit: false }),
+      ),
+    );
+    expect((await second).statusCode).toBe(409);
+    expect(
+      (
+        await pool.query('SELECT * FROM song_requests WHERE party_id = $1', [
+          party.id,
+        ])
+      ).rowCount,
+    ).toBe(0);
   });
 });

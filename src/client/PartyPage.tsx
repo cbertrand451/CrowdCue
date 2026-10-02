@@ -141,7 +141,7 @@ export function PartyPage({
             </>
           )}
           {role === 'display' && party.status === 'ACTIVE' && (
-            <p className="muted">Song requests and voting are coming next.</p>
+            <p className="muted">Live playback and voting are coming next.</p>
           )}
         </>
       )}

@@ -1,3 +1,5 @@
+import { requestRoutes } from './requests/routes.js';
+import type { PostgresRequestStore } from './requests/store.js';
 import { guestRoutes } from './guests/routes.js';
 import type { PostgresGuestStore } from './guests/store.js';
 import Fastify, { LogController } from 'fastify';
@@ -19,6 +21,7 @@ export function buildApp(
     auth?: AuthService;
     parties?: PartyStore;
     guests?: PostgresGuestStore;
+    requests?: PostgresRequestStore;
   } = {},
 ) {
   const app = Fastify({
@@ -38,6 +41,7 @@ export function buildApp(
           },
   });
   app.register(helmet);
+  app.register(requestRoutes, { auth: options.auth, store: options.requests });
   app.register(guestRoutes, {
     store: options.guests,
     auth: options.auth,

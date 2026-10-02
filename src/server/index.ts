@@ -1,3 +1,4 @@
+import { PostgresRequestStore } from './requests/store.js';
 import { PostgresGuestStore } from './guests/store.js';
 import { buildApp } from './app.js';
 import { readConfig } from './config.js';
@@ -40,6 +41,7 @@ const auth =
 const app = buildApp(config, {
   serveFrontend: config.NODE_ENV === 'production',
   auth,
+  requests: pool ? new PostgresRequestStore(pool) : undefined,
   guests: pool ? new PostgresGuestStore(pool) : undefined,
   parties:
     authConfig && pool

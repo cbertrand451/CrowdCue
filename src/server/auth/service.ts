@@ -130,4 +130,19 @@ export class AuthService {
       return this.spotify.search(refreshed, query, offset, allowExplicit);
     }
   }
+  async requestTrack(hostId: string, id: string) {
+    const token = await this.store.accessToken(hostId, this.spotify);
+    try {
+      return await this.spotify.track(token, id);
+    } catch (error) {
+      if (!(error instanceof SpotifyError) || error.kind !== 'reauthenticate')
+        throw error;
+      const refreshed = await this.store.accessToken(
+        hostId,
+        this.spotify,
+        token,
+      );
+      return this.spotify.track(refreshed, id);
+    }
+  }
 }
