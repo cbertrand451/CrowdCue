@@ -138,7 +138,8 @@ export function buildApp(
   }
   app.setErrorHandler((error, request, reply) => {
     const serialized = serializeApiError(error);
-    if (serialized.retryAfter) reply.header('Retry-After', serialized.retryAfter);
+    if (serialized.retryAfter)
+      reply.header('Retry-After', serialized.retryAfter);
     if (serialized.shouldLog)
       request.log.error(
         { requestId: request.id, category: serialized.logCategory },
