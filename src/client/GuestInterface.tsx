@@ -1,3 +1,4 @@
+import { LeaderboardPanel } from './LeaderboardPanel';
 import {
   useCallback,
   useEffect,
@@ -241,6 +242,17 @@ export function GuestInterface({
               refresh={requestRefresh}
               onExpired={sessionExpired}
             />
+          )}
+          {guest && (
+            <details className="event-history" open={party.status === 'ENDED'}>
+              <summary>View guest leaderboard</summary>
+              <LeaderboardPanel
+                role="guest"
+                token={token}
+                refresh={requestRefresh}
+                onExpired={sessionExpired}
+              />
+            </details>
           )}
           {party.status === 'ENDED' && (
             <p className="muted">

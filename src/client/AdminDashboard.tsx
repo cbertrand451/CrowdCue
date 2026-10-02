@@ -1,3 +1,4 @@
+import { LeaderboardPanel } from './LeaderboardPanel';
 import { PartyStatisticsPanel } from './PartyStatisticsPanel';
 import { SongHistory } from './SongHistory';
 import { PlaybackPanel } from './PlaybackPanel';
@@ -131,6 +132,15 @@ export function AdminDashboard({
       <details className="event-history" open={party.status === 'ENDED'}>
         <summary>View event song history</summary>
         <SongHistory token={token} onExpired={onExpired} />
+      </details>
+      <details className="event-history" open={party.status === 'ENDED'}>
+        <summary>View guest leaderboard</summary>
+        <LeaderboardPanel
+          role="admin"
+          token={token}
+          refresh={queueRefresh}
+          onExpired={onExpired}
+        />
       </details>
       <RequestBoard
         role="admin"

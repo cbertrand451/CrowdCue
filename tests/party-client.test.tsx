@@ -59,69 +59,78 @@ function stubActionFetch(
   fetcher: (url: string, options?: RequestInit) => unknown,
 ) {
   vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
-    url.endsWith('/statistics')
+    url.endsWith('/leaderboard')
       ? Promise.resolve(
           reply({
             status: 'ACTIVE',
-            durationSeconds: 0,
-            guestSessions: 0,
-            requests: {
-              total: 0,
-              pending: 0,
-              approved: 0,
-              queued: 0,
-              played: 0,
-              rejected: 0,
-              removed: 0,
-            },
-            votes: 0,
-            voters: 0,
-            committed: { total: 0, guest: 0, backup: 0, observed: 0 },
-            topSongs: [],
+            entries: [],
+            yourEntry: null,
+            participants: 0,
           }),
         )
-      : url.includes('/history?')
+      : url.endsWith('/statistics')
         ? Promise.resolve(
             reply({
-              items: [],
-              committedCount: 0,
-              observedCount: 0,
-              nextOffset: null,
               status: 'ACTIVE',
+              durationSeconds: 0,
+              guestSessions: 0,
+              requests: {
+                total: 0,
+                pending: 0,
+                approved: 0,
+                queued: 0,
+                played: 0,
+                rejected: 0,
+                removed: 0,
+              },
+              votes: 0,
+              voters: 0,
+              committed: { total: 0, guest: 0, backup: 0, observed: 0 },
+              topSongs: [],
             }),
           )
-        : url.includes('/requests?')
-          ? Promise.resolve(reply({ requests: [], nextOffset: null }))
-          : url.includes('/queue?')
-            ? Promise.resolve(
-                reply({
-                  items: [],
-                  nextOffset: null,
-                  votingEnabled: true,
-                  status: 'ACTIVE',
-                }),
-              )
-            : url.endsWith('/playback')
+        : url.includes('/history?')
+          ? Promise.resolve(
+              reply({
+                items: [],
+                committedCount: 0,
+                observedCount: 0,
+                nextOffset: null,
+                status: 'ACTIVE',
+              }),
+            )
+          : url.includes('/requests?')
+            ? Promise.resolve(reply({ requests: [], nextOffset: null }))
+            : url.includes('/queue?')
               ? Promise.resolve(
                   reply({
-                    enabled: false,
-                    mode: 'QUEUE',
-                    playlistUrl: null,
-                    playlistRemoved: false,
-                    creation: 'NEW',
-                    error: null,
-                    retryAt: null,
-                    syncedAt: null,
-                    lockedCount: 0,
-                    guestCount: 0,
-                    backupCount: 0,
-                    saveAtCreation: false,
-                    saveAtClose: null,
-                    closeDecided: false,
-                    ended: false,
+                    items: [],
+                    nextOffset: null,
+                    votingEnabled: true,
+                    status: 'ACTIVE',
                   }),
                 )
-              : fetcher(url, options),
+              : url.endsWith('/playback')
+                ? Promise.resolve(
+                    reply({
+                      enabled: false,
+                      mode: 'QUEUE',
+                      playlistUrl: null,
+                      playlistRemoved: false,
+                      creation: 'NEW',
+                      error: null,
+                      retryAt: null,
+                      syncedAt: null,
+                      lockedCount: 0,
+                      guestCount: 0,
+                      backupCount: 0,
+                      saveAtCreation: false,
+                      saveAtClose: null,
+                      closeDecided: false,
+                      ended: false,
+                    }),
+                  )
+                : fetcher(url, options),
   );
 }
 

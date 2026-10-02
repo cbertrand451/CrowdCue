@@ -35,18 +35,27 @@ function stubActionFetch(
   fetcher: (url: string, options?: RequestInit) => unknown,
 ) {
   vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
-    url.includes('/requests?')
-      ? Promise.resolve(reply({ requests: [], nextOffset: null }))
-      : url.includes('/queue?')
-        ? Promise.resolve(
-            reply({
-              items: [],
-              nextOffset: null,
-              votingEnabled: true,
-              status: 'ACTIVE',
-            }),
-          )
-        : fetcher(url, options),
+    url.endsWith('/leaderboard')
+      ? Promise.resolve(
+          reply({
+            status: 'ACTIVE',
+            entries: [],
+            yourEntry: null,
+            participants: 0,
+          }),
+        )
+      : url.includes('/requests?')
+        ? Promise.resolve(reply({ requests: [], nextOffset: null }))
+        : url.includes('/queue?')
+          ? Promise.resolve(
+              reply({
+                items: [],
+                nextOffset: null,
+                votingEnabled: true,
+                status: 'ACTIVE',
+              }),
+            )
+          : fetcher(url, options),
   );
 }
 

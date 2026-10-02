@@ -78,7 +78,7 @@ export async function requestRoutes(
     return parsed.data.offset;
   };
   for (const role of ['guest', 'admin'] as const) {
-    for (const view of ['requests', 'queue'] as const) {
+    for (const view of ['requests', 'queue', 'leaderboard'] as const) {
       app.get<{ Params: { token: string } }>(
         `/api/party-links/${role}/:token/${view}`,
         limited(role === 'guest' ? 600 : 60),
@@ -88,12 +88,22 @@ export async function requestRoutes(
               .code(503)
               .send({ error: 'Song requests are not available yet.' });
           const value = token(request.params.token, role);
+          if (
+            view === 'leaderboard' &&
+            Object.keys(request.query as object).length
+          )
+            throw new RequestError(
+              400,
+              'Leaderboard does not accept query parameters.',
+            );
           const offset = page(request.query);
           if (role === 'guest')
             return (
-              view === 'queue'
-                ? options.store.guestQueue.bind(options.store)
-                : options.store.guestList.bind(options.store)
+              view === 'leaderboard'
+                ? options.store.guestLeaderboard.bind(options.store)
+                : view === 'queue'
+                  ? options.store.guestQueue.bind(options.store)
+                  : options.store.guestList.bind(options.store)
             )(value, session(request.cookies, value), offset);
           const host = await options.auth
             .requireHost(
@@ -109,6 +119,8 @@ export async function requestRoutes(
                 throw new RequestError(401, 'Sign in as this party’s host.');
               throw error;
             });
+          if (view === 'leaderboard')
+            return options.store.adminLeaderboard(host.accountId, value);
           return view === 'queue'
             ? options.store.adminQueue(host.accountId, value, offset)
             : options.store.adminList(host.accountId, value, offset);

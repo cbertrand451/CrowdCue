@@ -353,3 +353,11 @@ Run `npm run db:migrate` for migration **008-event-history**, which preserves ex
 Open **View party statistics** on the admin dashboard for live duration, guest-session participation, request status counts, retained votes/voters, committed guest and backup songs, observed playback, and the top five most-voted songs. The section opens automatically in the ended-session summary; duration stops at party ending and local statistics remain after Spotify playlist removal. Counts update over WebSockets with five-second fallback polling. Guest sessions can represent repeat devices; observed playback/departure does not prove a full listen. Vote totals count currently retained votes (including moderated songs), not lifetime vote clicks. Repeated requests for the same track aggregate in the top-song ranking.
 
 `GET /api/party-links/admin/:token/statistics` requires the owning host cookie and private Admin token, accepts no query parameters, and uses private no-store headers and a bounded read rate. Statistics require no Spotify calls or new database migration.
+
+### Task 20: Guest points and leaderboard
+
+Joined guests and hosts can open **View guest leaderboard** for live scores, tied ranks and score breakdowns. The leaderboard opens in the ended party summary and survives playlist removal. Guests see their own score even outside the top 50. Unnamed guests receive a join-order label; names and scores are shared with joined party guests.
+
+A saved observation of a committed guest song earns **5 points**. Each retained vote from another guest on an approved, queued or played request earns **1 point**. Self-votes, pending/rejected/removed vote points, backup songs, unobserved songs and duplicate submissions earn nothing. Removing a vote removes its point. Queue ordering is unchanged. Scores belong to a party guest session, not a verified person; playback observations do not guarantee full listens. Older unobserved history earns no playback points.
+
+Authenticated `GET /api/party-links/guest/:token/leaderboard` and owner-only `GET /api/party-links/admin/:token/leaderboard` accept no query parameters and use existing read limits/private headers. Both read durable data without contacting Spotify or requiring a migration. No client endpoint can set points.

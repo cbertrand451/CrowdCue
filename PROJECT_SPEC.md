@@ -818,7 +818,7 @@ A recommended implementation sequence is:
 17. Complete backup playlist system (source checks/refresh and safe replenishment).
 18. Complete event Spotify playlist and song history (QR-code joining already completed).
 19. Add party statistics (private live totals and ended-session summary).
-20. Harden security and error handling.
+20. Add guest points and leaderboard features.
 21. Expand automated testing.
 22. Perform complete end-to-end testing.
 23. Prepare production deployment.
@@ -911,3 +911,9 @@ When requirements change, update this document so future development tasks opera
 ## Task 19 — Party statistics
 
 Owner-only statistics are expandable in the admin dashboard and open automatically after ending. They include duration since party creation (frozen at ending), joined guest sessions including expired sessions, persisted song requests by current status, retained votes and distinct voters, committed guest/backup occurrences and observed-playing occurrences, and the five most-voted Spotify tracks. Ranking aggregates retained votes across repeated requests for a track, includes moderated requests, and breaks ties by earliest request then track ID. Removed votes are excluded; rejected/duplicate attempts are not requests. Guest sessions are not unique-person counts. PLAYED means observed departure, not a full listen. Counts use a consistent database snapshot, update through existing WebSockets/five-second fallback polling, and survive playlist cleanup/restart. Only the owning host session with the Admin token may read them. No additional Spotify calls or schema migration are needed.
+
+## Task 20 — Guest points and leaderboard
+
+Points are party-scoped to the existing guest session. Award 5 points per committed guest-song occurrence with a saved observed-playing timestamp and 1 point per retained vote from another guest on APPROVED, QUEUED or PLAYED requests. Self-votes, pending/rejected/removed request votes, duplicate attempts, backup songs and unobserved commitments earn no points. Removing a vote removes its point; approving a pending request enables its vote points. Scores are derived from durable database records, never accepted from clients, never alter queue ordering, and survive refresh/restart/playlist cleanup. Previous songs without observation timestamps earn no playback points. Spotify observations do not certify full listens.
+
+Joined guests and the owning host can read the top 50 guest sessions and scores; a guest also receives their own rank/score outside the list. Equal scores share competition rank (1,1,3), with display order by join time then internal ID. Anonymous guests use a stable join-order label. Responses contain names, ranks and score breakdowns, never guest IDs, session tokens or private links. Reads require a valid party-scoped guest cookie or owning host session plus Admin token, reject query parameters, and update through existing WebSockets/five-second polling. The leaderboard is expandable during an event and opens after ending. Existing anonymous-session limits apply: changing devices can create another session; this feature does not claim unique-person or anti-collusion verification. No migration or extra Spotify calls are required.

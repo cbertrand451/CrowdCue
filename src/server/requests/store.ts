@@ -1,3 +1,4 @@
+import { readLeaderboard } from '../leaderboard/store.js';
 import { fillBackupBuffer, insertGuestEntry } from '../playback/scheduling.js';
 import { upcoming, entryRequest } from '../playback/ordering.js';
 import { changeQueueOrder } from '../queue/controls.js';
@@ -222,6 +223,20 @@ export class PostgresRequestStore {
       requests: result.rows.slice(0, 50).map((row) => details(row, guestId)),
       nextOffset: result.rows.length > 50 ? offset + 50 : null,
     };
+  }
+  async guestLeaderboard(token: string, session: string | undefined) {
+    return inTransaction(this.pool, async (client) => {
+      await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+      const party = await this.context(client, token, session, false, false);
+      return readLeaderboard(client, party.id, party.status, party.guest_id);
+    });
+  }
+  async adminLeaderboard(hostId: string, token: string) {
+    return inTransaction(this.pool, async (client) => {
+      await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+      const party = await this.hostParty(client, hostId, token);
+      return readLeaderboard(client, party.id, party.status);
+    });
   }
   async guestList(token: string, session: string | undefined, offset: number) {
     const party = await this.context(this.pool, token, session, false, false);

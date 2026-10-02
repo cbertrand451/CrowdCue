@@ -1,3 +1,4 @@
+import { guestCookieName } from '../src/server/guests/routes.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import {
@@ -729,6 +730,144 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     await read();
     expect(provider.player).not.toHaveBeenCalled();
     expect(provider.enqueue).not.toHaveBeenCalled();
+  });
+  it('awards points for observed guest songs and other retained votes, protects leaderboard access and preserves final scores', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    await start(p);
+    await service.tick();
+    const {
+      join,
+      guest,
+      songs: [g, q],
+    } = await addGuests(p, ['g', 'q']);
+    const second = await new PostgresGuestStore(pool).join(
+      join,
+      undefined,
+      null,
+    );
+    await requests.vote(join, guest.token, g.id, true);
+    expect(
+      (await requests.guestLeaderboard(join, guest.token)).yourEntry?.points,
+    ).toBe(0);
+    await Promise.all([
+      requests.vote(join, second.token, g.id, true),
+      requests.vote(join, second.token, g.id, true),
+    ]);
+    let board = await requests.guestLeaderboard(join, guest.token);
+    expect(board.yourEntry).toMatchObject({
+      name: 'Alex',
+      points: 1,
+      votesReceived: 1,
+      songsObserved: 0,
+      rank: 1,
+    });
+    expect(board.entries[1]).toMatchObject({
+      name: 'Guest 2',
+      points: 0,
+      rank: 2,
+      isYou: false,
+    });
+    await requests.vote(join, second.token, g.id, false);
+    expect(
+      (await requests.guestLeaderboard(join, guest.token)).entries.map(
+        (e) => e.rank,
+      ),
+    ).toEqual([1, 1]);
+    await requests.vote(join, second.token, q.id, true);
+    await requests.moderate(host.id, adminToken, q.id, 'remove');
+    expect(
+      (await requests.guestLeaderboard(join, guest.token)).yourEntry?.points,
+    ).toBe(0);
+    await requests.vote(join, second.token, g.id, true);
+    await advance('a');
+    await advance('b');
+    await advance('c');
+    expect(
+      (await requests.guestLeaderboard(join, guest.token)).yourEntry?.points,
+    ).toBe(1);
+    await advance('g');
+    board = await requests.guestLeaderboard(join, guest.token);
+    expect(board.yourEntry).toMatchObject({
+      points: 6,
+      songsObserved: 1,
+      votesReceived: 1,
+    });
+    await service.tick();
+    expect(
+      (await requests.guestLeaderboard(join, guest.token)).yourEntry?.points,
+    ).toBe(6);
+    const guestRead = (cookie = guest.token, link = join) =>
+      app.inject({
+        method: 'GET',
+        url: `/api/party-links/guest/${link}/leaderboard`,
+        cookies: { [guestCookieName(link, true)]: cookie },
+      });
+    expect((await guestRead()).json()).toEqual(board);
+    expect((await guestRead('')).statusCode).toBe(401);
+    expect((await guestRead(guest.token, adminToken)).statusCode).toBe(404);
+    const outsider = await new PostgresGuestStore(pool).join(
+      token((await create()).links.guest),
+      undefined,
+      'Other party',
+    );
+    expect((await guestRead(outsider.token)).statusCode).toBe(401);
+    expect((await guestRead()).headers['cache-control']).toBe('no-store');
+    const hostRead = (cookie = host.cookie) =>
+      app.inject({
+        method: 'GET',
+        url: `/api/party-links/admin/${adminToken}/leaderboard`,
+        cookies: { '__Host-crowdcue_host': cookie },
+      });
+    expect((await hostRead(other.cookie)).statusCode).toBe(404);
+    expect((await hostRead('')).statusCode).toBe(401);
+    expect((await hostRead()).json().yourEntry).toBeNull();
+    expect(JSON.stringify(board)).not.toContain(guest.guest.id);
+    expect(JSON.stringify(board)).not.toContain(guest.token);
+    await parties.end(host.id, adminToken);
+    await service.action(host.id, adminToken, { action: 'close', save: false });
+    await service.tick();
+    expect(
+      await new PostgresRequestStore(pool).guestLeaderboard(join, guest.token),
+    ).toEqual({ ...board, status: 'ENDED' });
+  });
+  it('bounds leaderboard to 50 guests while including your own row and excludes pending vote points', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!),
+      join = token(p.links.guest);
+    await parties.update(
+      host.id,
+      adminToken,
+      createPartySchema.parse({
+        name: p.name,
+        settings: { ...p.settings, approvalRequired: true },
+      }),
+    );
+    const guests = new PostgresGuestStore(pool);
+    for (let i = 0; i < 50; i++)
+      await guests.join(join, undefined, `Guest ${i}`);
+    const last = await guests.join(join, undefined, 'Last guest');
+    const board = await requests.guestLeaderboard(join, last.token);
+    expect(board.entries).toHaveLength(50);
+    expect(board.participants).toBe(51);
+    expect(board.entries.every((e) => !e.isYou)).toBe(true);
+    expect(board.yourEntry?.rank).toBe(1);
+    const song = (
+      await requests.create(join, last.token, track('g'), randomUUID())
+    ).request;
+    const voter = await guests.join(join, undefined, 'Voter');
+    await requests.vote(join, voter.token, song.id, true);
+    expect(
+      (await requests.guestLeaderboard(join, last.token)).yourEntry?.points,
+    ).toBe(0);
+    await requests.moderate(host.id, adminToken, song.id, 'approve');
+    expect(
+      (await requests.guestLeaderboard(join, last.token)).yourEntry?.points,
+    ).toBe(1);
+    await requests.moderate(host.id, adminToken, song.id, 'reject');
+    expect(
+      (await requests.guestLeaderboard(join, last.token)).yourEntry?.points,
+    ).toBe(0);
   });
   const readHistory = (
     p: PartyDetails,
