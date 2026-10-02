@@ -283,6 +283,14 @@ export class PostgresPartyStore implements PartyStore {
           input.name,
         ]);
         const s = input.settings;
+        // Never replenish from a cache belonging to the previous source/policy.
+        // Existing reserved and locked playback entries intentionally stay intact.
+        await client.query(
+          `UPDATE party_playback b SET backup_tracks='[]'::jsonb,source_cursor=0,retry_at=NULL
+           FROM party_settings old WHERE b.party_id=$1 AND old.party_id=b.party_id
+           AND (old.backup_source_id IS DISTINCT FROM $2 OR old.allow_explicit_tracks IS DISTINCT FROM $3)`,
+          [party.id, s.backupSourceId, s.allowExplicitTracks],
+        );
         await client.query(
           `UPDATE party_settings SET require_guest_names = $2, voting_enabled = $3,
           approval_required = $4, max_active_requests_per_guest = $5, allow_explicit_tracks = $6,

@@ -411,7 +411,7 @@ A five-second worker runs within the existing server process and continues while
 
 Each session has two distinct playlist roles:
 
-- **Backup source:** an existing Spotify playlist owned by the host or available to them as a collaborator. The host supplies its link at creation or later in settings. Playable Spotify tracks are read through the current `/items` endpoints, respect the explicit-song setting, and cycle to replenish the queue. Locked and already reserved slots remain stable.
+- **Backup source:** an existing Spotify playlist owned by the host or available to them as a collaborator. The host supplies its link at creation or later in settings. Playable Spotify tracks are read through the current `/items` endpoints, respect the explicit-song setting, and cycle to replenish the queue. Locked and already reserved slots remain stable. Task 17 adds a host-only Check / refresh action and a usable-track count before or during queue operation. Refresh bypasses the one-minute provider cache without starting playback or editing the source playlist. Source or explicit-policy edits clear cached refill tracks and reset the cursor; in-flight reads from outdated settings are discarded. Existing reserved slots remain unchanged, and future refills use the updated source. Adjacent repeats are avoided even when a source contains duplicate entries; a single usable song may repeat to maintain the three-song buffer. Empty/unreadable sources show a host error rather than pretend the buffer can be guaranteed.
 - **Nightly playlist:** an application-created private playlist in the host's Spotify account, created regardless of the initial save choice. Every song locked for commitment enters this playlist in commitment order, including backup songs, repeated songs, and songs later skipped in Spotify. It is a record of committed songs rather than guaranteed completed listens. Pending/rejected/removed requests are excluded during normal queue operation.
 
 The host answers Yes/No to saving the nightly playlist at creation and again on the ended-session summary. The initial decision is immutable. Any Yes keeps the playlist. Two No decisions clear the temporary playlist and remove it from the host's Spotify library only after the second choice. If the summary has not been answered, retain the playlist. Spotify has no permanent-delete API: clearing and removing it from the library is the supported cleanup. Local session history remains intact.
@@ -815,7 +815,7 @@ A recommended implementation sequence is:
 14. Implement real-time WebSocket updates (backup playlist behavior included in task 13).
 15. Implement Display interface.
 16. Implement admin party controls (host queue ordering, alongside existing settings/moderation).
-17. Finalize secure Admin/Display URLs.
+17. Complete backup playlist system (source checks/refresh and safe replenishment).
 18. Implement QR-code joining (completed after task 16 at user request).
 19. Refine professional responsive UI.
 20. Harden security and error handling.

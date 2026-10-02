@@ -34,6 +34,7 @@ export interface Session {
   status: 'ACTIVE' | 'ENDED';
   name: string;
   backup_source_id: string | null;
+  backup_tracks: SearchResult['tracks'];
   allow_explicit_tracks: boolean;
   voting_enabled: boolean;
 }
@@ -81,6 +82,12 @@ export class PlaybackStore {
       lockedCount: counts.locked,
       guestCount: counts.guest,
       backupCount: counts.backup,
+      backupSourceUrl: s.backup_source_id
+        ? `https://open.spotify.com/playlist/${s.backup_source_id}`
+        : null,
+      backupTrackCount: s.backup_tracks.filter(
+        (t) => s.allow_explicit_tracks || !t.explicit,
+      ).length,
       saveAtCreation: s.save_at_creation,
       saveAtClose: s.save_at_close,
       closeDecided: s.close_decided,
@@ -141,9 +148,16 @@ export class PlaybackStore {
     currentId?: string | null,
     progressMs?: number | null,
     playlistContext = false,
+    expectedBackup?: { sourceId: string | null; allowExplicit: boolean },
   ) {
     return this.change(id, async (client, s) => {
-      if (!s.enabled || s.status !== 'ACTIVE') return;
+      if (!s.enabled || s.status !== 'ACTIVE') return false;
+      if (
+        expectedBackup &&
+        (s.backup_source_id !== expectedBackup.sourceId ||
+          s.allow_explicit_tracks !== expectedBackup.allowExplicit)
+      )
+        return false;
       await client.query(
         "UPDATE playback_entries SET delivery='UNKNOWN' WHERE party_id=$1 AND delivery='SENDING'",
         [id],
@@ -250,6 +264,7 @@ export class PlaybackStore {
             [e.request_id],
           );
       }
+      return true;
     });
   }
 }

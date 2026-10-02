@@ -6,6 +6,7 @@ import { SpotifyMutationError } from '../spotify/playback.js';
 import { RequestError } from '../requests/contracts.js';
 import { PlaybackStore, type Session } from './store.js';
 import { type playbackActionSchema } from './contracts.js';
+import { fillBackupBuffer } from './scheduling.js';
 import { upcoming } from './ordering.js';
 import type { z } from 'zod';
 import type { SearchResult } from '../search/contracts.js';
@@ -128,11 +129,11 @@ export class PlaybackService {
       client.release(discard);
     }
   }
-  private async backup(s: Session) {
+  private async backup(s: Session, force = false) {
     if (!s.backup_source_id) return [];
     const key = `${s.host_account_id}:${s.backup_source_id}:${s.allow_explicit_tracks}`;
     const cached = this.backupCache.get(key);
-    if (cached && cached.expires > Date.now()) return cached.tracks;
+    if (!force && cached && cached.expires > Date.now()) return cached.tracks;
     const tracks = await this.spotify.backupTracks(
       s.host_account_id,
       s.backup_source_id,
@@ -261,13 +262,15 @@ export class PlaybackService {
             );
         }
       });
-    await this.store.schedule(
+    const scheduled = await this.store.schedule(
       s.party_id,
       tracks,
       player?.item?.id,
       player?.progress_ms,
       player?.context?.uri === `spotify:playlist:${playlistId}`,
+      { sourceId: s.backup_source_id, allowExplicit: s.allow_explicit_tracks },
     );
+    if (!scheduled) return;
     s = await this.store.session(client, s.party_id);
     if (!s.enabled || s.status !== 'ACTIVE') return;
     if (!(await this.playlists.sync(client, s, playlistId))) return;
@@ -361,6 +364,32 @@ export class PlaybackService {
       }
       if (s.status !== 'ACTIVE')
         throw new RequestError(409, 'This party has ended.');
+      if (input.action === 'refresh-backup') {
+        if (!s.backup_source_id)
+          throw new RequestError(
+            400,
+            'Add a backup Spotify playlist in party settings first.',
+          );
+        const tracks = await this.backup(s, true);
+        await this.store.change(id, async (c, current) => {
+          if (
+            current.status !== 'ACTIVE' ||
+            current.backup_source_id !== s.backup_source_id ||
+            current.allow_explicit_tracks !== s.allow_explicit_tracks
+          )
+            throw new RequestError(
+              409,
+              'Backup settings changed. Check the playlist again.',
+            );
+          await c.query(
+            `UPDATE party_playback SET backup_tracks=$2,retry_at=NULL,
+             error_code=CASE WHEN error_code IS NULL OR error_code IN ('backup_empty','backup_required') THEN CASE WHEN $3 THEN 'backup_empty' ELSE NULL END ELSE error_code END,updated_at=now() WHERE party_id=$1`,
+            [id, JSON.stringify(tracks), !tracks.length],
+          );
+          await fillBackupBuffer(c, id);
+        });
+        return true;
+      }
       if (input.action === 'recreate') {
         if (!['UNKNOWN', 'CREATING'].includes(s.playlist_creation))
           throw new RequestError(
@@ -395,6 +424,14 @@ export class PlaybackService {
         await this.store.change(id, async (c, current) => {
           if (current.status !== 'ACTIVE')
             throw new RequestError(409, 'This party has ended.');
+          if (
+            current.backup_source_id !== s.backup_source_id ||
+            current.allow_explicit_tracks !== s.allow_explicit_tracks
+          )
+            throw new RequestError(
+              409,
+              'Backup settings changed. Check the playlist again.',
+            );
           const other = await c.query(
             'SELECT party_id FROM party_playback WHERE host_account_id=$1 AND enabled AND party_id!=$2',
             [hostId, id],

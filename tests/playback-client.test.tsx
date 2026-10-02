@@ -111,3 +111,46 @@ it('clears private session details on expired host authentication', async () => 
   expect(expired).toHaveBeenCalledOnce();
   expect(screen.queryByRole('link')).not.toBeInTheDocument();
 });
+
+it('shows the backup source/count and checks it without starting playback', async () => {
+  const checked = {
+    ...status,
+    enabled: false,
+    backupSourceUrl: `https://open.spotify.com/playlist/${'s'.repeat(22)}`,
+    backupTrackCount: 3,
+  };
+  const fetcher = vi
+    .fn()
+    .mockImplementation(async (_url, options) =>
+      reply(
+        options?.method === 'POST'
+          ? { ...checked, backupTrackCount: 7 }
+          : checked,
+      ),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  const { rerender } = render(
+    <PlaybackPanel token={'a'.repeat(43)} active onExpired={vi.fn()} />,
+  );
+  expect(
+    await screen.findByRole('link', { name: 'Open backup source in Spotify' }),
+  ).toHaveAttribute('href', checked.backupSourceUrl);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Check / refresh backup playlist' }),
+  );
+  await screen.findByText(
+    '7 usable songs loaded. Backup songs cycle when guests have no songs waiting.',
+  );
+  expect(
+    JSON.parse(
+      fetcher.mock.calls.find(([, options]) => options?.method === 'POST')![1]
+        .body,
+    ),
+  ).toEqual({ action: 'refresh-backup' });
+  rerender(
+    <PlaybackPanel token={'a'.repeat(43)} active={false} onExpired={vi.fn()} />,
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Check / refresh backup playlist' }),
+  ).not.toBeInTheDocument();
+});

@@ -78,9 +78,11 @@ export async function fillBackupBuffer(client: PoolClient, partyId: string) {
     ).rows[0]?.track.id;
     let t = tracks[cursor % tracks.length];
     cursor++;
-    if (tracks.length > 1 && t.id === previous) {
+    let scanned = 1;
+    while (t.id === previous && scanned < tracks.length) {
       t = tracks[cursor % tracks.length];
       cursor++;
+      scanned++;
     }
     await client.query(
       "INSERT INTO playback_entries (party_id,source,track) VALUES ($1,'BACKUP',$2)",

@@ -465,6 +465,197 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     await parties.end(host.id, adminToken);
     expect((await queueAction(p, { action: 'reset' })).statusCode).toBe(409);
   });
+  it('checks and refreshes backup contents without starting Spotify playback', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    let status = await service.action(host.id, adminToken, {
+      action: 'refresh-backup',
+    });
+    expect(status).toMatchObject({
+      enabled: false,
+      backupTrackCount: 3,
+      backupSourceUrl: `https://open.spotify.com/playlist/${'s'.repeat(22)}`,
+    });
+    expect(provider.enqueue).not.toHaveBeenCalled();
+    expect(provider.startPlaylist).not.toHaveBeenCalled();
+    vi.mocked(provider.backupTracks).mockResolvedValue([
+      track('d'),
+      track('e'),
+    ]);
+    status = await service.action(host.id, adminToken, {
+      action: 'refresh-backup',
+    });
+    expect(status.backupTrackCount).toBe(2);
+    expect(provider.backupTracks).toHaveBeenCalledTimes(2);
+    vi.mocked(provider.backupTracks).mockResolvedValue([]);
+    status = await service.action(host.id, adminToken, {
+      action: 'refresh-backup',
+    });
+    expect(status).toMatchObject({
+      backupTrackCount: 0,
+      error: 'backup_empty',
+      enabled: false,
+    });
+    await expect(start(p)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      service.action(other.id, adminToken, { action: 'refresh-backup' }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await parties.end(host.id, adminToken);
+    await expect(
+      service.action(host.id, adminToken, { action: 'refresh-backup' }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+  it('cycles duplicate-heavy and single-song sources while keeping at least three upcoming tracks across restarts', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    vi.mocked(provider.backupTracks).mockResolvedValue([
+      track('a'),
+      track('a'),
+      track('a'),
+      track('b'),
+    ]);
+    await start(p);
+    await service.tick();
+    const restarted = new PlaybackService(store, provider);
+    for (const letter of ['a', 'b', 'a', 'b', 'a', 'b']) {
+      current = letter.repeat(22);
+      progress = 1000;
+      await restarted.tick();
+      const queue = await requests.adminQueue(host.id, adminToken, 0);
+      expect(queue.items).toHaveLength(3);
+      expect(queue.items.filter((x) => x.locked)).toHaveLength(1);
+      for (let i = 1; i < queue.items.length; i++)
+        expect(queue.items[i].request.track.id).not.toBe(
+          queue.items[i - 1].request.track.id,
+        );
+    }
+    vi.mocked(provider.backupTracks).mockResolvedValue([track('e')]);
+    await service.action(host.id, adminToken, { action: 'refresh-backup' });
+    for (const letter of ['a', 'b', 'a', 'e']) await advance(letter);
+    expect(
+      (await requests.adminQueue(host.id, adminToken, 0)).items.map(
+        (x) => x.request.track.id,
+      ),
+    ).toEqual(Array(3).fill(track('e').id));
+  });
+  it('preserves reserved songs on source changes and refreshes future refills from the new source', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    await start(p);
+    await service.tick();
+    const before = await requests.adminQueue(host.id, adminToken, 0);
+    await parties.update(
+      host.id,
+      adminToken,
+      createPartySchema.parse({
+        name: p.name,
+        settings: { ...p.settings, backupSourceId: 't'.repeat(22) },
+      }),
+    );
+    expect((await store.status(host.id, adminToken)).backupTrackCount).toBe(0);
+    expect((await requests.adminQueue(host.id, adminToken, 0)).items).toEqual(
+      before.items,
+    );
+    vi.mocked(provider.backupTracks).mockResolvedValue([
+      track('d'),
+      track('e'),
+    ]);
+    await service.action(host.id, adminToken, { action: 'refresh-backup' });
+    expect((await requests.adminQueue(host.id, adminToken, 0)).items).toEqual(
+      before.items,
+    );
+    await advance('a');
+    expect(
+      (await requests.adminQueue(host.id, adminToken, 0)).items.map(
+        (x) => x.request.track.id,
+      ),
+    ).toEqual(['b', 'c', 'd'].map((x) => x.repeat(22)));
+    expect(provider.backupTracks).toHaveBeenLastCalledWith(
+      host.id,
+      't'.repeat(22),
+      true,
+    );
+  });
+  it('discards an in-flight worker read when backup settings change', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    await start(p);
+    await service.tick();
+    let release!: (tracks: ReturnType<typeof track>[]) => void,
+      entered!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    vi.mocked(provider.backupTracks).mockImplementationOnce(async () => {
+      entered();
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    });
+    const restarted = new PlaybackService(store, provider);
+    const tick = restarted.tick();
+    await reading;
+    await parties.update(
+      host.id,
+      adminToken,
+      createPartySchema.parse({
+        name: p.name,
+        settings: { ...p.settings, backupSourceId: 't'.repeat(22) },
+      }),
+    );
+    release([track('x')]);
+    await tick;
+    expect((await store.status(host.id, adminToken)).backupTrackCount).toBe(0);
+    vi.mocked(provider.backupTracks).mockResolvedValue([track('d')]);
+    await restarted.tick();
+    expect((await store.status(host.id, adminToken)).backupTrackCount).toBe(1);
+    expect(provider.backupTracks).toHaveBeenLastCalledWith(
+      host.id,
+      't'.repeat(22),
+      true,
+    );
+  });
+  it('discards an in-flight manual refresh after an explicit-policy change', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    await service.action(host.id, adminToken, { action: 'refresh-backup' });
+    let release!: (tracks: ReturnType<typeof track>[]) => void,
+      entered!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    vi.mocked(provider.backupTracks).mockImplementationOnce(async () => {
+      entered();
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    });
+    const refreshed = service.action(host.id, adminToken, {
+      action: 'refresh-backup',
+    });
+    const rejected = expect(refreshed).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    await reading;
+    await parties.update(
+      host.id,
+      adminToken,
+      createPartySchema.parse({
+        name: p.name,
+        settings: { ...p.settings, allowExplicitTracks: false },
+      }),
+    );
+    release([{ ...track('x'), explicit: true }]);
+    await rejected;
+    expect((await store.status(host.id, adminToken)).backupTrackCount).toBe(0);
+    vi.mocked(provider.backupTracks).mockResolvedValue([track('d')]);
+    await service.action(host.id, adminToken, { action: 'refresh-backup' });
+    expect(provider.backupTracks).toHaveBeenLastCalledWith(
+      host.id,
+      's'.repeat(22),
+      false,
+    );
+  });
   it('observes music before queue start and retains last-seen playback on provider failure', async () => {
     const party = await create();
     vi.mocked(provider.player).mockResolvedValue({

@@ -158,6 +158,38 @@ export function PlaybackPanel({
           <p className="muted">
             Locked songs are recorded even if the host skips them in Spotify.
           </p>
+          {status.backupSourceUrl && (
+            <div className="backup-source">
+              <p>
+                <a
+                  href={status.backupSourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open backup source in Spotify
+                </a>
+              </p>
+              <p className="muted">
+                {status.backupTrackCount
+                  ? `${status.backupTrackCount} usable songs loaded. Backup songs cycle when guests have no songs waiting.`
+                  : 'No usable backup songs loaded. Check the playlist after saving its link in settings.'}
+              </p>
+              {active && (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => void action({ action: 'refresh-backup' })}
+                >
+                  Check / refresh backup playlist
+                </button>
+              )}
+              <p className="muted">
+                Refresh uses updated playlist contents for future refills.
+                Already reserved songs stay in place.
+              </p>
+            </div>
+          )}
           {status.playlistUrl && (
             <p>
               <a href={status.playlistUrl} target="_blank" rel="noreferrer">

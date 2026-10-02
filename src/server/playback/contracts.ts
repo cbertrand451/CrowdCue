@@ -24,6 +24,8 @@ export const playbackStatusSchema = z.object({
   lockedCount: z.number().int().nonnegative(),
   guestCount: z.number().int().nonnegative(),
   backupCount: z.number().int().nonnegative(),
+  backupSourceUrl: z.string().url().nullable().default(null),
+  backupTrackCount: z.number().int().nonnegative().default(0),
   saveAtCreation: z.boolean(),
   saveAtClose: z.boolean().nullable(),
   closeDecided: z.boolean(),
@@ -35,6 +37,7 @@ export const recapMarker = (id: string) =>
 export const playbackActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start') }).strict(),
   z.object({ action: z.literal('retry') }).strict(),
+  z.object({ action: z.literal('refresh-backup') }).strict(),
   z
     .object({ action: z.literal('fallback'), confirm: z.literal(true) })
     .strict(),
