@@ -656,6 +656,80 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       false,
     );
   });
+  it('computes private durable party statistics without double-counting idempotent requests or removed votes', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    const read = (owner = host.cookie, link = adminToken, query = '') =>
+      app.inject({
+        method: 'GET',
+        url: `/api/party-links/admin/${link}/statistics${query}`,
+        cookies: { '__Host-crowdcue_host': owner },
+      });
+    const empty = (await read()).json();
+    expect(empty).toMatchObject({
+      guestSessions: 0,
+      requests: { total: 0 },
+      votes: 0,
+      committed: { total: 0 },
+      topSongs: [],
+    });
+    await start(p);
+    await service.tick();
+    const {
+      join,
+      guest,
+      songs: [g, q],
+    } = await addGuests(p, ['g', 'q']);
+    await requests.vote(join, guest.token, g.id, true);
+    await requests.vote(join, guest.token, g.id, true);
+    await requests.vote(join, guest.token, q.id, true);
+    await requests.vote(join, guest.token, q.id, false);
+    await requests.moderate(host.id, adminToken, q.id, 'remove');
+    const stats = (await read()).json();
+    expect(stats).toMatchObject({
+      guestSessions: 1,
+      requests: { total: 2, approved: 1, removed: 1 },
+      votes: 1,
+      voters: 1,
+      committed: { total: 1, guest: 0, backup: 1, observed: 0 },
+      topSongs: [{ spotifyTrackId: g.track.id, votes: 1 }],
+    });
+    expect((await read(other.cookie)).statusCode).toBe(404);
+    expect((await read(host.cookie, token(p.links.guest!))).statusCode).toBe(
+      404,
+    );
+    expect((await read(host.cookie, token(p.links.display!))).statusCode).toBe(
+      404,
+    );
+    expect((await read('')).statusCode).toBe(401);
+    expect((await read(host.cookie, adminToken, '?offset=1')).statusCode).toBe(
+      400,
+    );
+    expect((await read()).headers['cache-control']).toBe('no-store');
+    await advance('a');
+    await advance('b');
+    await advance('c');
+    await parties.end(host.id, adminToken);
+    await service.action(host.id, adminToken, { action: 'close', save: false });
+    await service.tick();
+    const ended = (await read()).json();
+    expect(ended).toMatchObject({
+      status: 'ENDED',
+      requests: { total: 2 },
+      committed: { guest: 1, observed: 3 },
+    });
+    expect(removed).toBe(true);
+    await pool.query(
+      "UPDATE parties SET created_at=ended_at-interval '2 hours 5 minutes' WHERE id=$1",
+      [p.id],
+    );
+    expect((await read()).json().durationSeconds).toBe(7500);
+    expect((await read()).json().durationSeconds).toBe(7500);
+    vi.clearAllMocks();
+    await read();
+    expect(provider.player).not.toHaveBeenCalled();
+    expect(provider.enqueue).not.toHaveBeenCalled();
+  });
   const readHistory = (
     p: PartyDetails,
     owner = host.cookie,

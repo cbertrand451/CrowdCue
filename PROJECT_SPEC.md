@@ -817,7 +817,7 @@ A recommended implementation sequence is:
 16. Implement admin party controls (host queue ordering, alongside existing settings/moderation).
 17. Complete backup playlist system (source checks/refresh and safe replenishment).
 18. Complete event Spotify playlist and song history (QR-code joining already completed).
-19. Refine professional responsive UI.
+19. Add party statistics (private live totals and ended-session summary).
 20. Harden security and error handling.
 21. Expand automated testing.
 22. Perform complete end-to-end testing.
@@ -907,3 +907,7 @@ When implementation decisions conflict with this document, Codex should follow t
 Explicit user instructions given during development override this specification.
 
 When requirements change, update this document so future development tasks operate from the latest product definition.
+
+## Task 19 — Party statistics
+
+Owner-only statistics are expandable in the admin dashboard and open automatically after ending. They include duration since party creation (frozen at ending), joined guest sessions including expired sessions, persisted song requests by current status, retained votes and distinct voters, committed guest/backup occurrences and observed-playing occurrences, and the five most-voted Spotify tracks. Ranking aggregates retained votes across repeated requests for a track, includes moderated requests, and breaks ties by earliest request then track ID. Removed votes are excluded; rejected/duplicate attempts are not requests. Guest sessions are not unique-person counts. PLAYED means observed departure, not a full listen. Counts use a consistent database snapshot, update through existing WebSockets/five-second fallback polling, and survive playlist cleanup/restart. Only the owning host session with the Admin token may read them. No additional Spotify calls or schema migration are needed.

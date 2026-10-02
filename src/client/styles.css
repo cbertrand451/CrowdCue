@@ -715,3 +715,20 @@ a {
   font-size: 1.2rem;
   font-weight: 650;
 }
+
+.party-statistics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 1rem;
+}
+.party-statistics dt {
+  color: #b8c3bc;
+}
+.party-statistics dd {
+  margin: 0.25rem 0 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+}
+.statistics-ranking a {
+  overflow-wrap: anywhere;
+}

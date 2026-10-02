@@ -1,3 +1,4 @@
+import { readPartyStatistics } from '../statistics/store.js';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -73,6 +74,37 @@ export async function playbackRoutes(
         host.accountId,
         request.params.token,
         page.data.offset,
+      );
+    },
+  );
+  app.get<{ Params: { token: string } }>(
+    '/api/party-links/admin/:token/statistics',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      if (!options.auth || !options.playback)
+        return reply
+          .code(503)
+          .send({ error: 'Party statistics are not configured.' });
+      if (!validToken(request.params.token))
+        throw new RequestError(404, 'Party not found.');
+      const host = await options.auth
+        .requireHost(
+          request.cookies[
+            `${options.auth.config.secureCookies ? '__Host-' : ''}crowdcue_host`
+          ],
+        )
+        .catch(() => {
+          throw new RequestError(401, 'Sign in as this session’s host.');
+        });
+      if (Object.keys(request.query as object).length)
+        throw new RequestError(
+          400,
+          'Statistics do not accept query parameters.',
+        );
+      return readPartyStatistics(
+        options.playback.store.pool,
+        host.accountId,
+        request.params.token,
       );
     },
   );

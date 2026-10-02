@@ -1,3 +1,4 @@
+import { PartyStatisticsPanel } from './PartyStatisticsPanel';
 import { SongHistory } from './SongHistory';
 import { PlaybackPanel } from './PlaybackPanel';
 import { playlistIdFromInput } from '../server/playback/contracts.js';
@@ -123,6 +124,10 @@ export function AdminDashboard({
         refresh={queueRefresh}
         onExpired={onExpired}
       />
+      <details className="event-history" open={party.status === 'ENDED'}>
+        <summary>View party statistics</summary>
+        <PartyStatisticsPanel token={token} onExpired={onExpired} />
+      </details>
       <details className="event-history" open={party.status === 'ENDED'}>
         <summary>View event song history</summary>
         <SongHistory token={token} onExpired={onExpired} />
