@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from '../src/server/app.js';
+import { ApiError } from '../src/server/errors.js';
 import { readConfig } from '../src/server/config.js';
 import type { AuthService } from '../src/server/auth/service.js';
+import { SpotifyError } from '../src/server/spotify/error.js';
 
 const auth = {
   config: { appOrigin: 'https://crowdcue.example' },
@@ -75,6 +77,35 @@ describe('application', () => {
       await app.close();
     }
   });
+  it('serializes expected app and Spotify errors without internals', async () => {
+    const app = buildApp(readConfig({ NODE_ENV: 'test' }), { logger: false });
+    app.get('/api/expected-conflict', async () => {
+      throw new ApiError(409, 'The queue changed. Refresh and try again.', {
+        code: 'queue_conflict',
+      });
+    });
+    app.get('/api/provider-busy', async () => {
+      throw new SpotifyError('rate_limited', 27);
+    });
+    try {
+      const conflict = await app.inject('/api/expected-conflict');
+      expect(conflict.statusCode).toBe(409);
+      expect(conflict.json()).toEqual({
+        error: 'The queue changed. Refresh and try again.',
+      });
+      expect(conflict.body).not.toContain('queue_conflict');
+
+      const rateLimited = await app.inject('/api/provider-busy');
+      expect(rateLimited.statusCode).toBe(429);
+      expect(rateLimited.headers['retry-after']).toBe('27');
+      expect(rateLimited.json()).toEqual({
+        error: 'Spotify is busy. Please try again shortly.',
+      });
+      expect(rateLimited.body).not.toContain('access_token');
+    } finally {
+      await app.close();
+    }
+  });
   it('rejects unsafe cross-origin API writes before route handlers run', async () => {
     const app = buildApp(readConfig({ NODE_ENV: 'test' }), {
       logger: false,
@@ -127,6 +158,25 @@ describe('application', () => {
       expect(response.statusCode).toBe(413);
       expect(response.json()).toEqual({ error: 'Request body is too large.' });
       expect(response.body).not.toContain('BodyLimitError');
+    } finally {
+      await app.close();
+    }
+  });
+  it('rejects malformed JSON without exposing parser internals', async () => {
+    const app = buildApp(readConfig({ NODE_ENV: 'test' }), { logger: false });
+    app.post('/api/json-payload', async () => ({ ok: true }));
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/json-payload',
+        headers: { 'content-type': 'application/json' },
+        payload: '{broken-json',
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: 'Send a valid, bounded request.',
+      });
+      expect(response.body).not.toContain('Unexpected token');
     } finally {
       await app.close();
     }
