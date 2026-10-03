@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { requestResultSchema } from '../server/requests/contracts.js';
+import { requestResponseSchema } from '../server/requests/contracts.js';
 import {
   searchQuerySchema,
   searchResultSchema,
@@ -25,6 +25,8 @@ export function SongSearch({
   const [error, setError] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const [requestBusy, setRequestBusy] = useState<string>();
+  const [playedRepeatTrack, setPlayedRepeatTrack] =
+    useState<SearchResult['tracks'][number]>();
   const [requestFeedback, setRequestFeedback] = useState<string>();
   const [requestError, setRequestError] = useState<string>();
   const requestKeys = useRef(new Map<string, string>());
@@ -35,7 +37,7 @@ export function SongSearch({
     requestController.current = controller;
     return () => controller.abort();
   }, [token]);
-  async function requestSong(trackId: string) {
+  async function requestSong(trackId: string, confirmPlayedRepeat = false) {
     if (requestPending.current) return;
     const key = requestKeys.current.get(trackId) ?? crypto.randomUUID();
     requestKeys.current.set(trackId, key);
@@ -55,7 +57,7 @@ export function SongSearch({
             'content-type': 'application/json',
             'idempotency-key': key,
           },
-          body: JSON.stringify({ trackId }),
+          body: JSON.stringify({ confirmPlayedRepeat, trackId }),
         },
       );
       if (controller?.signal.aborted) return;
@@ -72,9 +74,18 @@ export function SongSearch({
         );
         return;
       }
-      const result = requestResultSchema.parse(await response.json());
+      const result = requestResponseSchema.parse(await response.json());
       if (!controller?.signal.aborted) {
+        if ('confirmationRequired' in result) {
+          setPlayedRepeatTrack(
+            tracks.find((track) => track.id === trackId) ??
+              visibleTracks.find((track) => track.id === trackId),
+          );
+          setRequestFeedback(undefined);
+          return;
+        }
         requestKeys.current.delete(trackId);
+        setPlayedRepeatTrack(undefined);
         setRequestFeedback(
           !result.created
             ? 'This song is already requested.'
@@ -93,6 +104,11 @@ export function SongSearch({
       requestPending.current = false;
       if (!controller?.signal.aborted) setRequestBusy(undefined);
     }
+  }
+  function cancelPlayedRepeat() {
+    setPlayedRepeatTrack(undefined);
+    setRequestFeedback(undefined);
+    setRequestError(undefined);
   }
   useEffect(() => {
     const controller = new AbortController();
@@ -275,6 +291,26 @@ export function SongSearch({
         <p role="status" className="ready">
           {requestFeedback} <a href="#song-requests">View requests</a>
         </p>
+      )}
+      {playedRepeatTrack && (
+        <div role="alertdialog" aria-labelledby="played-repeat-title">
+          <p id="played-repeat-title">Song already played...proceed?</p>
+          <button
+            type="button"
+            disabled={!!requestBusy}
+            onClick={() => void requestSong(playedRepeatTrack.id, true)}
+          >
+            Yes
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={!!requestBusy}
+            onClick={cancelPlayedRepeat}
+          >
+            No
+          </button>
+        </div>
       )}
       {requestError && <p role="alert">{requestError}</p>}
       <p className="muted">Vote for songs in the request list.</p>

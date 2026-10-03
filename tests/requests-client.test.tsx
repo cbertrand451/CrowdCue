@@ -80,6 +80,7 @@ it('submits only track IDs, blocks double submission, and reuses the request key
   );
   expect(submissions).toHaveLength(2);
   expect(JSON.parse(submissions[0][1]!.body as string)).toEqual({
+    confirmPlayedRepeat: false,
     trackId: track.id,
   });
   expect(submissions[0][1]!.headers).toEqual(submissions[1][1]!.headers);

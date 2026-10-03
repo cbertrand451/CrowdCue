@@ -983,6 +983,83 @@ describe.skipIf(!url)('party creation and authorization', () => {
     ).toBe('REMOVED');
   });
 
+  it('requires guest confirmation before re-requesting a played song', async () => {
+    const party = (
+      await create({
+        name: 'Played repeats',
+        settings: { approvalRequired: false },
+      })
+    ).json<{ party: PartyDetails }>().party;
+    const join = tokenFrom(party.links.guest);
+    const guest = await new PostgresGuestStore(pool).join(
+      join,
+      undefined,
+      'Alex',
+    );
+    const cookies = { [guestCookieName(join, true)]: guest.token };
+    const path = `/api/party-links/guest/${join}/requests`;
+    const song = {
+      id: 'c'.repeat(22),
+      name: 'Already played song',
+      artists: [{ name: 'Artist' }],
+      album: { name: 'Album', images: [] },
+      duration_ms: 185000,
+      explicit: false,
+    };
+    fetcher.mockImplementation(async () => new Response(JSON.stringify(song)));
+    const post = (attempt = randomUUID(), confirmPlayedRepeat = false) =>
+      app.inject({
+        method: 'POST',
+        url: path,
+        headers: {
+          origin: config.appOrigin,
+          'idempotency-key': attempt,
+          'content-type': 'application/json',
+        },
+        cookies,
+        payload: JSON.stringify({
+          confirmPlayedRepeat,
+          trackId: song.id,
+        }),
+      });
+    const first = await post();
+    expect(first.statusCode).toBe(201);
+    const firstRequest = first.json().request;
+    await pool.query(
+      "UPDATE song_requests SET status = 'PLAYED' WHERE id = $1",
+      [firstRequest.id],
+    );
+    fetcher.mockClear();
+    const repeatKey = randomUUID();
+    const warning = await post(repeatKey);
+    expect(warning.statusCode).toBe(200);
+    expect(warning.json()).toEqual({
+      confirmationRequired: true,
+      message: 'Song already played...proceed?',
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS count FROM song_requests WHERE party_id = $1',
+          [party.id],
+        )
+      ).rows[0].count,
+    ).toBe(1);
+    const confirmed = await post(repeatKey, true);
+    expect(confirmed.statusCode).toBe(201);
+    expect(confirmed.json().request.id).not.toBe(firstRequest.id);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS count FROM song_requests WHERE party_id = $1',
+          [party.id],
+        )
+      ).rows[0].count,
+    ).toBe(2);
+  });
+
   it('enforces request limits, cooldowns, explicit/name rules, session scope, and ended-party rejection', async () => {
     const party = (
       await create({

@@ -151,3 +151,70 @@ it('shows Retry-After feedback, recovers on retry, and clears expired guest acce
   await tick();
   expect(expired).toHaveBeenCalledOnce();
 });
+it('asks for confirmation before submitting a previously played song again', async () => {
+  vi.useFakeTimers();
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(reply({ tracks: [track], nextOffset: null }))
+    .mockResolvedValueOnce(
+      reply({
+        confirmationRequired: true,
+        message: 'Song already played...proceed?',
+      }),
+    )
+    .mockResolvedValueOnce(
+      reply({
+        confirmationRequired: true,
+        message: 'Song already played...proceed?',
+      }),
+    )
+    .mockResolvedValueOnce(
+      reply(
+        {
+          created: true,
+          request: {
+            id: crypto.randomUUID(),
+            track,
+            status: 'APPROVED',
+            requestedBy: 'Alex',
+            isOwn: true,
+            voteCount: 0,
+            hasVoted: false,
+            locked: false,
+            createdAt: new Date().toISOString(),
+          },
+        },
+        201,
+      ),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <SongSearch token={'g'.repeat(43)} allowExplicit onExpired={vi.fn()} />,
+  );
+  fireEvent.change(screen.getByRole('searchbox'), {
+    target: { value: 'song' },
+  });
+  await tick();
+  fireEvent.click(screen.getByRole('button', { name: 'Request song' }));
+  await act(async () => {});
+  expect(screen.getByRole('alertdialog')).toHaveTextContent(
+    'Song already played...proceed?',
+  );
+  expect(JSON.parse(fetcher.mock.calls[1][1].body as string)).toEqual({
+    confirmPlayedRepeat: false,
+    trackId: track.id,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'No' }));
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Request song' }));
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+  await act(async () => {});
+  expect(JSON.parse(fetcher.mock.calls[3][1].body as string)).toEqual({
+    confirmPlayedRepeat: true,
+    trackId: track.id,
+  });
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Your request is added.',
+  );
+});

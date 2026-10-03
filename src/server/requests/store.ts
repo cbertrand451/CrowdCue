@@ -121,6 +121,17 @@ export class PostgresRequestStore {
     );
     return result.rows[0];
   }
+  private async played(
+    client: pg.Pool | PoolClient,
+    party: Context,
+    id: string,
+  ) {
+    const result = await client.query<Row>(
+      `SELECT r.*, g.display_name, ${voteColumns} FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND r.spotify_track_id = $2 AND r.status = 'PLAYED' ORDER BY r.created_at DESC, r.id DESC LIMIT 1`,
+      [party.id, id, party.guest_id],
+    );
+    return result.rows[0];
+  }
   private async remember(
     client: PoolClient,
     party: Context,
@@ -138,6 +149,7 @@ export class PostgresRequestStore {
     session: string | undefined,
     id: string,
     key: string,
+    confirmPlayedRepeat = false,
   ) {
     return inTransaction(this.pool, async (client) => {
       const party = await this.context(client, token, session, true);
@@ -149,6 +161,14 @@ export class PostgresRequestStore {
           hostId: party.host_account_id,
         };
       }
+      if (!confirmPlayedRepeat && (await this.played(client, party, id)))
+        return {
+          result: {
+            confirmationRequired: true,
+            message: 'Song already played...proceed?' as const,
+          },
+          hostId: party.host_account_id,
+        };
       return { result: null, hostId: party.host_account_id };
     });
   }
@@ -157,6 +177,7 @@ export class PostgresRequestStore {
     session: string | undefined,
     track: Track,
     key: string,
+    confirmPlayedRepeat = false,
   ) {
     key = key.toLowerCase();
     return inTransaction(this.pool, async (client) => {
@@ -166,6 +187,11 @@ export class PostgresRequestStore {
         await this.remember(client, party, track.id, key, old.id);
         return { request: details(old, party.guest_id), created: false };
       }
+      if (!confirmPlayedRepeat && (await this.played(client, party, track.id)))
+        return {
+          confirmationRequired: true,
+          message: 'Song already played...proceed?' as const,
+        };
       if (track.explicit && !party.allow_explicit_tracks)
         throw new RequestError(
           400,

@@ -354,6 +354,14 @@ If another guest attempts to request an already-requested song, the application 
 
 Avoid cluttering the queue with duplicates.
 
+If a guest attempts to request a song that has already been played during the same party session, the Guest interface should show a confirmation prompt before adding it again. The prompt should say:
+
+```text
+Song already played...proceed?
+```
+
+The guest should be able to choose Yes or No. Choosing Yes may create a new request for the previously played song. Choosing No should leave the queue unchanged.
+
 ---
 
 # 13. Voting

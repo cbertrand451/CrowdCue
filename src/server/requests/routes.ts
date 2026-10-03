@@ -154,6 +154,7 @@ export async function requestRoutes(
         guest,
         input.data.trackId,
         key.data,
+        input.data.confirmPlayedRepeat,
       );
       const result =
         ready.result ??
@@ -162,8 +163,11 @@ export async function requestRoutes(
           guest,
           await options.auth.requestTrack(ready.hostId, input.data.trackId),
           key.data,
+          input.data.confirmPlayedRepeat,
         ));
-      return reply.code(result.created ? 201 : 200).send(result);
+      return reply
+        .code('created' in result && result.created ? 201 : 200)
+        .send(result);
     },
   );
   app.post<{ Params: { token: string } }>(
