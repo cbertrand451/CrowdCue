@@ -264,8 +264,8 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     expect(queue.hostOrdered).toBe(true);
     expect(queue.items.slice(0, 3).map((x) => [x.source, x.locked])).toEqual([
       ['BACKUP', true],
-      ['BACKUP', false],
-      ['BACKUP', false],
+      ['BACKUP', true],
+      ['BACKUP', true],
     ]);
     expect(queue.items.slice(3).map((x) => x.request.id)).toEqual([
       q.id,
@@ -300,7 +300,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       q.id,
       d.id,
     ]);
-    expect(provider.enqueue).toHaveBeenCalledTimes(1);
+    expect(provider.enqueue).toHaveBeenCalledTimes(3);
   });
   it('uses host order before queue start, in playlist recovery, and when committing the next guest', async () => {
     const p = await create(),
@@ -360,7 +360,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       locked: true,
       request: { id: q.id },
     });
-    expect(provider.enqueue).toHaveBeenLastCalledWith(host.id, q.track.id);
+    expect(provider.enqueue).toHaveBeenCalledWith(host.id, q.track.id);
     await expect(
       requests.controlQueue(host.id, adminToken, {
         action: 'move',
@@ -541,7 +541,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       await restarted.tick();
       const queue = await requests.adminQueue(host.id, adminToken, 0);
       expect(queue.items).toHaveLength(3);
-      expect(queue.items.filter((x) => x.locked)).toHaveLength(1);
+      expect(queue.items.filter((x) => x.locked)).toHaveLength(3);
       for (let i = 1; i < queue.items.length; i++)
         expect(queue.items[i].request.track.id).not.toBe(
           queue.items[i - 1].request.track.id,
@@ -709,7 +709,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       requests: { total: 2, approved: 1, removed: 1 },
       votes: 1,
       voters: 1,
-      committed: { total: 1, guest: 0, backup: 1, observed: 0 },
+      committed: { total: 3, guest: 0, backup: 3, observed: 0 },
       topSongs: [{ spotifyTrackId: g.track.id, votes: 1 }],
     });
     expect((await read(other.cookie)).statusCode).toBe(404);
@@ -1000,18 +1000,20 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     await advance('c');
     let history = await store.history(host.id, adminToken, 0);
     expect(history.items.map((x) => x.track.id)).toEqual(
-      ['a', 'b', 'c', 'g'].map((x) => x.repeat(22)),
+      ['a', 'b', 'c', 'g', 'a', 'b'].map((x) => x.repeat(22)),
     );
-    expect(history.items.map((x) => x.position)).toEqual([1, 2, 3, 4]);
+    expect(history.items.map((x) => x.position)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(history.items.map((x) => x.source)).toEqual([
       'BACKUP',
       'BACKUP',
       'BACKUP',
       'GUEST',
+      'BACKUP',
+      'BACKUP',
     ]);
     expect(history.items[3].requestedBy).toBe('Alex');
     expect(history).toMatchObject({
-      committedCount: 4,
+      committedCount: 6,
       observedCount: 3,
       status: 'ACTIVE',
       nextOffset: null,
@@ -1050,7 +1052,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     expect((await store.history(host.id, adminToken, 0)).observedCount).toBe(0);
     await service.tick();
     let history = await store.history(host.id, adminToken, 0);
-    expect(history.items).toHaveLength(2);
+    expect(history.items).toHaveLength(4);
     expect(history.observedCount).toBe(1);
     const firstObservation = history.items[0].observedAt;
     progress = 24000;
@@ -1062,12 +1064,12 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     progress = 1000;
     await service.tick();
     history = await store.history(host.id, adminToken, 0);
-    expect(history.items).toHaveLength(3);
+    expect(history.items).toHaveLength(5);
     expect(history.observedCount).toBe(2);
     expect(history.items.map((x) => x.track.id)).toEqual(
-      Array(3).fill(track('a').id),
+      Array(5).fill(track('a').id),
     );
-    expect(new Set(history.items.map((x) => x.id)).size).toBe(3);
+    expect(new Set(history.items.map((x) => x.id)).size).toBe(5);
     // A sent song can disappear from Spotify's queue without being observed.
     vi.mocked(provider.queueState).mockResolvedValueOnce({
       currently_playing: { id: current },
@@ -1206,7 +1208,88 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       display_state: 'UNAVAILABLE',
     });
   });
-  it('keeps three upcoming songs, appends guests in fourth place, and locks only the front across restarts', async () => {
+  it('keeps exactly three explicit Spotify songs ahead while leaving Spotify autoplay alone', async () => {
+    const p = await create();
+    const queued: string[] = [];
+    vi.mocked(provider.enqueue).mockImplementation(async (_host, id) => {
+      queued.push(id);
+    });
+    vi.mocked(provider.queueState).mockImplementation(async () => ({
+      currently_playing: { id: current },
+      queue: [...queued, track('x').id].map((id) => ({ id })),
+    }));
+    await start(p);
+    await service.tick();
+    expect(queued).toEqual(['a', 'b', 'c'].map((letter) => track(letter).id));
+    const {
+      songs: [g, q, d],
+    } = await addGuests(p);
+    await service.tick();
+    progress += 5000;
+    await service.tick();
+    await start(p); // Repeated Start is idempotent.
+    await new PlaybackService(store, provider).tick();
+    expect(provider.enqueue).toHaveBeenCalledTimes(3);
+    for (const [letter, next] of [
+      ['a', g],
+      ['b', q],
+      ['c', d],
+    ] as const) {
+      expect(queued.shift()).toBe(track(letter).id);
+      await advance(letter);
+      expect(queued).toHaveLength(3);
+      expect(queued.at(-1)).toBe(next.track.id);
+      await service.tick();
+      expect(queued).toHaveLength(3);
+    }
+    expect(
+      vi.mocked(provider.enqueue).mock.calls.map((call) => call[1]),
+    ).toEqual(['a', 'b', 'c', 'g', 'q', 'd'].map((letter) => track(letter).id));
+    await parties.end(host.id, token(p.links.admin!));
+    await service.tick();
+    expect(provider.enqueue).toHaveBeenCalledTimes(6);
+  });
+  it('stops the buffer at an uncertain second write without retrying or sending a later song', async () => {
+    const p = await create();
+    vi.mocked(provider.enqueue)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new SpotifyMutationError(true));
+    await start(p);
+    await service.tick();
+    expect(provider.enqueue).toHaveBeenCalledTimes(2);
+    await pool.query('UPDATE party_playback SET retry_at=null');
+    await new PlaybackService(store, provider).tick();
+    expect(provider.enqueue).toHaveBeenCalledTimes(2);
+    expect(await store.status(host.id, token(p.links.admin!))).toMatchObject({
+      error: 'queue_unknown',
+    });
+  });
+  it('starts playlist recovery at the first buffered song instead of skipping to the third', async () => {
+    const p = await create(),
+      adminToken = token(p.links.admin!);
+    await start(p);
+    await service.tick();
+    await service.action(host.id, adminToken, {
+      action: 'fallback',
+      confirm: true,
+    });
+    expect(provider.startPlaylist).toHaveBeenLastCalledWith(
+      host.id,
+      createdId,
+      0,
+    );
+    await advance('a');
+    await service.action(host.id, adminToken, {
+      action: 'fallback',
+      confirm: true,
+    });
+    expect(provider.startPlaylist).toHaveBeenLastCalledWith(
+      host.id,
+      createdId,
+      1,
+    );
+  });
+  it('delivers three upcoming songs, appends guests behind them, and refills once per playback transition across restarts', async () => {
     const p = await create(),
       join = token(p.links.guest),
       adminToken = token(p.links.admin!);
@@ -1224,8 +1307,10 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       locked: true,
       delivery: 'SENT',
     });
-    expect(provider.enqueue).toHaveBeenCalledTimes(1);
-    expect(actual).toEqual([`spotify:track:${'a'.repeat(22)}`]);
+    expect(provider.enqueue).toHaveBeenCalledTimes(3);
+    expect(actual).toEqual(
+      ['a', 'b', 'c'].map((x) => `spotify:track:${x.repeat(22)}`),
+    );
     const guest = await new PostgresGuestStore(pool).join(
       join,
       undefined,
@@ -1249,7 +1334,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     ).toBe('a'.repeat(22));
     const restarted = new PlaybackService(store, provider);
     await restarted.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(1);
+    expect(provider.enqueue).toHaveBeenCalledTimes(3);
     await advance('a');
     await advance('b');
     queue = await requests.guestQueue(join, guest.token, 0);
@@ -1269,12 +1354,14 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       requests.moderate(host.id, adminToken, g.id, 'remove'),
     ).rejects.toMatchObject({ statusCode: 409 });
     expect(actual).toEqual(
-      ['a', 'b', 'c', 'g'].map((x) => `spotify:track:${x.repeat(22)}`),
+      ['a', 'b', 'c', 'g', 'a', 'b'].map(
+        (x) => `spotify:track:${x.repeat(22)}`,
+      ),
     );
     expect(await store.status(host.id, adminToken)).toMatchObject({
-      lockedCount: 4,
+      lockedCount: 6,
       guestCount: 1,
-      backupCount: 3,
+      backupCount: 5,
     });
   });
   it('allows voting and host removal before #1 without displacing reserved backup slots', async () => {
@@ -1402,7 +1489,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     await pool.query('UPDATE party_playback SET retry_at=null');
     await service.tick();
     expect(actual).toEqual(
-      ['a', 'b'].map((x) => `spotify:track:${x.repeat(22)}`),
+      ['a', 'b', 'c', 'a'].map((x) => `spotify:track:${x.repeat(22)}`),
     );
   });
   it('advances a delivered song that leaves Spotify between polls without sending it twice', async () => {
@@ -1414,10 +1501,10 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       queue: [{ id: 'a'.repeat(22) }],
     });
     await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(1);
+    expect(provider.enqueue).toHaveBeenCalledTimes(3);
     current = 'x'.repeat(22);
     await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(2);
+    expect(provider.enqueue).toHaveBeenCalledTimes(4);
     expect(
       (
         await pool.query(
@@ -1444,7 +1531,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       service.tick(),
       new PlaybackService(store, provider).tick(),
     ]);
-    expect(provider.enqueue).toHaveBeenCalledTimes(2);
+    expect(provider.enqueue).toHaveBeenCalledTimes(4);
     expect(
       (
         await pool.query(

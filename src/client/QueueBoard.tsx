@@ -130,9 +130,9 @@ export function QueueBoard({
         <>
           <p className="muted">
             {snapshot.hostOrdered
-              ? 'Host order is active. Votes are counted; new guest songs follow the host’s ordered songs. Backup slots and locked #1 stay fixed.'
+              ? 'Host order is active. Votes are counted; new guest songs follow the host’s ordered songs. Backup slots and songs committed to Spotify stay fixed.'
               : snapshot.votingEnabled
-                ? 'Guest songs rank by votes. Backup slots stay in place; locked #1 cannot change.'
+                ? 'Guest songs rank by votes. Backup slots stay in place; songs committed to Spotify cannot change.'
                 : 'Voting is off. Guest songs follow request order.'}
           </p>
           {role === 'admin' &&

@@ -26,7 +26,12 @@ export async function changeQueueOrder(
   ).rows[0]?.initialized;
   const ids = initialized
     ? (await upcoming(client, partyId, votingEnabled))
-        .filter((e) => e.status === 'WAITING' && e.source === 'GUEST')
+        .filter(
+          (e) =>
+            e.status === 'WAITING' &&
+            e.locked_at === null &&
+            e.source === 'GUEST',
+        )
         .map((e) => e.request_id!)
     : (
         await client.query<{ id: string }>(

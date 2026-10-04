@@ -68,7 +68,7 @@ export class NightlyPlaylists {
     if (s.mode === 'PLAYLIST' && s.status === 'ACTIVE')
       committed.push(
         ...(await upcoming(client, s.party_id, s.voting_enabled))
-          .filter((e) => e.status === 'WAITING')
+          .filter((e) => e.locked_at === null)
           .map((e) => `spotify:track:${e.track.id}`),
       );
     if (committed.length > 10000) {

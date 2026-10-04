@@ -219,7 +219,7 @@ export class PlaybackStore {
         (e) =>
           e.track.id === currentId &&
           restarted &&
-          ((e.status === 'LOCKED' && e.delivery === 'SENT') ||
+          ((e.locked_at !== null && e.delivery === 'SENT') ||
             (s.mode === 'PLAYLIST' && playlistContext)),
       );
       await client.query(
@@ -227,15 +227,19 @@ export class PlaybackStore {
         [id, currentId ?? null, progressMs ?? null],
       );
       if (observed && restarted) {
-        if (s.mode === 'PLAYLIST') {
+        const earlier = rows
+          .slice(0, rows.indexOf(observed))
+          .filter((e) => e.locked_at !== null);
+        for (const e of earlier) {
           await client.query(
-            "UPDATE song_requests SET status='PLAYED' WHERE id IN (SELECT request_id FROM playback_entries WHERE party_id=$1 AND status='LOCKED' AND id!=$2)",
-            [id, observed.id],
+            "UPDATE playback_entries SET status='PLAYED' WHERE id=$1",
+            [e.id],
           );
-          await client.query(
-            "UPDATE playback_entries SET status='PLAYED' WHERE party_id=$1 AND status='LOCKED' AND id!=$2",
-            [id, observed.id],
-          );
+          if (e.request_id)
+            await client.query(
+              "UPDATE song_requests SET status='PLAYED' WHERE id=$1",
+              [e.request_id],
+            );
         }
         if (playing) {
           await client.query(
@@ -280,7 +284,7 @@ export class PlaybackStore {
       if (!rows.some((e) => e.status === 'LOCKED') && rows[0]) {
         const e = rows[0];
         await client.query(
-          "UPDATE playback_entries SET status='LOCKED',locked_at=now() WHERE id=$1",
+          "UPDATE playback_entries SET status='LOCKED',locked_at=COALESCE(locked_at,clock_timestamp()) WHERE id=$1",
           [e.id],
         );
         if (e.request_id)

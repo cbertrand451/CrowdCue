@@ -407,7 +407,7 @@ export class PostgresRequestStore {
         items: entries.slice(offset, offset + 50).map((e, i) => ({
           position: offset + i + 1,
           source: e.source,
-          locked: e.status === 'LOCKED',
+          locked: e.locked_at !== null,
           delivery: e.delivery,
           request: entryRequest(e, guestId),
         })),

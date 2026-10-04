@@ -209,7 +209,7 @@ export function PlaybackPanel({
                 <>
                   <p>
                     Start music in Spotify normally, then start the CrowdCue
-                    queue.
+                    queue to add its next three songs.
                   </p>
                   <button
                     type="button"
@@ -223,7 +223,7 @@ export function PlaybackPanel({
               {status.enabled && (
                 <p className="ready">
                   {status.mode === 'QUEUE'
-                    ? 'Spotify queue enabled'
+                    ? 'Spotify queue enabled — three upcoming songs, refilled as playback advances'
                     : 'Playlist recovery enabled'}
                 </p>
               )}
@@ -243,7 +243,7 @@ export function PlaybackPanel({
                   <p>
                     If queue delivery stops, use the nightly playlist. Clear any
                     remaining queued songs in Spotify first; this action starts
-                    the playlist at the latest locked song.
+                    the playlist at the first queued song.
                   </p>
                   <label>
                     <input

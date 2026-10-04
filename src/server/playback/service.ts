@@ -276,7 +276,11 @@ export class PlaybackService {
     if (!scheduled) return;
     s = await this.store.session(client, s.party_id);
     if (!s.enabled || s.status !== 'ACTIVE') return;
-    if (!(await this.playlists.sync(client, s, playlistId))) return;
+    if (
+      s.mode === 'PLAYLIST' &&
+      !(await this.playlists.sync(client, s, playlistId))
+    )
+      return;
     if (!player?.is_playing || player.device?.is_restricted) {
       await client.query(
         "UPDATE party_playback SET error_code='no_active_device',updated_at=now() WHERE party_id=$1",
@@ -284,19 +288,21 @@ export class PlaybackService {
       );
       return;
     }
-    const next = (await upcoming(client, s.party_id, s.voting_enabled)).find(
-      (e) => e.status === 'LOCKED',
-    );
-    if (s.mode === 'QUEUE' && next) {
-      if (next.delivery === 'UNKNOWN') {
-        await client.query(
-          "UPDATE party_playback SET error_code='queue_unknown',updated_at=now() WHERE party_id=$1",
-          [s.party_id],
-        );
-        return;
-      }
-      if (next.delivery === 'PENDING') {
-        // The row remains durable if the process exits between sending and receiving Spotify's acknowledgement.
+    // Spotify's playlist/autoplay queue is separate from our explicit three-song buffer.
+    // Keep acknowledged sends durable; unchanged polls and restarts never resend them.
+    if (s.mode === 'QUEUE') {
+      const buffer = (
+        await upcoming(client, s.party_id, s.voting_enabled)
+      ).slice(0, 3);
+      for (const next of buffer) {
+        if (next.delivery === 'UNKNOWN') {
+          await client.query(
+            "UPDATE party_playback SET error_code='queue_unknown',updated_at=now() WHERE party_id=$1",
+            [s.party_id],
+          );
+          return;
+        }
+        if (next.delivery !== 'PENDING') continue;
         const claimed = await this.store.change(
           s.party_id,
           async (c, current) => {
@@ -306,10 +312,24 @@ export class PlaybackService {
               current.mode !== 'QUEUE'
             )
               return false;
-            await c.query(
-              "UPDATE playback_entries SET delivery='SENDING' WHERE id=$1 AND delivery='PENDING'",
+            // Re-read the order under the same row lock used by votes/moderation.
+            const candidates = (
+              await upcoming(c, s.party_id, current.voting_enabled)
+            ).slice(0, 3);
+            if (
+              candidates.find((e) => e.delivery === 'PENDING')?.id !== next.id
+            )
+              return false;
+            const result = await c.query(
+              "UPDATE playback_entries SET delivery='SENDING',locked_at=COALESCE(locked_at,clock_timestamp()) WHERE id=$1 AND delivery='PENDING' AND status IN ('WAITING','LOCKED')",
               [next.id],
             );
+            if (!result.rowCount) return false;
+            if (next.request_id)
+              await c.query(
+                "UPDATE song_requests SET status='QUEUED' WHERE id=$1",
+                [next.request_id],
+              );
             return true;
           },
         );
@@ -334,6 +354,11 @@ export class PlaybackService {
         );
       }
     }
+    if (
+      s.mode === 'QUEUE' &&
+      !(await this.playlists.sync(client, s, playlistId))
+    )
+      return;
     await client.query(
       'UPDATE party_playback SET error_code=null,retry_at=null,updated_at=now() WHERE party_id=$1',
       [s.party_id],
@@ -469,17 +494,23 @@ export class PlaybackService {
       });
       s = await this.store.session(client, id);
       await this.playlists.sync(client, s, s.playlist_id!);
-      const count = (
-        await client.query<{ count: number }>(
-          'SELECT count(*)::int AS count FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL',
-          [id],
-        )
-      ).rows[0].count;
-      await this.spotify.startPlaylist(
-        hostId,
-        s.playlist_id!,
-        Math.max(0, count - 1),
+      const front = (await upcoming(client, id, s.voting_enabled)).find(
+        (e) => e.locked_at !== null,
       );
+      const offset = front
+        ? (
+            await client.query<{ count: number }>(
+              'SELECT count(*)::int AS count FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL AND (locked_at,sequence)<(SELECT locked_at,sequence FROM playback_entries WHERE id=$2)',
+              [id, front.id],
+            )
+          ).rows[0].count
+        : (
+            await client.query<{ count: number }>(
+              'SELECT count(*)::int AS count FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL',
+              [id],
+            )
+          ).rows[0].count;
+      await this.spotify.startPlaylist(hostId, s.playlist_id!, offset);
       return true;
     });
     if (!result)

@@ -28,12 +28,15 @@ export async function upcoming(
       `SELECT e.*, r.manual_position, COALESCE((SELECT count(*)::int FROM votes v WHERE v.request_id=e.request_id),0) AS vote_count,
  EXISTS(SELECT 1 FROM votes v WHERE v.request_id=e.request_id AND v.guest_id=$2) AS has_voted,g.display_name,r.requested_by
  FROM playback_entries e LEFT JOIN song_requests r ON r.id=e.request_id LEFT JOIN guests g ON g.id=r.requested_by
- WHERE e.party_id=$1 AND e.status IN ('WAITING','LOCKED') ORDER BY (e.status='LOCKED') DESC,e.sequence`,
+ WHERE e.party_id=$1 AND e.status IN ('WAITING','LOCKED') ORDER BY (e.locked_at IS NOT NULL) DESC,e.locked_at NULLS LAST,e.sequence`,
       [partyId, guestId ?? null],
     )
   ).rows;
   const guests = rows
-    .filter((e) => e.status === 'WAITING' && e.source === 'GUEST')
+    .filter(
+      (e) =>
+        e.status === 'WAITING' && e.locked_at === null && e.source === 'GUEST',
+    )
     .sort(
       (a, b) =>
         (a.manual_position ?? Infinity) - (b.manual_position ?? Infinity) ||
@@ -43,14 +46,16 @@ export async function upcoming(
     );
   let index = 0;
   return rows.map((e) =>
-    e.status === 'WAITING' && e.source === 'GUEST' ? guests[index++] : e,
+    e.status === 'WAITING' && e.locked_at === null && e.source === 'GUEST'
+      ? guests[index++]
+      : e,
   );
 }
 export function entryRequest(e: Entry, guestId?: string | null): SongRequest {
   return {
     id: e.request_id ?? e.id,
     track: trackSchema.parse(e.track),
-    status: e.status === 'WAITING' ? 'APPROVED' : 'QUEUED',
+    status: e.locked_at === null ? 'APPROVED' : 'QUEUED',
     requestedBy: e.source === 'BACKUP' ? 'Backup playlist' : e.display_name,
     isOwn: !!guestId && e.requested_by === guestId,
     voteCount: e.vote_count,

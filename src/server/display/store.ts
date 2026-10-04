@@ -50,7 +50,7 @@ export class PostgresDisplayStore {
           position: i + 1,
           track: trackSchema.parse(e.track),
           source: e.source,
-          locked: e.status === 'LOCKED',
+          locked: e.locked_at !== null,
           voteCount: e.vote_count,
         }));
         hasMore = entries.length > 6;
