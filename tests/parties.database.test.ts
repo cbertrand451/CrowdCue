@@ -32,6 +32,14 @@ import {
 import { buildApp } from '../src/server/app.js';
 import { readConfig } from '../src/server/config.js';
 
+function requireSavedRequest<T>(request: T | undefined): T {
+  if (!request)
+    throw new Error(
+      'Expected a saved request, received a repeat-song confirmation.',
+    );
+  return request;
+}
+
 const url = process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('party creation and authorization', () => {
   const schema = `crowdcue_party_${randomUUID().replaceAll('-', '')}`;
@@ -1218,8 +1226,9 @@ describe.skipIf(!url)('party creation and authorization', () => {
       explicit: false,
       spotifyUrl: `https://open.spotify.com/track/${'v'.repeat(22)}`,
     };
-    const song = (await requests.create(join, alex.token, track, randomUUID()))
-      .request;
+    const song = requireSavedRequest(
+      (await requests.create(join, alex.token, track, randomUUID())).request,
+    );
     const path = `/api/party-links/guest/${join}/requests/${song.id}/vote`;
     const vote = (
       voted: boolean,
@@ -1339,8 +1348,9 @@ describe.skipIf(!url)('party creation and authorization', () => {
       explicit: false,
       spotifyUrl: `https://open.spotify.com/track/${'w'.repeat(22)}`,
     };
-    const song = (await requests.create(join, guest.token, track, randomUUID()))
-      .request;
+    const song = requireSavedRequest(
+      (await requests.create(join, guest.token, track, randomUUID())).request,
+    );
     const vote = (voted: boolean) =>
       app.inject({
         method: 'POST',
@@ -1376,9 +1386,9 @@ describe.skipIf(!url)('party creation and authorization', () => {
     expect((await vote(true)).statusCode).toBe(200);
     await requests.moderate(host.id, adminLink, song.id, 'remove');
     expect((await vote(false)).statusCode).toBe(409);
-    const replacement = (
-      await requests.create(join, guest.token, track, randomUUID())
-    ).request;
+    const replacement = requireSavedRequest(
+      (await requests.create(join, guest.token, track, randomUUID())).request,
+    );
     expect(replacement).toMatchObject({ voteCount: 0, hasVoted: false });
     expect(
       (await requests.guestList(join, guest.token, 0)).requests.find(
@@ -1417,23 +1427,25 @@ describe.skipIf(!url)('party creation and authorization', () => {
       requests = new PostgresRequestStore(pool);
     const guest = await guests.join(join, undefined, 'Alex');
     const song = async (letter: string) =>
-      (
-        await requests.create(
-          join,
-          guest.token,
-          {
-            id: letter.repeat(22),
-            title: letter,
-            artists: ['Artist'],
-            album: 'Album',
-            artworkUrl: null,
-            durationMs: 120000,
-            explicit: false,
-            spotifyUrl: `https://open.spotify.com/track/${letter.repeat(22)}`,
-          },
-          randomUUID(),
-        )
-      ).request;
+      requireSavedRequest(
+        (
+          await requests.create(
+            join,
+            guest.token,
+            {
+              id: letter.repeat(22),
+              title: letter,
+              artists: ['Artist'],
+              album: 'Album',
+              artworkUrl: null,
+              durationMs: 120000,
+              explicit: false,
+              spotifyUrl: `https://open.spotify.com/track/${letter.repeat(22)}`,
+            },
+            randomUUID(),
+          )
+        ).request,
+      );
     const first = await song('a'),
       second = await song('b');
     await pool.query(

@@ -1,350 +1,99 @@
-# Running CrowdCue From Scratch
+# Run CrowdCue in VS Code
 
-These instructions assume you can see the public GitHub repository and want to run the `codex/crowdcue-build` branch locally.
+You need **Node.js 24 LTS**, which includes npm. You do **not** need to install PostgreSQL, Docker, Python, Git, or a database GUI.
 
-## 1. Install Prerequisites
+## 1. Download the app branch
 
-Install:
+On [GitHub](https://github.com/cbertrand451/CrowdCue/tree/codex/crowdcue-build), select **codex/crowdcue-build**, then **Code → Download ZIP**. The `main` branch may contain only project documents. Extract the ZIP first; in VS Code choose **File → Open Folder** and select the folder containing `package.json`.
 
-- Git
-- Node.js 24 LTS
-- npm 11
-- PostgreSQL 15 or newer
-
-If you use `nvm`, install the Node version from the repo after cloning:
+If you prefer Git:
 
 ```sh
-nvm install 24
-nvm use 24
-```
-
-Check your versions:
-
-```sh
-node --version
-npm --version
-git --version
-psql --version
-```
-
-## 2. Download The Branch
-
-Clone the repository:
-
-```sh
-git clone https://github.com/cbertrand451/CrowdCue.git
+git clone --branch codex/crowdcue-build https://github.com/cbertrand451/CrowdCue.git
 cd CrowdCue
 ```
 
-Fetch and switch to the development branch:
+## 2. Install and start
 
-```sh
-git fetch origin codex/crowdcue-build
-git checkout codex/crowdcue-build
-```
-
-Confirm you are on the right branch:
-
-```sh
-git branch --show-current
-```
-
-Expected:
-
-```text
-codex/crowdcue-build
-```
-
-## 3. Install Libraries
-
-Install the exact locked dependencies:
+Open **Terminal → New Terminal** in VS Code:
 
 ```sh
 npm ci
+npm run local
 ```
 
-If `npm ci` complains about your Node or npm version, update to Node 24 and npm 11, then rerun it.
+Open **http://127.0.0.1:5173**. Keep the terminal open. Press **Ctrl+C** to stop.
 
-## 4. Create Local PostgreSQL Databases
+The first install needs internet. npm downloads the app libraries and a PostgreSQL binary for your operating system. There is no PostgreSQL installer or global database service. The app starts/stops its bundled database, creates its schema, and generates a private local encryption key automatically. Later starts reuse your data and key.
 
-Create one development database and one test database. The exact commands depend on your PostgreSQL setup.
+Without Spotify credentials the page and health checks work, but Spotify sign-in and party creation are unavailable. There is no simulated live music or bypass of host authentication.
 
-Common local commands:
+## 3. Connect your Spotify app
 
-```sh
-createdb crowdcue_dev
-createdb crowdcue_test
-```
-
-If your PostgreSQL user requires an explicit username:
-
-```sh
-createdb -U postgres crowdcue_dev
-createdb -U postgres crowdcue_test
-```
-
-Example local database URLs:
-
-```text
-postgresql://localhost/crowdcue_dev
-postgresql://localhost/crowdcue_test
-```
-
-If you use a username/password, your URL may look like:
-
-```text
-postgresql://USER:PASSWORD@localhost:5432/crowdcue_dev
-```
-
-## 5. Create Environment Files
-
-Copy the example file:
-
-```sh
-cp .env.example .env
-```
-
-Open `.env` and set at least:
-
-```text
-NODE_ENV=development
-HOST=127.0.0.1
-PORT=3000
-DATABASE_URL=postgresql://localhost/crowdcue_dev
-TEST_DATABASE_URL=postgresql://localhost/crowdcue_test
-SPOTIFY_AUTH_ENABLED=false
-APP_ORIGIN=http://127.0.0.1:5173
-```
-
-Leave Spotify credentials blank for a non-Spotify smoke test.
-
-Important:
-
-- Do not commit `.env`.
-- Do not commit `.env.token-key`.
-- Do not paste Spotify secrets into GitHub issues, screenshots, or logs.
-
-## 6. Generate The Local Token Encryption Key
-
-Run:
-
-```sh
-npm run auth:keygen
-```
-
-This creates an ignored `.env.token-key` file. Keep it locally. Do not commit it.
-
-## 7. Run Database Migrations
-
-Apply the schema to your development database:
-
-```sh
-npm run db:migrate
-```
-
-If this fails, check that:
-
-- PostgreSQL is running.
-- `DATABASE_URL` points to an existing database.
-- Your database user has permission to create tables and indexes.
-
-## 8. Start The App
-
-Run the frontend and backend together:
-
-```sh
-npm run dev
-```
-
-You should see two processes:
-
-- `api`, the Fastify backend
-- `web`, the Vite frontend
-
-Open:
-
-```text
-http://127.0.0.1:5173
-```
-
-The API health endpoint is:
-
-```text
-http://127.0.0.1:3000/api/health
-```
-
-Expected API health response:
-
-```json
-{ "status": "ok", "service": "crowdcue" }
-```
-
-## 9. Test The UI Without Spotify
-
-With `SPOTIFY_AUTH_ENABLED=false`, the app should still load. This is useful for a basic UI smoke test.
-
-Check:
-
-1. Open `http://127.0.0.1:5173`.
-2. Confirm the page loads without a blank screen.
-3. Confirm the app reports API connectivity.
-4. Confirm Spotify connection controls show that Spotify auth is unavailable or disabled.
-
-Without Spotify auth, you will not be able to complete the full live host flow.
-
-## 10. Enable Spotify For Full Manual Testing
-
-To test the full app with Spotify:
-
-1. Create a Spotify app in the Spotify Developer Dashboard.
-2. Add this exact redirect URI:
+Create a Spotify application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). Register this exact redirect URI:
 
 ```text
 http://127.0.0.1:5173/api/auth/spotify/callback
 ```
 
-3. Update `.env`:
+Create a file named `.env` in the repository root (alongside `package.json`). Add your **own** values for the two credentials:
 
-```text
+```dotenv
+SPOTIFY_CLIENT_ID=your_client_id
+SPOTIFY_CLIENT_SECRET=your_client_secret
 SPOTIFY_AUTH_ENABLED=true
-SPOTIFY_CLIENT_ID=your_spotify_client_id
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:5173/api/auth/spotify/callback
 APP_ORIGIN=http://127.0.0.1:5173
 ```
 
-4. Restart the dev server:
+Leave `DATABASE_URL` absent or blank. Do not copy an example PostgreSQL URL; the launcher supplies the private bundled connection automatically. Do not share or commit `.env`, `.env.token-key`, or `data/`.
+
+Restart `npm run local`, open the exact address above, and click **Connect Spotify**. Spotify development-mode apps require an eligible account on the app's allowed-users list; queue features may require Premium. Start music on your chosen device in Spotify normally. CrowdCue does not play audio itself.
+
+The existing app requests playlist modification permissions for its nightly event playlist as well as playback queue permissions; review Spotify's consent screen. This local setup change does not add new Spotify scopes or test live Spotify writes.
+
+## 4. Try the existing party flow
+
+1. Connect Spotify, then create a party.
+2. Keep the private Admin link in the signed-in host browser.
+3. Open the Guest link in another browser/private window and join.
+4. Search, request a song, and vote.
+5. Use the Admin screen to approve or moderate requests and configure queue behavior.
+6. Open the Display link to see the party, joining QR code, and queue updates.
+
+These default URLs work on your laptop only. A phone cannot reach your laptop using `127.0.0.1`. Testing with phones needs a reachable HTTPS origin and matching Spotify callback, frontend listener, and app origin; simply scanning a loopback QR code will not work from another device. Local setup does not publish your app to the internet.
+
+## Data and restarts
+
+Your local party data lives in `data/local/`. OAuth tokens and party links are encrypted using `.env.token-key`. Preserve both together; losing the key makes existing encrypted records unusable. The launcher never overwrites the key or deletes your database on shutdown. Back up these private files only after stopping the app. `data/tests/` is separate test data.
+
+## Tests and checks
 
 ```sh
-npm run dev
-```
-
-5. Open:
-
-```text
-http://127.0.0.1:5173
-```
-
-6. Click **Connect Spotify** and complete Spotify consent.
-
-Spotify development-mode apps may require your Spotify account to be added as an allowed test user in the Spotify dashboard.
-
-## 11. Manual Full-Flow UI Test
-
-After connecting Spotify:
-
-1. Create a party from the host page.
-2. Copy/open the Guest link in another browser or private window.
-3. Join the party as a guest.
-4. Search for a song.
-5. Request a song.
-6. In the Admin view, approve or moderate the request if approval is enabled.
-7. Vote from the guest view.
-8. Open the Display link and confirm the party and queue information appear.
-9. Test the repeated-song confirmation:
-   - Let or mark a requested song reach `PLAYED` during the session.
-   - Search for the same song again as a guest.
-   - Click **Request song**.
-   - Confirm the app shows `Song already played...proceed?`
-   - Click **No** and confirm no new request is added.
-   - Try again, click **Yes**, and confirm a repeat request is submitted.
-
-## 12. Run Automated Tests
-
-Run the normal test suite:
-
-```sh
-npm test
-```
-
-Run formatting, linting, type checking, tests, and build:
-
-```sh
+npm run test:local
 npm run check
 ```
 
-Run database-backed tests:
+`test:local` runs the whole suite with a bundled test database, including persistence/concurrency tests. Spotify responses and write operations are mocked. `check` runs formatting, lint, TypeScript, normal tests, and the production build; database tests in that command skip unless `TEST_DATABASE_URL` is supplied.
+
+To prepare data without starting the UI:
 
 ```sh
-npm run test:db
+npm run local:setup
 ```
 
-Database tests require `TEST_DATABASE_URL`. They create temporary isolated schemas inside the test database and remove them afterward.
+## Troubleshooting
 
-## 13. Build And Run Production Locally
+- **Node/npm version errors:** install Node 24 LTS, reopen the VS Code terminal, and check `node --version` / `npm --version`.
+- **Windows PowerShell blocks npm.ps1:** use the VS Code Command Prompt terminal, or run `npm.cmd ci` and `npm.cmd run local`.
+- **Port in use:** stop the other CrowdCue instance. The UI uses 5173, the API 3000, and the bundled database 55432 (tests use 55433). To change the API port, set `PORT` in `.env`; the launcher updates its proxy target. Set `LOCAL_DATABASE_PORT` to change the database port.
+- **Database binary missing:** use plain `npm ci` with optional dependencies and install scripts enabled. Do not use `--omit=optional` or `--ignore-scripts`. The binary packages support Windows x64, macOS x64/arm64, and Linux variants; Linux x64 was validated here.
+- **Database won't start:** run as a normal user with a writable extracted folder; PostgreSQL cannot run as root. Do not launch from inside the ZIP. Keep the `data` folder and encryption key; after a forced shutdown, close any remaining CrowdCue processes and restart for database recovery.
+- **Connect Spotify disabled:** set the credentials and `SPOTIFY_AUTH_ENABLED=true`, then restart.
+- **Spotify callback fails:** dashboard redirect, `.env` redirect, and browser origin must match exactly. Use `127.0.0.1`, not `localhost`.
 
-Build:
+## Existing external database / production setup
 
-```sh
-npm run build
-```
+If you already have PostgreSQL, set `DATABASE_URL` to that database and `npm run local` uses it without starting a bundled database; it still applies migrations automatically. `TEST_DATABASE_URL` selects a separate external test database for `test:local`.
 
-Start the production build:
-
-```sh
-npm start
-```
-
-Open:
-
-```text
-http://127.0.0.1:3000
-```
-
-For a local production smoke test without Spotify auth, you can run:
-
-```sh
-SPOTIFY_AUTH_ENABLED=false npm start
-```
-
-## 14. Common Problems
-
-### `npm ci` fails because of Node version
-
-Use Node 24:
-
-```sh
-nvm install 24
-nvm use 24
-npm ci
-```
-
-### Database migration fails
-
-Check:
-
-```sh
-psql "$DATABASE_URL" -c "select 1;"
-```
-
-If that fails, fix the database URL or start PostgreSQL.
-
-### Spotify callback fails
-
-Confirm all three values match the same origin:
-
-```text
-APP_ORIGIN=http://127.0.0.1:5173
-SPOTIFY_REDIRECT_URI=http://127.0.0.1:5173/api/auth/spotify/callback
-Spotify dashboard redirect URI=http://127.0.0.1:5173/api/auth/spotify/callback
-```
-
-Use `127.0.0.1`, not `localhost`, for the local Spotify redirect.
-
-### The frontend cannot reach the API
-
-Confirm the backend is running:
-
-```sh
-curl http://127.0.0.1:3000/api/health
-```
-
-If you changed `PORT`, also set `API_PROXY_TARGET`, for example:
-
-```sh
-PORT=3001 API_PROXY_TARGET=http://127.0.0.1:3001 npm run dev
-```
-
-## 15. Stop The App
-
-Press `Ctrl+C` in the terminal running `npm run dev` or `npm start`.
+Existing `npm run dev`, `npm run db:migrate`, `npm run build`, and `npm start` remain unchanged for advanced development and deployment. They do not automatically launch the local bundled database. Production requires an externally managed PostgreSQL database, persistent token encryption keys, and HTTPS OAuth configuration. See [README.md](README.md).

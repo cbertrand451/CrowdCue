@@ -38,6 +38,14 @@ import {
 import { PostgresDisplayStore } from '../src/server/display/store.js';
 import { buildApp } from '../src/server/app.js';
 import { readConfig } from '../src/server/config.js';
+function requireSavedRequest<T>(request: T | undefined): T {
+  if (!request)
+    throw new Error(
+      'Expected a saved request, received a repeat-song confirmation.',
+    );
+  return request;
+}
+
 const database = process.env.TEST_DATABASE_URL;
 const config = readAuthConfig({
   NODE_ENV: 'test',
@@ -203,8 +211,16 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     const songs = [];
     for (const letter of letters)
       songs.push(
-        (await requests.create(join, guest.token, track(letter), randomUUID()))
-          .request,
+        requireSavedRequest(
+          (
+            await requests.create(
+              join,
+              guest.token,
+              track(letter),
+              randomUUID(),
+            )
+          ).request,
+        ),
       );
     return { join, guest, songs };
   };
@@ -265,9 +281,10 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       g.track.id,
       d.track.id,
     ]);
-    const newer = (
-      await requests.create(join, guest.token, track('e'), randomUUID())
-    ).request;
+    const newer = requireSavedRequest(
+      (await requests.create(join, guest.token, track('e'), randomUUID()))
+        .request,
+    );
     await requests.vote(join, guest.token, newer.id, true);
     expect(
       (await requests.adminQueue(host.id, adminToken, 0)).items
@@ -852,9 +869,10 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     expect(board.participants).toBe(51);
     expect(board.entries.every((e) => !e.isYou)).toBe(true);
     expect(board.yourEntry?.rank).toBe(1);
-    const song = (
-      await requests.create(join, last.token, track('g'), randomUUID())
-    ).request;
+    const song = requireSavedRequest(
+      (await requests.create(join, last.token, track('g'), randomUUID()))
+        .request,
+    );
     const voter = await guests.join(join, undefined, 'Voter');
     await requests.vote(join, voter.token, song.id, true);
     expect(
@@ -1213,9 +1231,10 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       undefined,
       'Alex',
     );
-    const g = (
-      await requests.create(join, guest.token, track('g'), randomUUID())
-    ).request;
+    const g = requireSavedRequest(
+      (await requests.create(join, guest.token, track('g'), randomUUID()))
+        .request,
+    );
     await service.tick();
     queue = await requests.guestQueue(join, guest.token, 0);
     expect(queue.items[3]).toMatchObject({
@@ -1269,12 +1288,14 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       undefined,
       'Alex',
     );
-    const g = (
-      await requests.create(join, guest.token, track('g'), randomUUID())
-    ).request;
-    const q = (
-      await requests.create(join, guest.token, track('q'), randomUUID())
-    ).request;
+    const g = requireSavedRequest(
+      (await requests.create(join, guest.token, track('g'), randomUUID()))
+        .request,
+    );
+    const q = requireSavedRequest(
+      (await requests.create(join, guest.token, track('q'), randomUUID()))
+        .request,
+    );
     await service.tick();
     await requests.vote(join, guest.token, q.id, true);
     expect(
@@ -1294,9 +1315,10 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
         settings: { ...p.settings, approvalRequired: true },
       }),
     );
-    const pending = (
-      await requests.create(join, guest.token, track('z'), randomUUID())
-    ).request;
+    const pending = requireSavedRequest(
+      (await requests.create(join, guest.token, track('z'), randomUUID()))
+        .request,
+    );
     await service.tick();
     expect(
       (await requests.guestQueue(join, guest.token, 0)).items.some(

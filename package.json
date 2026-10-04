@@ -18,7 +18,10 @@
     "db:migrate": "tsx --env-file-if-exists=.env src/server/db/cli.ts",
     "db:migrate:production": "node --env-file-if-exists=.env dist/server/db/cli.js",
     "test:db": "vitest run tests/database.test.ts tests/auth.database.test.ts tests/parties.database.test.ts tests/playback.database.test.ts tests/realtime.database.test.ts tests/display.database.test.ts",
-    "auth:keygen": "tsx src/server/auth/keygen.ts"
+    "auth:keygen": "tsx src/server/auth/keygen.ts",
+    "local": "node scripts/local.mjs",
+    "local:setup": "node scripts/local.mjs --setup",
+    "test:local": "node scripts/local.mjs --test"
   },
   "repository": {
     "type": "git",
@@ -43,6 +46,7 @@
     "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.5",
     "@fastify/websocket": "^11.3.1",
+    "embedded-postgres": "18.4.0-beta.17",
     "fastify": "^5.12.5",
     "pg": "^8.23.1",
     "qrcode.react": "^4.2.0",

@@ -7,3 +7,5 @@ coverage/
 secrets.txt
 *.log
 .DS_Store
+# Bundled local database and its private generated credentials.
+data/

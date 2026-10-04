@@ -2,6 +2,21 @@
 
 CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Spotify song search, song requests with host moderation, and voting are implemented. Spotify queue delivery, a three-song backup buffer, locked-front queue ordering, nightly playlists, recovery, and session closeout are implemented. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
+## Quick local start — no database installation
+
+Download the **codex/crowdcue-build** branch as a ZIP from GitHub, extract it, and open the extracted folder in VS Code. Install **Node.js 24 LTS** (npm is included). In the VS Code terminal:
+
+```sh
+npm ci
+npm run local
+```
+
+Open **http://127.0.0.1:5173**. No Git, Python, Docker, PostgreSQL installer, database commands, or separately generated encryption key are required. The npm install includes platform-specific PostgreSQL binaries; the launcher runs them privately on your laptop, creates the databases, applies migrations, and generates the ignored encryption key automatically. This keeps the existing PostgreSQL transactions, locks, and live updates intact. It is a bundled database, not SQLite or a hosted service.
+
+For real parties and Spotify search/playback, add your Spotify application credentials to `.env` as described in [RUN.md](RUN.md), register the local callback, then restart. Without credentials, the app opens for a UI/connectivity check; Spotify sign-in and party creation remain unavailable. The launcher never supplies fake Spotify credentials or bypasses authentication.
+
+Local data persists in ignored `data/local/`; keep that folder **and** `.env.token-key` together across restarts. Ctrl+C stops the app and bundled database. Run `npm run test:local` to run all tests, including database integration tests, against a separate bundled test database. Windows x64, macOS Intel/Apple Silicon, and supported Linux architectures receive the matching binary through npm; only Linux x64 has been verified in this workspace. The first install needs internet and normal npm install scripts enabled. Run as a normal user, not root/administrator.
+
 ## Architecture and stack
 
 A TypeScript monolith with React and Vite for the browser and Fastify 5 for the backend. Development runs a Vite server that proxies `/api` to Fastify. Production runs one Node process serving the compiled frontend and API from the same origin. An in-process Spotify worker coordinates through PostgreSQL; no separate worker infrastructure, Redis, or microservices are needed.
@@ -10,9 +25,9 @@ Fastify Helmet supplies security headers; Fastify's Pino logger supplies structu
 
 Vitest covers API/configuration behavior and frontend loading, success, and failure states, using Testing Library and jsdom. ESLint, Prettier, and strict TypeScript enforce code quality. npm's committed lockfile makes installs reproducible.
 
-## Requirements and commands
+## Advanced development and deployment commands
 
-Use Node **24 LTS** and npm **11** (see `.nvmrc`). From the repository root:
+Use Node **24 LTS** and npm **11** (see `.nvmrc`). For the simplest local setup use `npm run local` above. The original commands below remain available for an externally managed PostgreSQL database:
 
 ```sh
 npm ci
@@ -67,23 +82,23 @@ dist/server/       Generated backend JavaScript (ignored)
 
 Keep local values in ignored `.env` files or deployment secret configuration. `.env.example` contains names only. Never prefix privileged configuration with `VITE_`: that prefix exposes values in browser bundles.
 
-| Variable                  | Default / purpose                                                                                                         |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                | `development`; accepts `development`, `test`, `production`. `npm start` selects `production`.                             |
-| `HOST`                    | `127.0.0.1`; use `0.0.0.0` for a cloud/container listener                                                                 |
-| `PORT`                    | `3000`; integer from 1 to 65535                                                                                           |
-| `LOG_LEVEL`               | `info`; Pino levels or `silent`                                                                                           |
-| `API_PROXY_TARGET`        | Optional Vite process environment override; defaults to `http://127.0.0.1:3000`. Set this when changing the backend port. |
-| `DATABASE_URL`            | PostgreSQL URL for migrations and enabled authentication; never exposed to the browser                                    |
-| `TEST_DATABASE_URL`       | PostgreSQL URL for integration tests; use a separate test database                                                        |
-| `SPOTIFY_AUTH_ENABLED`    | Blank/false disables OAuth. Set true after completing the setup below                                                     |
-| `SPOTIFY_CLIENT_ID`       | Spotify application client ID                                                                                             |
-| `SPOTIFY_CLIENT_SECRET`   | Spotify application secret; backend only                                                                                  |
-| `SPOTIFY_REDIRECT_URI`    | Exact registered callback URL ending in /api/auth/spotify/callback                                                        |
-| `SPOTIFY_REDIRECT_URL`    | Alias when SPOTIFY_REDIRECT_URI is absent/blank                                                                           |
-| `APP_ORIGIN`              | Browser origin without a trailing slash; defaults to the callback origin and must match it                                |
-| `TOKEN_ENCRYPTION_KEYS`   | Secret JSON object of key IDs to canonical base64-encoded 32-byte keys                                                    |
-| `TOKEN_ENCRYPTION_KEY_ID` | Active encryption key ID; defaults to v1                                                                                  |
+| Variable                  | Default / purpose                                                                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                | `development`; accepts `development`, `test`, `production`. `npm start` selects `production`.                                                        |
+| `HOST`                    | `127.0.0.1`; use `0.0.0.0` for a cloud/container listener                                                                                            |
+| `PORT`                    | `3000`; integer from 1 to 65535                                                                                                                      |
+| `LOG_LEVEL`               | `info`; Pino levels or `silent`                                                                                                                      |
+| `API_PROXY_TARGET`        | Optional Vite process environment override; defaults to `http://127.0.0.1:3000`. Set this when changing the backend port.                            |
+| `DATABASE_URL`            | Optional with `npm run local`; blank uses the bundled database. Otherwise PostgreSQL URL for migrations/authentication; never exposed to the browser |
+| `TEST_DATABASE_URL`       | PostgreSQL URL for integration tests; use a separate test database                                                                                   |
+| `SPOTIFY_AUTH_ENABLED`    | Blank/false disables OAuth. Set true after completing the setup below                                                                                |
+| `SPOTIFY_CLIENT_ID`       | Spotify application client ID                                                                                                                        |
+| `SPOTIFY_CLIENT_SECRET`   | Spotify application secret; backend only                                                                                                             |
+| `SPOTIFY_REDIRECT_URI`    | Exact registered callback URL ending in /api/auth/spotify/callback                                                                                   |
+| `SPOTIFY_REDIRECT_URL`    | Alias when SPOTIFY_REDIRECT_URI is absent/blank                                                                                                      |
+| `APP_ORIGIN`              | Browser origin without a trailing slash; defaults to the callback origin and must match it                                                           |
+| `TOKEN_ENCRYPTION_KEYS`   | Secret JSON object of key IDs to canonical base64-encoded 32-byte keys                                                                               |
+| `TOKEN_ENCRYPTION_KEY_ID` | Active encryption key ID; defaults to v1                                                                                                             |
 
 Vite does not read the backend `.env` into its configuration. For example, a custom backend port uses `PORT=3001 API_PROXY_TARGET=http://127.0.0.1:3001 npm run dev` on POSIX shells. No Spotify credentials or database connection are required to install, run unit tests, or start with OAuth disabled.
 
@@ -371,3 +386,7 @@ Every API response uses private caching/referrer/indexing headers, including err
 Request/error serializers omit private URLs, query strings, bodies, cookies and raw exception messages/stacks; existing logs record safe operation categories/request IDs. Deployment proxy/access logs must still redact private paths, OAuth codes and cookies. No migration is needed. The production dependency audit at implementation reported zero vulnerabilities; rerun `npm audit --omit=dev` as dependencies evolve.
 
 Spotify sign-in now starts with a same-origin POST accepting JSON, followed by navigation to a validated `https://accounts.spotify.com/authorize` URL. This preserves `no-referrer` privacy and exact Origin checks: Chromium may send `Origin: null` for a plain HTML form under that policy. The response contains only the public authorization URL; the OAuth binding cookie stays HttpOnly and grants remain server-side. The login endpoint retains 303 responses for callers without `Accept: application/json` and requires a valid Origin for either response format. Duplicate browser starts are prevented and failures can retry.
+
+### Local setup milestone
+
+Completed: GitHub ZIP / VS Code setup using Node only; bundled persistent PostgreSQL, automatic databases/migrations and encryption key, graceful process cleanup, and bundled database test runner. Original production/external database commands remain supported. Live Spotify acceptance still requires browser consent and the user’s Spotify developer app; no live Spotify writes are used during validation.
