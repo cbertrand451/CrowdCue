@@ -94,6 +94,13 @@ export class PostgresDisplayStore {
           [party.id],
         )
       ).rows[0].count;
+      const playing = (
+        await client.query<{ track: { id: string } }>(
+          "SELECT track FROM playback_entries WHERE party_id=$1 AND status='PLAYING'",
+          [party.id],
+        )
+      ).rows[0];
+      const parsedTrack = trackSchema.safeParse(state.display_track);
       return displaySnapshotSchema.parse({
         party: {
           name: party.name,
@@ -109,6 +116,10 @@ export class PostgresDisplayStore {
                 observedAt: null,
               }
             : {
+                locked:
+                  !!playing &&
+                  parsedTrack.success &&
+                  playing.track.id === parsedTrack.data.id,
                 state: state.display_state,
                 track: state.display_track,
                 progressMs: state.display_progress_ms,

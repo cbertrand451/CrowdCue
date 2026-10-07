@@ -20,7 +20,7 @@ export async function readEventHistory(
     if (!party) throw new RequestError(404, 'Party not found.');
     const counts = (
       await client.query<{ committed: number; observed: number }>(
-        'SELECT count(*)::int AS committed,count(observed_at)::int AS observed FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL',
+        'SELECT count(*)::int AS committed,count(observed_at)::int AS observed FROM playback_entries WHERE party_id=$1 AND COALESCE(legacy_committed_at,locked_at) IS NOT NULL',
         [party.id],
       )
     ).rows[0];
@@ -35,11 +35,11 @@ export async function readEventHistory(
         observed_at: Date | null;
         delivery: EventHistory['items'][number]['delivery'];
       }>(
-        `SELECT e.id,e.track,e.source,e.locked_at,e.observed_at,e.delivery,g.display_name,
-       row_number() OVER (ORDER BY e.locked_at,e.sequence)::int AS position
+        `SELECT e.id,e.track,e.source,COALESCE(e.legacy_committed_at,e.locked_at) AS locked_at,e.observed_at,e.delivery,g.display_name,
+       row_number() OVER (ORDER BY COALESCE(e.legacy_committed_at,e.locked_at),e.sequence)::int AS position
        FROM playback_entries e LEFT JOIN song_requests r ON r.id=e.request_id LEFT JOIN guests g ON g.id=r.requested_by
-       WHERE e.party_id=$1 AND e.locked_at IS NOT NULL
-       ORDER BY e.locked_at,e.sequence LIMIT 51 OFFSET $2`,
+       WHERE e.party_id=$1 AND COALESCE(e.legacy_committed_at,e.locked_at) IS NOT NULL
+       ORDER BY COALESCE(e.legacy_committed_at,e.locked_at),e.sequence LIMIT 51 OFFSET $2`,
         [party.id, offset],
       )
     ).rows;

@@ -8,6 +8,7 @@ export const displaySnapshotSchema = z.object({
     guestUrl: z.string().url(),
   }),
   nowPlaying: z.object({
+    locked: z.boolean().optional(),
     state: z.enum(['UNKNOWN', 'PLAYING', 'PAUSED', 'IDLE', 'UNAVAILABLE']),
     track: trackSchema.nullable(),
     progressMs: z.number().int().nonnegative().nullable(),

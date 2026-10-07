@@ -10,7 +10,7 @@ export class NightlyPlaylists {
   constructor(private readonly spotify: PlaybackProvider) {}
   async ensure(client: PoolClient, s: Session) {
     if (s.playlist_id) return s.playlist_id;
-    const marker = recapMarker(s.party_id);
+    const marker = `${s.playlist_description ? s.playlist_description + '\n' : ''}${recapMarker(s.party_id)}`;
     if (
       s.playlist_creation === 'CREATING' ||
       s.playlist_creation === 'UNKNOWN'
@@ -38,7 +38,7 @@ export class NightlyPlaylists {
     try {
       const id = await this.spotify.createPlaylist(
         s.host_account_id,
-        s.name,
+        s.playlist_name ?? s.name,
         marker,
       );
       created = true;
@@ -59,18 +59,19 @@ export class NightlyPlaylists {
     }
   }
   async sync(client: PoolClient, s: Session, id: string) {
+    if (s.playlist_id && s.playlist_id !== id)
+      throw new Error('Unmanaged playlist');
     const committed = (
       await client.query<{ track: { id: string } }>(
-        'SELECT track FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL ORDER BY locked_at,sequence',
+        "SELECT track FROM playback_entries WHERE party_id=$1 AND status IN ('PLAYED','PLAYING') ORDER BY locked_at,sequence",
         [s.party_id],
       )
     ).rows.map((x) => `spotify:track:${x.track.id}`);
-    if (s.mode === 'PLAYLIST' && s.status === 'ACTIVE')
-      committed.push(
-        ...(await upcoming(client, s.party_id, s.voting_enabled))
-          .filter((e) => e.locked_at === null)
-          .map((e) => `spotify:track:${e.track.id}`),
-      );
+    committed.push(
+      ...(await upcoming(client, s.party_id, s.voting_enabled)).map(
+        (e) => `spotify:track:${e.track.id}`,
+      ),
+    );
     if (committed.length > 10000) {
       await client.query(
         "UPDATE party_playback SET error_code='too_many_tracks' WHERE party_id=$1",
@@ -97,31 +98,48 @@ export class NightlyPlaylists {
     )
       return true;
     const actual = await this.spotify.playlistUris(s.host_account_id, id);
-    // Always read before appending: a lost POST acknowledgement may already have changed Spotify.
-    let prefix =
-      actual.length <= committed.length &&
-      actual.every((uri, i) => uri === committed[i]);
-    let offset = prefix ? actual.length : 0;
-    if (!prefix || (actual.length === 0 && committed.length === 0)) {
-      if (actual.length || committed.length)
+    // Reconcile by occurrence, preserving the already matching history/current/next
+    // prefix. Never replace the whole playlist while it is being played.
+    for (let i = 0; i < committed.length; i++) {
+      if (actual[i] === committed[i]) continue;
+      const later = actual.indexOf(committed[i], i + 1);
+      if (later !== -1) {
+        await this.spotify.moveItem(s.host_account_id, id, later, i);
+        actual.splice(i, 0, actual.splice(later, 1)[0]);
+      } else {
+        const additions = [committed[i]];
+        while (
+          additions.length < 100 &&
+          i + additions.length < committed.length &&
+          !actual.includes(committed[i + additions.length], i)
+        )
+          additions.push(committed[i + additions.length]);
         await this.spotify.writeItems(
           s.host_account_id,
           id,
-          committed.slice(0, 100),
-          true,
+          additions,
+          false,
+          i,
         );
-      offset = Math.min(committed.length, 100);
-      prefix = true;
+        actual.splice(i, 0, ...additions);
+        i += additions.length - 1;
+      }
     }
-    while (prefix && offset < committed.length) {
-      await this.spotify.writeItems(
+    while (actual.length > committed.length) {
+      const offset = Math.max(committed.length, actual.length - 100);
+      await this.spotify.removeItems(
         s.host_account_id,
         id,
-        committed.slice(offset, offset + 100),
-        false,
+        actual
+          .slice(offset)
+          .map((uri, index) => ({ uri, positions: [offset + index] })),
       );
-      offset += 100;
+      actual.splice(offset);
     }
+    await client.query(
+      "UPDATE playback_entries SET delivery='SENT' WHERE party_id=$1 AND status IN ('WAITING','LOCKED','PLAYING') AND delivery!='SENT'",
+      [s.party_id],
+    );
     await client.query(
       'UPDATE party_playback SET playlist_synced_at=now(),playlist_digest=$2 WHERE party_id=$1',
       [s.party_id, digest],

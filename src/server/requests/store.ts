@@ -1,6 +1,6 @@
 import { readLeaderboard } from '../leaderboard/store.js';
 import { fillBackupBuffer, insertGuestEntry } from '../playback/scheduling.js';
-import { upcoming, entryRequest } from '../playback/ordering.js';
+import { upcoming, entryRequest, type Entry } from '../playback/ordering.js';
 import { changeQueueOrder } from '../queue/controls.js';
 import type { QueueAction } from '../queue/contracts.js';
 import { queueOrder } from '../queue/ordering.js';
@@ -386,7 +386,7 @@ export class PostgresRequestStore {
     ).rows[0];
     const hostOrdered = (
       await client.query<{ present: boolean }>(
-        "SELECT EXISTS(SELECT 1 FROM song_requests WHERE party_id=$1 AND status='APPROVED' AND manual_position IS NOT NULL) AS present",
+        "SELECT (EXISTS(SELECT 1 FROM song_requests WHERE party_id=$1 AND status='APPROVED' AND manual_position IS NOT NULL) OR EXISTS(SELECT 1 FROM playback_entries WHERE party_id=$1 AND status='WAITING' AND manual_position IS NOT NULL)) AS present",
         [party.id],
       )
     ).rows[0].present;
@@ -403,7 +403,14 @@ export class PostgresRequestStore {
         settings.voting_enabled,
         guestId,
       );
+      const current = (
+        await client.query<Entry>(
+          "SELECT e.*,g.display_name,r.requested_by,0 AS vote_count,false AS has_voted FROM playback_entries e LEFT JOIN song_requests r ON r.id=e.request_id LEFT JOIN guests g ON g.id=r.requested_by WHERE e.party_id=$1 AND e.status='PLAYING'",
+          [party.id],
+        )
+      ).rows[0];
       return {
+        current: current ? entryRequest(current, guestId) : null,
         items: entries.slice(offset, offset + 50).map((e, i) => ({
           position: offset + i + 1,
           source: e.source,
@@ -427,6 +434,7 @@ export class PostgresRequestStore {
       [party.id, offset, guestId ?? null],
     );
     return {
+      current: null,
       items: result.rows.slice(0, 50).map((row) => ({
         position: row.position,
         source: 'GUEST' as const,

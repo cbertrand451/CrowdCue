@@ -33,18 +33,20 @@ export const playbackStatusSchema = z.object({
 });
 export type PlaybackStatus = z.infer<typeof playbackStatusSchema>;
 export const recapMarker = (id: string) =>
-  `CrowdCue session ${id}. Songs committed for tonight; skipped songs may be included.`;
+  `CrowdCue session ${id}. Managed party playlist.`;
 export const playbackActionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('start') }).strict(),
+  z
+    .object({
+      action: z.literal('start'),
+      name: z.string().trim().min(1).max(100).optional(),
+      description: z.string().trim().max(200).optional(),
+    })
+    .strict(),
   z.object({ action: z.literal('retry') }).strict(),
   z.object({ action: z.literal('refresh-backup') }).strict(),
   z
-    .object({ action: z.literal('fallback'), confirm: z.literal(true) })
-    .strict(),
-  z
     .object({ action: z.literal('recreate'), confirm: z.literal(true) })
     .strict(),
-  z.object({ action: z.literal('close'), save: z.boolean() }).strict(),
 ]);
 
 export function playlistIdFromInput(value: string): string | null | undefined {

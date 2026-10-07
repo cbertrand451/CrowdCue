@@ -17,7 +17,7 @@ const errors: Record<NonNullable<PlaybackStatus['error']>, string> = {
   queue_unknown:
     'Spotify may already have received the locked song. CrowdCue will not resend it. Use playlist recovery if playback does not advance.',
   creation_unknown:
-    'Spotify may have created the nightly playlist. CrowdCue is checking your library before creating another.',
+    'Spotify may have created the session playlist. CrowdCue is checking your library before creating another.',
   backup_empty:
     'The backup playlist has no playable songs allowed by your settings.',
   backup_required: 'Add a backup Spotify playlist in party settings.',
@@ -41,8 +41,8 @@ export function PlaybackPanel({
   const [error, setError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [closeSave, setCloseSave] = useState('no');
-  const [clearQueue, setClearQueue] = useState(false);
+  const [playlistName, setPlaylistName] = useState('');
+  const [description, setDescription] = useState('');
   const [recreate, setRecreate] = useState(false);
   const pending = useRef(false);
   const mutation = useRef<AbortController | null>(null);
@@ -156,7 +156,9 @@ export function PlaybackPanel({
             songs · {status.backupCount} backup songs
           </p>
           <p className="muted">
-            Locked songs are recorded even if the host skips them in Spotify.
+            Open the session playlist in Spotify and press Play. Turn off
+            Shuffle, Smart Shuffle and Repeat. Current and next songs are locked
+            for everyone in CrowdCue; use Spotify itself to skip.
           </p>
           {status.backupSourceUrl && (
             <div className="backup-source">
@@ -171,7 +173,7 @@ export function PlaybackPanel({
               </p>
               <p className="muted">
                 {status.backupTrackCount
-                  ? `${status.backupTrackCount} usable songs loaded. Backup songs cycle when guests have no songs waiting.`
+                  ? `${status.backupTrackCount} usable songs loaded. Random backup songs fill gaps when guests have no songs waiting.`
                   : 'No usable backup songs loaded. Check the playlist after saving its link in settings.'}
               </p>
               {active && (
@@ -186,14 +188,15 @@ export function PlaybackPanel({
               )}
               <p className="muted">
                 Refresh uses updated playlist contents for future refills.
-                Already reserved songs stay in place.
+                Current and next songs stay locked. Unlocked backup songs can
+                give way to guest requests.
               </p>
             </div>
           )}
           {status.playlistUrl && (
             <p>
               <a href={status.playlistUrl} target="_blank" rel="noreferrer">
-                Open nightly playlist in Spotify
+                Open session playlist in Spotify
               </a>
             </p>
           )}
@@ -208,23 +211,47 @@ export function PlaybackPanel({
               {!status.enabled && (
                 <>
                   <p>
-                    Start music in Spotify normally, then start the CrowdCue
-                    queue to add its next three songs.
+                    Start the session to create your private playlist with three
+                    random backup songs. Then open that playlist in Spotify and
+                    press Play.
                   </p>
+                  <label>
+                    Session playlist name (defaults to party name)
+                    <input
+                      maxLength={100}
+                      value={playlistName}
+                      onChange={(e) => setPlaylistName(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Playlist description
+                    <textarea
+                      maxLength={200}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                  </label>
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => void action({ action: 'start' })}
+                    onClick={() =>
+                      void action({
+                        action: 'start',
+                        ...(playlistName.trim()
+                          ? { name: playlistName.trim() }
+                          : {}),
+                        description: description.trim(),
+                      })
+                    }
                   >
-                    Start CrowdCue queue
+                    Start session
                   </button>
                 </>
               )}
               {status.enabled && (
                 <p className="ready">
-                  {status.mode === 'QUEUE'
-                    ? 'Spotify queue enabled — three upcoming songs, refilled as playback advances'
-                    : 'Playlist recovery enabled'}
+                  Session playlist enabled — current and next songs are locked;
+                  at least two songs stay ahead.
                 </p>
               )}
               {status.error && (
@@ -237,45 +264,10 @@ export function PlaybackPanel({
                   Retry Spotify sync
                 </button>
               )}
-              {status.playlistUrl && status.enabled && (
-                <>
-                  <h3>Playlist recovery</h3>
-                  <p>
-                    If queue delivery stops, use the nightly playlist. Clear any
-                    remaining queued songs in Spotify first; this action starts
-                    the playlist at the first queued song.
-                  </p>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={clearQueue}
-                      onChange={(e) => setClearQueue(e.target.checked)}
-                    />
-                    I cleared pending songs in Spotify
-                  </label>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={busy || !clearQueue}
-                    onClick={() =>
-                      void action({ action: 'fallback', confirm: true })
-                    }
-                  >
-                    Start playlist recovery
-                  </button>
-                  {status.mode === 'PLAYLIST' && (
-                    <p className="muted">
-                      New guest requests keep updating this playlist. Spotify
-                      controls playback; changing the playlist may not
-                      immediately change its current playback order.
-                    </p>
-                  )}
-                </>
-              )}
               {status.creation === 'UNKNOWN' && (
                 <>
                   <p>
-                    Check your Spotify library before replacing the nightly
+                    Check your Spotify library before replacing the session
                     playlist. A replacement may leave an extra empty playlist.
                   </p>
                   <label>
@@ -301,50 +293,12 @@ export function PlaybackPanel({
           )}
           {!active && (
             <>
-              {!status.closeDecided && (
-                <>
-                  <label>
-                    Save the nightly playlist?
-                    <select
-                      value={closeSave}
-                      onChange={(e) => setCloseSave(e.target.value)}
-                    >
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
-                  </label>
-                  <p>
-                    {status.saveAtCreation
-                      ? 'You chose Yes at creation, so this playlist will be kept either way.'
-                      : 'If you choose No again, CrowdCue clears the temporary playlist and removes it from your Spotify library.'}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void action({
-                        action: 'close',
-                        save: closeSave === 'yes',
-                      })
-                    }
-                  >
-                    Finish session summary
-                  </button>
-                </>
-              )}
-              {status.closeDecided &&
-                (status.saveAtCreation || status.saveAtClose) && (
-                  <p className="ready">The nightly playlist is saved.</p>
-                )}
-              {status.closeDecided &&
-                !status.saveAtCreation &&
-                !status.saveAtClose && (
-                  <p>
-                    {status.playlistRemoved
-                      ? 'Temporary playlist cleared and removed from your Spotify library.'
-                      : 'Removing the temporary playlist from your Spotify library…'}
-                  </p>
-                )}
+              <p className="ready">Your session playlist stays in Spotify.</p>
+              <p>
+                To delete it yourself, open the playlist in Spotify, open its
+                three-dot menu, and choose Delete playlist (or Remove from your
+                library). CrowdCue never deletes it.
+              </p>
             </>
           )}
         </>

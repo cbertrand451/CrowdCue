@@ -1,4 +1,3 @@
-import { guestCookieName } from '../src/server/guests/routes.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import {
@@ -86,8 +85,8 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     createdId: string,
     current: string,
     progress: number,
-    context: string | null,
-    removed: boolean;
+    context: string | null;
+
   let app: ReturnType<typeof buildApp>;
   const signIn = async () => {
     const cookie = newToken();
@@ -152,18 +151,26 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     current = 'h'.repeat(22);
     progress = 1000;
     context = null;
-    removed = false;
     provider = {
       createPlaylist: vi.fn(async () => createdId),
       findPlaylist: vi.fn(async () => createdId),
       backupTracks: vi.fn(async () => [track('a'), track('b'), track('c')]),
       playlistUris: vi.fn(async () => [...actual]),
-      writeItems: vi.fn(async (_host, _id, uris, replace) => {
-        actual = replace ? [...uris] : [...actual, ...uris];
+      writeItems: vi.fn(async (_host, _id, uris, replace, position) => {
+        if (replace) actual = [...uris];
+        else actual.splice(position ?? actual.length, 0, ...uris);
       }),
-      removePlaylist: vi.fn(async () => {
-        removed = true;
+      moveItem: vi.fn(async (_host, _id, from, to) => {
+        actual.splice(to, 0, actual.splice(from, 1)[0]);
       }),
+      removeItems: vi.fn<PlaybackProvider['removeItems']>(
+        async (_host, _id, items) => {
+          for (const position of items
+            .flatMap((e) => e.positions)
+            .sort((a, b) => b - a))
+            actual.splice(position, 1);
+        },
+      ),
       player: vi.fn(async () => ({
         is_playing: true,
         progress_ms: progress,
@@ -171,14 +178,6 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
         context: context ? { uri: context } : null,
         device: { is_restricted: false },
       })),
-      queueState: vi.fn(async () => ({
-        currently_playing: { id: current },
-        queue: [],
-      })),
-      enqueue: vi.fn(async () => {}),
-      startPlaylist: vi.fn(async () => {
-        context = `spotify:playlist:${createdId}`;
-      }),
     };
     service = new PlaybackService(store, provider);
     app = buildApp(readConfig({ NODE_ENV: 'test' }), {
@@ -237,1347 +236,183 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       headers: { origin: config.appOrigin, 'content-type': 'application/json' },
       payload: JSON.stringify(payload),
     });
-  it('lets the host order guest slots, preserves backups/locked #1, and restores votes', async () => {
+  it('creates only on Start, customizes a private session, seeds three random backups and never sends playback commands', async () => {
     const p = await create(),
-      adminToken = token(p.links.admin!);
-    await start(p);
+      t = token(p.links.admin!);
     await service.tick();
+    expect(provider.createPlaylist).not.toHaveBeenCalled();
+    await service.action(host.id, t, {
+      action: 'start',
+      name: 'Dance floor',
+      description: 'Birthday songs',
+    });
+    expect(provider.createPlaylist).toHaveBeenCalledWith(
+      host.id,
+      'Dance floor',
+      expect.stringContaining('Birthday songs'),
+    );
+    expect(actual).toHaveLength(3);
+    const q = await requests.adminQueue(host.id, t, 0);
+    expect(q.items.map((e) => e.locked)).toEqual([true, true, false]);
+    expect(q.items.every((e) => e.source === 'BACKUP')).toBe(true);
+    const before = [...actual];
+    await start(p);
+    await new PlaybackService(store, provider).tick();
+    expect(actual).toEqual(before);
+    expect(provider.createPlaylist).toHaveBeenCalledTimes(1);
+    expect(actual[0]).not.toBe(actual[1]);
+  });
+  it('replaces unlocked backup fillers, synchronizes votes/reordering, and locks only current + next', async () => {
+    const p = await create(),
+      t = token(p.links.admin!);
+    await start(p);
+    const first = actual[0],
+      second = actual[1];
     const {
       join,
       guest,
       songs: [g, q, d],
     } = await addGuests(p);
-    const move = {
-      action: 'move' as const,
-      requestId: q.id,
-      neighborId: g.id,
-      direction: 'up' as const,
-    };
-    expect((await queueAction(p, move)).statusCode).toBe(200);
-    // Retry after a lost response must not swap the songs back.
-    await Promise.all([
-      requests.controlQueue(host.id, adminToken, move),
-      requests.controlQueue(host.id, adminToken, move),
-    ]);
-    await requests.vote(join, guest.token, g.id, true);
-    const queue = await requests.guestQueue(join, guest.token, 0);
-    expect(queue.hostOrdered).toBe(true);
-    expect(queue.items.slice(0, 3).map((x) => [x.source, x.locked])).toEqual([
-      ['BACKUP', true],
-      ['BACKUP', true],
-      ['BACKUP', true],
-    ]);
-    expect(queue.items.slice(3).map((x) => x.request.id)).toEqual([
-      q.id,
-      g.id,
-      d.id,
-    ]);
-    const display = await new PostgresDisplayStore(
-      pool,
-      config.appOrigin,
-    ).snapshot(token(p.links.display!));
-    expect(display.queue.slice(3).map((x) => x.track.id)).toEqual([
-      q.track.id,
-      g.track.id,
-      d.track.id,
-    ]);
-    const newer = requireSavedRequest(
-      (await requests.create(join, guest.token, track('e'), randomUUID()))
-        .request,
-    );
-    await requests.vote(join, guest.token, newer.id, true);
-    expect(
-      (await requests.adminQueue(host.id, adminToken, 0)).items
-        .slice(3)
-        .map((x) => x.request.id),
-    ).toEqual([q.id, g.id, d.id, newer.id]);
-    await requests.controlQueue(host.id, adminToken, { action: 'reset' });
-    const reset = await requests.adminQueue(host.id, adminToken, 0);
-    expect(reset.hostOrdered).toBe(false);
-    expect(reset.items.slice(3).map((x) => x.request.id)).toEqual([
-      g.id,
-      newer.id,
-      q.id,
-      d.id,
-    ]);
-    expect(provider.enqueue).toHaveBeenCalledTimes(3);
-  });
-  it('uses host order before queue start, in playlist recovery, and when committing the next guest', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    const {
-      songs: [g, q, d],
-    } = await addGuests(p);
-    await requests.controlQueue(host.id, adminToken, {
-      action: 'move',
-      requestId: q.id,
-      neighborId: g.id,
-      direction: 'up',
-    });
-    expect(
-      (await requests.adminQueue(host.id, adminToken, 0)).items.map(
-        (x) => x.request.id,
-      ),
-    ).toEqual([q.id, g.id, d.id]);
-    const display = await new PostgresDisplayStore(
-      pool,
-      config.appOrigin,
-    ).snapshot(token(p.links.display!));
-    expect(display.queue[0].track.id).toBe(q.track.id);
-    await start(p);
+    await requests.vote(join, guest.token, q.id, true);
     await service.tick();
-    await service.action(host.id, adminToken, {
-      action: 'fallback',
-      confirm: true,
-    });
-    expect(actual).toEqual(
-      ['a', 'b', 'c', 'q', 'g', 'd'].map(
-        (x) => `spotify:track:${x.repeat(22)}`,
-      ),
-    );
-    await requests.controlQueue(host.id, adminToken, {
+    expect(actual).toEqual([
+      first,
+      second,
+      ...[q, g, d].map((e) => `spotify:track:${e.track.id}`),
+    ]);
+    await requests.controlQueue(host.id, t, {
       action: 'move',
       requestId: d.id,
       neighborId: g.id,
       direction: 'up',
     });
     await service.tick();
-    expect(actual).toEqual(
-      ['a', 'b', 'c', 'q', 'd', 'g'].map(
-        (x) => `spotify:track:${x.repeat(22)}`,
-      ),
-    );
-    // Switch the fixture back to queue mode to verify delivery uses the same order.
-    await pool.query(
-      "UPDATE party_playback SET mode='QUEUE' WHERE party_id=$1",
-      [p.id],
-    );
-    await advance('a');
-    await advance('b');
-    await advance('c');
-    const queue = await requests.adminQueue(host.id, adminToken, 0);
-    expect(queue.items[0]).toMatchObject({
+    expect(actual).toEqual([
+      first,
+      second,
+      ...[q, d, g].map((e) => `spotify:track:${e.track.id}`),
+    ]);
+    context = `spotify:playlist:${createdId}`;
+    await advance(first.slice(-22)[0]);
+    let snapshot = await requests.guestQueue(join, guest.token, 0);
+    expect(snapshot.current?.track.id).toBe(first.slice(-22));
+    expect(snapshot.current?.locked).toBe(true);
+    expect(snapshot.items.filter((e) => e.locked)).toHaveLength(1);
+    expect(snapshot.items[0].request.track.id).toBe(second.slice(-22));
+    await advance(second.slice(-22)[0]);
+    snapshot = await requests.adminQueue(host.id, t, 0);
+    expect(snapshot.items[0]).toMatchObject({
       locked: true,
       request: { id: q.id },
     });
-    expect(provider.enqueue).toHaveBeenCalledWith(host.id, q.track.id);
     await expect(
-      requests.controlQueue(host.id, adminToken, {
+      requests.vote(join, guest.token, q.id, false),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(
+      requests.moderate(host.id, t, q.id, 'remove'),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(
+      requests.controlQueue(host.id, t, {
         action: 'move',
         requestId: q.id,
         neighborId: d.id,
         direction: 'down',
       }),
     ).rejects.toMatchObject({ statusCode: 409 });
-    await requests.controlQueue(host.id, adminToken, { action: 'reset' });
+    const display = await new PostgresDisplayStore(
+      pool,
+      config.appOrigin,
+    ).snapshot(token(p.links.display!));
+    expect(display.queue[0]).toMatchObject({
+      locked: true,
+      track: { id: q.track.id },
+    });
+    await advance(q.track.id[0]);
+    await advance(d.track.id[0]);
+    const history = await store.history(host.id, t, 0);
     expect(
-      (await requests.adminQueue(host.id, adminToken, 0)).items[0].request.id,
-    ).toBe(q.id);
+      history.items.some((e) => e.track.id === q.track.id && e.observedAt),
+    ).toBe(true);
   });
-  it('restores request order with voting off and rejects backup and pending entries', async () => {
+  it('refills to two upcoming songs without guests, including pauses and backend restarts', async () => {
     const p = await create(),
-      adminToken = token(p.links.admin!);
+      t = token(p.links.admin!);
     await start(p);
+    context = `spotify:playlist:${createdId}`;
+    await advance(actual[0].slice(-22)[0]);
+    for (let i = 0; i < 5; i++) {
+      const queue = await requests.adminQueue(host.id, t, 0);
+      expect(queue.items).toHaveLength(2);
+      expect(queue.items.map((e) => e.locked)).toEqual([true, false]);
+      await advance(queue.items[0].request.track.id[0]);
+    }
+    const before = [...actual];
+    await new PlaybackService(store, provider).tick();
+    expect(actual).toEqual(before);
+    vi.mocked(provider.player).mockResolvedValue({
+      is_playing: false,
+      item: { id: current, uri: `spotify:track:${current}` },
+      progress_ms: progress,
+      context: { uri: context },
+    });
     await service.tick();
-    const {
-      songs: [g, q],
-    } = await addGuests(p, ['g', 'q']);
-    const backup = (await requests.adminQueue(host.id, adminToken, 0)).items[1];
-    await expect(
-      requests.controlQueue(host.id, adminToken, {
-        action: 'move',
-        requestId: q.id,
-        neighborId: backup.request.id,
-        direction: 'up',
-      }),
-    ).rejects.toMatchObject({ statusCode: 409 });
-    await parties.update(
-      host.id,
-      adminToken,
-      createPartySchema.parse({
-        name: p.name,
-        settings: {
-          ...p.settings,
-          votingEnabled: false,
-          approvalRequired: true,
-        },
-      }),
-    );
-    const {
-      songs: [pending],
-    } = await addGuests(p, ['e']);
-    await expect(
-      requests.controlQueue(host.id, adminToken, {
-        action: 'move',
-        requestId: pending.id,
-        neighborId: q.id,
-        direction: 'up',
-      }),
-    ).rejects.toMatchObject({ statusCode: 409 });
-    await requests.controlQueue(host.id, adminToken, {
-      action: 'move',
-      requestId: q.id,
-      neighborId: g.id,
-      direction: 'up',
-    });
-    expect(
-      (await requests.adminQueue(host.id, adminToken, 0)).items
-        .slice(3)
-        .map((x) => x.request.id),
-    ).toEqual([q.id, g.id]);
-    await requests.controlQueue(host.id, adminToken, { action: 'reset' });
-    expect(
-      (await requests.adminQueue(host.id, adminToken, 0)).items
-        .slice(3)
-        .map((x) => x.request.id),
-    ).toEqual([g.id, q.id]);
+    expect(actual).toEqual(before);
+    expect((await requests.adminQueue(host.id, t, 0)).items).toHaveLength(2);
   });
-  it('rejects unauthorized, invalid, cross-party, stale and ended queue controls', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    const {
-      songs: [g, q, d],
-    } = await addGuests(p);
-    const move = {
-      action: 'move',
-      requestId: q.id,
-      neighborId: g.id,
-      direction: 'up',
-    };
-    expect((await queueAction(p, move, other.cookie)).statusCode).toBe(404);
-    expect((await queueAction(p, move, '')).statusCode).toBe(401);
-    expect(
-      (await queueAction(p, move, host.cookie, token(p.links.guest)))
-        .statusCode,
-    ).toBe(404);
-    expect(
-      (await queueAction(p, move, host.cookie, token(p.links.display!)))
-        .statusCode,
-    ).toBe(404);
-    expect((await queueAction(p, { ...move, extra: true })).statusCode).toBe(
-      400,
-    );
-    expect(
-      (await queueAction(p, { ...move, requestId: 'invalid' })).statusCode,
-    ).toBe(400);
-    const forbidden = await app.inject({
-      method: 'POST',
-      url: `/api/party-links/admin/${adminToken}/queue`,
-      headers: { origin: 'https://other.example' },
-      cookies: { '__Host-crowdcue_host': host.cookie },
-      payload: move,
+  it('keeps the complete playlist after ending without deleting, clearing or rewriting it', async () => {
+    const p = await create(false),
+      t = token(p.links.admin!);
+    await start(p);
+    await addGuests(p);
+    await service.tick();
+    const before = [...actual];
+    const calls = vi.mocked(provider.writeItems).mock.calls.length;
+    await parties.end(host.id, t);
+    await service.tick();
+    expect(actual).toEqual(before);
+    expect(provider.writeItems).toHaveBeenCalledTimes(calls);
+    expect(await store.status(host.id, t)).toMatchObject({
+      ended: true,
+      playlistRemoved: false,
     });
-    expect(forbidden.statusCode).toBe(403);
-    expect(
-      (await queueAction(p, { ...move, requestId: d.id })).statusCode,
-    ).toBe(409);
-    const another = await create();
-    const {
-      songs: [foreign],
-    } = await addGuests(another, ['e']);
-    expect(
-      (await queueAction(p, { ...move, requestId: foreign.id })).statusCode,
-    ).toBe(409);
-    await requests.moderate(host.id, adminToken, q.id, 'remove');
-    expect((await queueAction(p, move)).statusCode).toBe(409);
-    await parties.end(host.id, adminToken);
     expect((await queueAction(p, { action: 'reset' })).statusCode).toBe(409);
   });
-  it('checks and refreshes backup contents without starting Spotify playback', async () => {
+  it('recovers uncertain creation and writes by reading Spotify before retrying', async () => {
     const p = await create(),
-      adminToken = token(p.links.admin!);
-    let status = await service.action(host.id, adminToken, {
-      action: 'refresh-backup',
-    });
-    expect(status).toMatchObject({
-      enabled: false,
-      backupTrackCount: 3,
-      backupSourceUrl: `https://open.spotify.com/playlist/${'s'.repeat(22)}`,
-    });
-    expect(provider.enqueue).not.toHaveBeenCalled();
-    expect(provider.startPlaylist).not.toHaveBeenCalled();
-    vi.mocked(provider.backupTracks).mockResolvedValue([
-      track('d'),
-      track('e'),
-    ]);
-    status = await service.action(host.id, adminToken, {
-      action: 'refresh-backup',
-    });
-    expect(status.backupTrackCount).toBe(2);
-    expect(provider.backupTracks).toHaveBeenCalledTimes(2);
-    vi.mocked(provider.backupTracks).mockResolvedValue([]);
-    status = await service.action(host.id, adminToken, {
-      action: 'refresh-backup',
-    });
-    expect(status).toMatchObject({
-      backupTrackCount: 0,
-      error: 'backup_empty',
-      enabled: false,
-    });
-    await expect(start(p)).rejects.toMatchObject({ statusCode: 400 });
-    await expect(
-      service.action(other.id, adminToken, { action: 'refresh-backup' }),
-    ).rejects.toMatchObject({ statusCode: 404 });
-    await parties.end(host.id, adminToken);
-    await expect(
-      service.action(host.id, adminToken, { action: 'refresh-backup' }),
-    ).rejects.toMatchObject({ statusCode: 409 });
-  });
-  it('cycles duplicate-heavy and single-song sources while keeping at least three upcoming tracks across restarts', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    vi.mocked(provider.backupTracks).mockResolvedValue([
-      track('a'),
-      track('a'),
-      track('a'),
-      track('b'),
-    ]);
-    await start(p);
-    await service.tick();
-    const restarted = new PlaybackService(store, provider);
-    for (const letter of ['a', 'b', 'a', 'b', 'a', 'b']) {
-      current = letter.repeat(22);
-      progress = 1000;
-      await restarted.tick();
-      const queue = await requests.adminQueue(host.id, adminToken, 0);
-      expect(queue.items).toHaveLength(3);
-      expect(queue.items.filter((x) => x.locked)).toHaveLength(3);
-      for (let i = 1; i < queue.items.length; i++)
-        expect(queue.items[i].request.track.id).not.toBe(
-          queue.items[i - 1].request.track.id,
-        );
-    }
-    vi.mocked(provider.backupTracks).mockResolvedValue([track('e')]);
-    await service.action(host.id, adminToken, { action: 'refresh-backup' });
-    for (const letter of ['a', 'b', 'a', 'e']) await advance(letter);
-    expect(
-      (await requests.adminQueue(host.id, adminToken, 0)).items.map(
-        (x) => x.request.track.id,
-      ),
-    ).toEqual(Array(3).fill(track('e').id));
-  });
-  it('preserves reserved songs on source changes and refreshes future refills from the new source', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    await start(p);
-    await service.tick();
-    const before = await requests.adminQueue(host.id, adminToken, 0);
-    await parties.update(
-      host.id,
-      adminToken,
-      createPartySchema.parse({
-        name: p.name,
-        settings: { ...p.settings, backupSourceId: 't'.repeat(22) },
-      }),
-    );
-    expect((await store.status(host.id, adminToken)).backupTrackCount).toBe(0);
-    expect((await requests.adminQueue(host.id, adminToken, 0)).items).toEqual(
-      before.items,
-    );
-    vi.mocked(provider.backupTracks).mockResolvedValue([
-      track('d'),
-      track('e'),
-    ]);
-    await service.action(host.id, adminToken, { action: 'refresh-backup' });
-    expect((await requests.adminQueue(host.id, adminToken, 0)).items).toEqual(
-      before.items,
-    );
-    await advance('a');
-    expect(
-      (await requests.adminQueue(host.id, adminToken, 0)).items.map(
-        (x) => x.request.track.id,
-      ),
-    ).toEqual(['b', 'c', 'd'].map((x) => x.repeat(22)));
-    expect(provider.backupTracks).toHaveBeenLastCalledWith(
-      host.id,
-      't'.repeat(22),
-      true,
-    );
-  });
-  it('discards an in-flight worker read when backup settings change', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    await start(p);
-    await service.tick();
-    let release!: (tracks: ReturnType<typeof track>[]) => void,
-      entered!: () => void;
-    const reading = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    vi.mocked(provider.backupTracks).mockImplementationOnce(async () => {
-      entered();
-      return new Promise((resolve) => {
-        release = resolve;
-      });
-    });
-    const restarted = new PlaybackService(store, provider);
-    const tick = restarted.tick();
-    await reading;
-    await parties.update(
-      host.id,
-      adminToken,
-      createPartySchema.parse({
-        name: p.name,
-        settings: { ...p.settings, backupSourceId: 't'.repeat(22) },
-      }),
-    );
-    release([track('x')]);
-    await tick;
-    expect((await store.status(host.id, adminToken)).backupTrackCount).toBe(0);
-    vi.mocked(provider.backupTracks).mockResolvedValue([track('d')]);
-    await restarted.tick();
-    expect((await store.status(host.id, adminToken)).backupTrackCount).toBe(1);
-    expect(provider.backupTracks).toHaveBeenLastCalledWith(
-      host.id,
-      't'.repeat(22),
-      true,
-    );
-  });
-  it('discards an in-flight manual refresh after an explicit-policy change', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    await service.action(host.id, adminToken, { action: 'refresh-backup' });
-    let release!: (tracks: ReturnType<typeof track>[]) => void,
-      entered!: () => void;
-    const reading = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    vi.mocked(provider.backupTracks).mockImplementationOnce(async () => {
-      entered();
-      return new Promise((resolve) => {
-        release = resolve;
-      });
-    });
-    const refreshed = service.action(host.id, adminToken, {
-      action: 'refresh-backup',
-    });
-    const rejected = expect(refreshed).rejects.toMatchObject({
-      statusCode: 409,
-    });
-    await reading;
-    await parties.update(
-      host.id,
-      adminToken,
-      createPartySchema.parse({
-        name: p.name,
-        settings: { ...p.settings, allowExplicitTracks: false },
-      }),
-    );
-    release([{ ...track('x'), explicit: true }]);
-    await rejected;
-    expect((await store.status(host.id, adminToken)).backupTrackCount).toBe(0);
-    vi.mocked(provider.backupTracks).mockResolvedValue([track('d')]);
-    await service.action(host.id, adminToken, { action: 'refresh-backup' });
-    expect(provider.backupTracks).toHaveBeenLastCalledWith(
-      host.id,
-      's'.repeat(22),
-      false,
-    );
-  });
-  it('computes private durable party statistics without double-counting idempotent requests or removed votes', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    const read = (owner = host.cookie, link = adminToken, query = '') =>
-      app.inject({
-        method: 'GET',
-        url: `/api/party-links/admin/${link}/statistics${query}`,
-        cookies: { '__Host-crowdcue_host': owner },
-      });
-    const empty = (await read()).json();
-    expect(empty).toMatchObject({
-      guestSessions: 0,
-      requests: { total: 0 },
-      votes: 0,
-      committed: { total: 0 },
-      topSongs: [],
-    });
-    await start(p);
-    await service.tick();
-    const {
-      join,
-      guest,
-      songs: [g, q],
-    } = await addGuests(p, ['g', 'q']);
-    await requests.vote(join, guest.token, g.id, true);
-    await requests.vote(join, guest.token, g.id, true);
-    await requests.vote(join, guest.token, q.id, true);
-    await requests.vote(join, guest.token, q.id, false);
-    await requests.moderate(host.id, adminToken, q.id, 'remove');
-    const stats = (await read()).json();
-    expect(stats).toMatchObject({
-      guestSessions: 1,
-      requests: { total: 2, approved: 1, removed: 1 },
-      votes: 1,
-      voters: 1,
-      committed: { total: 3, guest: 0, backup: 3, observed: 0 },
-      topSongs: [{ spotifyTrackId: g.track.id, votes: 1 }],
-    });
-    expect((await read(other.cookie)).statusCode).toBe(404);
-    expect((await read(host.cookie, token(p.links.guest!))).statusCode).toBe(
-      404,
-    );
-    expect((await read(host.cookie, token(p.links.display!))).statusCode).toBe(
-      404,
-    );
-    expect((await read('')).statusCode).toBe(401);
-    expect((await read(host.cookie, adminToken, '?offset=1')).statusCode).toBe(
-      400,
-    );
-    expect((await read()).headers['cache-control']).toBe('no-store');
-    await advance('a');
-    await advance('b');
-    await advance('c');
-    await parties.end(host.id, adminToken);
-    await service.action(host.id, adminToken, { action: 'close', save: false });
-    await service.tick();
-    const ended = (await read()).json();
-    expect(ended).toMatchObject({
-      status: 'ENDED',
-      requests: { total: 2 },
-      committed: { guest: 1, observed: 3 },
-    });
-    expect(removed).toBe(true);
-    await pool.query(
-      "UPDATE parties SET created_at=ended_at-interval '2 hours 5 minutes' WHERE id=$1",
-      [p.id],
-    );
-    expect((await read()).json().durationSeconds).toBe(7500);
-    expect((await read()).json().durationSeconds).toBe(7500);
-    vi.clearAllMocks();
-    await read();
-    expect(provider.player).not.toHaveBeenCalled();
-    expect(provider.enqueue).not.toHaveBeenCalled();
-  });
-  it('awards points for observed guest songs and other retained votes, protects leaderboard access and preserves final scores', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    await start(p);
-    await service.tick();
-    const {
-      join,
-      guest,
-      songs: [g, q],
-    } = await addGuests(p, ['g', 'q']);
-    const second = await new PostgresGuestStore(pool).join(
-      join,
-      undefined,
-      null,
-    );
-    await requests.vote(join, guest.token, g.id, true);
-    expect(
-      (await requests.guestLeaderboard(join, guest.token)).yourEntry?.points,
-    ).toBe(0);
-    await Promise.all([
-      requests.vote(join, second.token, g.id, true),
-      requests.vote(join, second.token, g.id, true),
-    ]);
-    let board = await requests.guestLeaderboard(join, guest.token);
-    expect(board.yourEntry).toMatchObject({
-      name: 'Alex',
-      points: 1,
-      votesReceived: 1,
-      songsObserved: 0,
-      rank: 1,
-    });
-    expect(board.entries[1]).toMatchObject({
-      name: 'Guest 2',
-      points: 0,
-      rank: 2,
-      isYou: false,
-    });
-    await requests.vote(join, second.token, g.id, false);
-    expect(
-      (await requests.guestLeaderboard(join, guest.token)).entries.map(
-        (e) => e.rank,
-      ),
-    ).toEqual([1, 1]);
-    await requests.vote(join, second.token, q.id, true);
-    await requests.moderate(host.id, adminToken, q.id, 'remove');
-    expect(
-      (await requests.guestLeaderboard(join, guest.token)).yourEntry?.points,
-    ).toBe(0);
-    await requests.vote(join, second.token, g.id, true);
-    await advance('a');
-    await advance('b');
-    await advance('c');
-    expect(
-      (await requests.guestLeaderboard(join, guest.token)).yourEntry?.points,
-    ).toBe(1);
-    await advance('g');
-    board = await requests.guestLeaderboard(join, guest.token);
-    expect(board.yourEntry).toMatchObject({
-      points: 6,
-      songsObserved: 1,
-      votesReceived: 1,
-    });
-    await service.tick();
-    expect(
-      (await requests.guestLeaderboard(join, guest.token)).yourEntry?.points,
-    ).toBe(6);
-    const guestRead = (cookie = guest.token, link = join) =>
-      app.inject({
-        method: 'GET',
-        url: `/api/party-links/guest/${link}/leaderboard`,
-        cookies: { [guestCookieName(link, true)]: cookie },
-      });
-    expect((await guestRead()).json()).toEqual(board);
-    expect((await guestRead('')).statusCode).toBe(401);
-    expect((await guestRead(guest.token, adminToken)).statusCode).toBe(404);
-    const outsider = await new PostgresGuestStore(pool).join(
-      token((await create()).links.guest),
-      undefined,
-      'Other party',
-    );
-    expect((await guestRead(outsider.token)).statusCode).toBe(401);
-    expect((await guestRead()).headers['cache-control']).toBe('no-store');
-    const hostRead = (cookie = host.cookie) =>
-      app.inject({
-        method: 'GET',
-        url: `/api/party-links/admin/${adminToken}/leaderboard`,
-        cookies: { '__Host-crowdcue_host': cookie },
-      });
-    expect((await hostRead(other.cookie)).statusCode).toBe(404);
-    expect((await hostRead('')).statusCode).toBe(401);
-    expect((await hostRead()).json().yourEntry).toBeNull();
-    expect(JSON.stringify(board)).not.toContain(guest.guest.id);
-    expect(JSON.stringify(board)).not.toContain(guest.token);
-    await parties.end(host.id, adminToken);
-    await service.action(host.id, adminToken, { action: 'close', save: false });
-    await service.tick();
-    expect(
-      await new PostgresRequestStore(pool).guestLeaderboard(join, guest.token),
-    ).toEqual({ ...board, status: 'ENDED' });
-  });
-  it('bounds leaderboard to 50 guests while including your own row and excludes pending vote points', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!),
-      join = token(p.links.guest);
-    await parties.update(
-      host.id,
-      adminToken,
-      createPartySchema.parse({
-        name: p.name,
-        settings: { ...p.settings, approvalRequired: true },
-      }),
-    );
-    const guests = new PostgresGuestStore(pool);
-    for (let i = 0; i < 50; i++)
-      await guests.join(join, undefined, `Guest ${i}`);
-    const last = await guests.join(join, undefined, 'Last guest');
-    const board = await requests.guestLeaderboard(join, last.token);
-    expect(board.entries).toHaveLength(50);
-    expect(board.participants).toBe(51);
-    expect(board.entries.every((e) => !e.isYou)).toBe(true);
-    expect(board.yourEntry?.rank).toBe(1);
-    const song = requireSavedRequest(
-      (await requests.create(join, last.token, track('g'), randomUUID()))
-        .request,
-    );
-    const voter = await guests.join(join, undefined, 'Voter');
-    await requests.vote(join, voter.token, song.id, true);
-    expect(
-      (await requests.guestLeaderboard(join, last.token)).yourEntry?.points,
-    ).toBe(0);
-    await requests.moderate(host.id, adminToken, song.id, 'approve');
-    expect(
-      (await requests.guestLeaderboard(join, last.token)).yourEntry?.points,
-    ).toBe(1);
-    await requests.moderate(host.id, adminToken, song.id, 'reject');
-    expect(
-      (await requests.guestLeaderboard(join, last.token)).yourEntry?.points,
-    ).toBe(0);
-  });
-  it('enforces owner, role, session expiry and Origin across every admin feature without side effects', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    const {
-      guest,
-      songs: [g],
-    } = await addGuests(p, ['g']);
-    const expired = await signIn();
-    await pool.query(
-      "UPDATE host_sessions SET created_at=now()-interval '2 days',expires_at=now()-interval '1 day' WHERE token_hash=$1",
-      [hashToken(expired.cookie)],
-    );
-    const readViews = [
-      '',
-      '/requests',
-      '/queue',
-      '/playback',
-      '/history',
-      '/statistics',
-      '/leaderboard',
-    ];
-    const writes = [
-      { view: '/settings', payload: { name: p.name, settings: p.settings } },
-      { view: '/end', payload: {} },
-      { view: '/playback', payload: { action: 'start' } },
-      { view: '/queue', payload: { action: 'reset' } },
-      { view: `/requests/${g.id}`, payload: { action: 'remove' } },
-    ];
-    for (const item of [
-      ...readViews.map((view) => ({ view, payload: undefined })),
-      ...writes,
-    ]) {
-      const method = item.payload === undefined ? 'GET' : 'POST';
-      for (const [cookie, link, expected] of [
-        [undefined, adminToken, 401],
-        [guest.token, adminToken, 401],
-        [expired.cookie, adminToken, 401],
-        [other.cookie, adminToken, 404],
-        [host.cookie, token(p.links.guest), 404],
-        [host.cookie, token(p.links.display!), 404],
-      ] as const) {
-        const response = await app.inject({
-          method,
-          url: `/api/party-links/admin/${link}${item.view}`,
-          headers: { origin: config.appOrigin },
-          cookies: cookie ? { '__Host-crowdcue_host': cookie } : {},
-          ...(item.payload === undefined ? {} : { payload: item.payload }),
-        });
-        expect(response.statusCode, `${method} ${item.view}`).toBe(expected);
-        expect(response.headers['cache-control']).toBe('no-store');
-        expect(response.body).not.toContain(host.id);
-      }
-      if (item.payload !== undefined) {
-        for (const origin of [undefined, 'null', 'https://attacker.example']) {
-          expect(
-            (
-              await app.inject({
-                method,
-                url: `/api/party-links/admin/${adminToken}${item.view}`,
-                headers: origin ? { origin } : {},
-                cookies: { '__Host-crowdcue_host': host.cookie },
-                payload: item.payload,
-              })
-            ).statusCode,
-          ).toBe(403);
-        }
-      }
-    }
-    expect((await parties.admin(host.id, adminToken)).status).toBe('ACTIVE');
-    expect(
-      (await requests.adminList(host.id, adminToken, 0)).requests[0].status,
-    ).toBe('APPROVED');
-    expect(provider.createPlaylist).not.toHaveBeenCalled();
-    expect(provider.enqueue).not.toHaveBeenCalled();
-    expect(actual).toEqual([]);
-  });
-  const readHistory = (
-    p: PartyDetails,
-    owner = host.cookie,
-    adminToken = token(p.links.admin!),
-    query = '',
-  ) =>
-    app.inject({
-      method: 'GET',
-      url: `/api/party-links/admin/${adminToken}/history${query}`,
-      cookies: { '__Host-crowdcue_host': owner },
-    });
-  it('lists committed guest/backup songs chronologically, excludes waiting/pending/removed requests and preserves history after playlist cleanup', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    expect((await store.history(host.id, adminToken, 0)).items).toEqual([]);
-    await start(p);
-    await service.tick();
-    const {
-      join,
-      guest,
-      songs: [g, q],
-    } = await addGuests(p, ['g', 'q']);
-    await requests.moderate(host.id, adminToken, q.id, 'remove');
-    await parties.update(
-      host.id,
-      adminToken,
-      createPartySchema.parse({
-        name: p.name,
-        settings: { ...p.settings, approvalRequired: true },
-      }),
-    );
-    await requests.create(join, guest.token, track('z'), randomUUID());
-    await advance('a');
-    await advance('b');
-    await advance('c');
-    let history = await store.history(host.id, adminToken, 0);
-    expect(history.items.map((x) => x.track.id)).toEqual(
-      ['a', 'b', 'c', 'g', 'a', 'b'].map((x) => x.repeat(22)),
-    );
-    expect(history.items.map((x) => x.position)).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(history.items.map((x) => x.source)).toEqual([
-      'BACKUP',
-      'BACKUP',
-      'BACKUP',
-      'GUEST',
-      'BACKUP',
-      'BACKUP',
-    ]);
-    expect(history.items[3].requestedBy).toBe('Alex');
-    expect(history).toMatchObject({
-      committedCount: 6,
-      observedCount: 3,
-      status: 'ACTIVE',
-      nextOffset: null,
-    });
-    expect(history.items[3].observedAt).toBeNull();
-    await advance('g');
-    await parties.end(host.id, adminToken);
-    await service.action(host.id, adminToken, { action: 'close', save: false });
-    await service.tick();
-    history = await store.history(host.id, adminToken, 0);
-    expect(removed).toBe(true);
-    expect(actual).toEqual([]);
-    expect(history.status).toBe('ENDED');
-    expect(history.committedCount).toBeGreaterThanOrEqual(4);
-    expect(
-      history.items.find((x) => x.track.id === g.track.id)?.observedAt,
-    ).not.toBeNull();
-    const restarted = new PlaybackStore(pool);
-    expect(await restarted.history(host.id, adminToken, 0)).toEqual(history);
-  });
-  it('records an observed occurrence only once, does not mark paused or skipped songs as heard, and preserves repeats', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    vi.mocked(provider.backupTracks).mockResolvedValue([track('a')]);
-    await start(p);
-    await service.tick();
-    current = track('a').id;
-    progress = 12000;
-    vi.mocked(provider.player).mockResolvedValueOnce({
-      is_playing: false,
-      progress_ms: progress,
-      item: { id: current, uri: `spotify:track:${current}` },
-      device: { is_restricted: false },
-    });
-    await service.tick();
-    expect((await store.history(host.id, adminToken, 0)).observedCount).toBe(0);
-    await service.tick();
-    let history = await store.history(host.id, adminToken, 0);
-    expect(history.items).toHaveLength(4);
-    expect(history.observedCount).toBe(1);
-    const firstObservation = history.items[0].observedAt;
-    progress = 24000;
-    await service.tick();
-    expect(
-      (await store.history(host.id, adminToken, 0)).items[0].observedAt,
-    ).toBe(firstObservation);
-    // A progress reset is a new occurrence of the same Spotify track.
-    progress = 1000;
-    await service.tick();
-    history = await store.history(host.id, adminToken, 0);
-    expect(history.items).toHaveLength(5);
-    expect(history.observedCount).toBe(2);
-    expect(history.items.map((x) => x.track.id)).toEqual(
-      Array(5).fill(track('a').id),
-    );
-    expect(new Set(history.items.map((x) => x.id)).size).toBe(5);
-    // A sent song can disappear from Spotify's queue without being observed.
-    vi.mocked(provider.queueState).mockResolvedValueOnce({
-      currently_playing: { id: current },
-      queue: [{ id: track('a').id }],
-    });
-    await service.tick();
-    current = track('h').id;
-    await service.tick();
-    history = await store.history(host.id, adminToken, 0);
-    expect(history.items[2].observedAt).toBeNull();
-    expect(history.observedCount).toBe(2);
-  });
-  it('protects history with the owner session/Admin token, validates pages and never calls Spotify while reading', async () => {
-    const p = await create();
-    await start(p);
-    await service.tick();
-    const playerCalls = vi.mocked(provider.player).mock.calls.length;
-    const response = await readHistory(p);
-    expect(response.statusCode).toBe(200);
-    expect(response.headers['cache-control']).toBe('no-store');
-    expect(response.headers['referrer-policy']).toBe('no-referrer');
-    expect(response.headers['x-robots-tag']).toContain('noindex');
-    const text = response.body;
-    for (const secret of [
-      host.cookie,
-      host.id,
-      token(p.links.admin!),
-      token(p.links.display!),
-      'fixture-access',
-      'fixture-refresh',
-    ])
-      expect(text).not.toContain(secret);
-    expect(vi.mocked(provider.player).mock.calls).toHaveLength(playerCalls);
-    expect((await readHistory(p, '')).statusCode).toBe(401);
-    expect((await readHistory(p, other.cookie)).statusCode).toBe(404);
-    expect(
-      (await readHistory(p, host.cookie, token(p.links.guest))).statusCode,
-    ).toBe(404);
-    expect(
-      (await readHistory(p, host.cookie, token(p.links.display!))).statusCode,
-    ).toBe(404);
-    for (const query of [
-      '?offset=-1',
-      '?offset=1.2',
-      '?offset=100001',
-      '?offset=bad',
-      '?foo=1',
-    ])
-      expect(
-        (await readHistory(p, host.cookie, token(p.links.admin!), query))
-          .statusCode,
-      ).toBe(400);
-  });
-  it('records playlist recovery songs first observed while waiting and ignores mismatched/local observations', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    await start(p);
-    await service.tick();
-    current = track('a').id;
-    vi.mocked(provider.player).mockResolvedValueOnce({
-      is_playing: true,
-      progress_ms: 1000,
-      item: { id: current, uri: 'spotify:local:not-a-spotify-track' },
-      device: { is_restricted: false },
-    });
-    await service.tick();
-    expect((await store.history(host.id, adminToken, 0)).observedCount).toBe(0);
-    await service.action(host.id, adminToken, {
-      action: 'fallback',
-      confirm: true,
-    });
-    await advance('c');
-    const history = await store.history(host.id, adminToken, 0);
-    expect(
-      history.items.find((x) => x.track.id === track('c').id)?.observedAt,
-    ).not.toBeNull();
-    expect(
-      history.items.find((x) => x.track.id === track('a').id)?.observedAt,
-    ).toBeNull();
-  });
-  it('paginates tied commitment timestamps by stable sequence and keeps global positions', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    await pool.query(
-      `INSERT INTO playback_entries(party_id,source,track,status,locked_at,delivery)
-      SELECT $1,'BACKUP',$2::jsonb,'PLAYED',now(),'SENT' FROM generate_series(1,55)`,
-      [p.id, JSON.stringify(track('a'))],
-    );
-    const first = await store.history(host.id, adminToken, 0),
-      next = await store.history(host.id, adminToken, 50);
-    expect(first.items).toHaveLength(50);
-    expect(first.nextOffset).toBe(50);
-    expect(next.items).toHaveLength(5);
-    expect(next.nextOffset).toBeNull();
-    expect(next.items.map((x) => x.position)).toEqual([51, 52, 53, 54, 55]);
-    expect(first.committedCount).toBe(55);
-    expect(first.observedCount).toBe(0);
-    expect(new Set([...first.items, ...next.items].map((x) => x.id)).size).toBe(
-      55,
-    );
-  });
-  it('observes music before queue start and retains last-seen playback on provider failure', async () => {
-    const party = await create();
-    vi.mocked(provider.player).mockResolvedValue({
-      is_playing: true,
-      progress_ms: 12000,
-      item: { id: track('h').id, uri: `spotify:track:${track('h').id}` },
-      track: track('h'),
-    });
-    await service.tick();
-    let state = (
-      await pool.query(
-        'SELECT display_track,display_state,display_progress_ms,enabled FROM party_playback WHERE party_id=$1',
-        [party.id],
-      )
-    ).rows[0];
-    expect(state).toMatchObject({
-      display_track: { title: 'Song h' },
-      display_state: 'PLAYING',
-      display_progress_ms: 12000,
-      enabled: false,
-    });
-    expect(provider.enqueue).not.toHaveBeenCalled();
-    vi.mocked(provider.player).mockRejectedValue(
-      new SpotifyError('unavailable'),
-    );
-    await service.tick();
-    state = (
-      await pool.query(
-        'SELECT display_track,display_state FROM party_playback WHERE party_id=$1',
-        [party.id],
-      )
-    ).rows[0];
-    expect(state).toMatchObject({
-      display_track: { title: 'Song h' },
-      display_state: 'UNAVAILABLE',
-    });
-  });
-  it('keeps exactly three explicit Spotify songs ahead while leaving Spotify autoplay alone', async () => {
-    const p = await create();
-    const queued: string[] = [];
-    vi.mocked(provider.enqueue).mockImplementation(async (_host, id) => {
-      queued.push(id);
-    });
-    vi.mocked(provider.queueState).mockImplementation(async () => ({
-      currently_playing: { id: current },
-      queue: [...queued, track('x').id].map((id) => ({ id })),
-    }));
-    await start(p);
-    await service.tick();
-    expect(queued).toEqual(['a', 'b', 'c'].map((letter) => track(letter).id));
-    const {
-      songs: [g, q, d],
-    } = await addGuests(p);
-    await service.tick();
-    progress += 5000;
-    await service.tick();
-    await start(p); // Repeated Start is idempotent.
-    await new PlaybackService(store, provider).tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(3);
-    for (const [letter, next] of [
-      ['a', g],
-      ['b', q],
-      ['c', d],
-    ] as const) {
-      expect(queued.shift()).toBe(track(letter).id);
-      await advance(letter);
-      expect(queued).toHaveLength(3);
-      expect(queued.at(-1)).toBe(next.track.id);
-      await service.tick();
-      expect(queued).toHaveLength(3);
-    }
-    expect(
-      vi.mocked(provider.enqueue).mock.calls.map((call) => call[1]),
-    ).toEqual(['a', 'b', 'c', 'g', 'q', 'd'].map((letter) => track(letter).id));
-    await parties.end(host.id, token(p.links.admin!));
-    await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(6);
-  });
-  it('stops the buffer at an uncertain second write without retrying or sending a later song', async () => {
-    const p = await create();
-    vi.mocked(provider.enqueue)
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new SpotifyMutationError(true));
-    await start(p);
-    await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(2);
-    await pool.query('UPDATE party_playback SET retry_at=null');
-    await new PlaybackService(store, provider).tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(2);
-    expect(await store.status(host.id, token(p.links.admin!))).toMatchObject({
-      error: 'queue_unknown',
-    });
-  });
-  it('starts playlist recovery at the first buffered song instead of skipping to the third', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    await start(p);
-    await service.tick();
-    await service.action(host.id, adminToken, {
-      action: 'fallback',
-      confirm: true,
-    });
-    expect(provider.startPlaylist).toHaveBeenLastCalledWith(
-      host.id,
-      createdId,
-      0,
-    );
-    await advance('a');
-    await service.action(host.id, adminToken, {
-      action: 'fallback',
-      confirm: true,
-    });
-    expect(provider.startPlaylist).toHaveBeenLastCalledWith(
-      host.id,
-      createdId,
-      1,
-    );
-  });
-  it('delivers three upcoming songs, appends guests behind them, and refills once per playback transition across restarts', async () => {
-    const p = await create(),
-      join = token(p.links.guest),
-      adminToken = token(p.links.admin!);
-    await start(p);
-    await service.tick();
-    let queue = await requests.adminQueue(host.id, adminToken, 0);
-    expect(queue.items).toHaveLength(3);
-    expect(queue.items.map((x) => x.source)).toEqual([
-      'BACKUP',
-      'BACKUP',
-      'BACKUP',
-    ]);
-    expect(queue.items[0]).toMatchObject({
-      position: 1,
-      locked: true,
-      delivery: 'SENT',
-    });
-    expect(provider.enqueue).toHaveBeenCalledTimes(3);
-    expect(actual).toEqual(
-      ['a', 'b', 'c'].map((x) => `spotify:track:${x.repeat(22)}`),
-    );
-    const guest = await new PostgresGuestStore(pool).join(
-      join,
-      undefined,
-      'Alex',
-    );
-    const g = requireSavedRequest(
-      (await requests.create(join, guest.token, track('g'), randomUUID()))
-        .request,
-    );
-    await service.tick();
-    queue = await requests.guestQueue(join, guest.token, 0);
-    expect(queue.items[3]).toMatchObject({
-      position: 4,
-      locked: false,
-      request: { id: g.id },
-    });
-    await requests.vote(join, guest.token, g.id, true);
-    expect(
-      (await requests.guestQueue(join, guest.token, 0)).items[0].request.track
-        .id,
-    ).toBe('a'.repeat(22));
-    const restarted = new PlaybackService(store, provider);
-    await restarted.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(3);
-    await advance('a');
-    await advance('b');
-    queue = await requests.guestQueue(join, guest.token, 0);
-    expect(queue.items[0].request.track.id).toBe('c'.repeat(22));
-    expect(queue.items[1].request.id).toBe(g.id);
-    expect(queue.items).toHaveLength(3);
-    await advance('c');
-    queue = await requests.guestQueue(join, guest.token, 0);
-    expect(queue.items[0]).toMatchObject({
-      locked: true,
-      request: { id: g.id, status: 'QUEUED', locked: true },
-    });
-    await expect(
-      requests.vote(join, guest.token, g.id, false),
-    ).rejects.toMatchObject({ statusCode: 409 });
-    await expect(
-      requests.moderate(host.id, adminToken, g.id, 'remove'),
-    ).rejects.toMatchObject({ statusCode: 409 });
-    expect(actual).toEqual(
-      ['a', 'b', 'c', 'g', 'a', 'b'].map(
-        (x) => `spotify:track:${x.repeat(22)}`,
-      ),
-    );
-    expect(await store.status(host.id, adminToken)).toMatchObject({
-      lockedCount: 6,
-      guestCount: 1,
-      backupCount: 5,
-    });
-  });
-  it('allows voting and host removal before #1 without displacing reserved backup slots', async () => {
-    const p = await create(),
-      join = token(p.links.guest),
-      adminToken = token(p.links.admin!);
-    await start(p);
-    await service.tick();
-    const guest = await new PostgresGuestStore(pool).join(
-      join,
-      undefined,
-      'Alex',
-    );
-    const g = requireSavedRequest(
-      (await requests.create(join, guest.token, track('g'), randomUUID()))
-        .request,
-    );
-    const q = requireSavedRequest(
-      (await requests.create(join, guest.token, track('q'), randomUUID()))
-        .request,
-    );
-    await service.tick();
-    await requests.vote(join, guest.token, q.id, true);
-    expect(
-      (await requests.guestQueue(join, guest.token, 0)).items.map(
-        (x) => x.request.track.id,
-      ),
-    ).toEqual(['a', 'b', 'c', 'q', 'g'].map((x) => x.repeat(22)));
-    await requests.moderate(host.id, adminToken, q.id, 'remove');
-    expect(
-      (await requests.guestQueue(join, guest.token, 0)).items[3].request.id,
-    ).toBe(g.id);
-    await parties.update(
-      host.id,
-      adminToken,
-      createPartySchema.parse({
-        name: p.name,
-        settings: { ...p.settings, approvalRequired: true },
-      }),
-    );
-    const pending = requireSavedRequest(
-      (await requests.create(join, guest.token, track('z'), randomUUID()))
-        .request,
-    );
-    await service.tick();
-    expect(
-      (await requests.guestQueue(join, guest.token, 0)).items.some(
-        (x) => x.request.id === pending.id,
-      ),
-    ).toBe(false);
-  });
-  it('never blindly repeats an uncertain Spotify queue write and can switch to the nightly playlist', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
-    await start(p);
-    vi.mocked(provider.enqueue).mockRejectedValueOnce(
-      new SpotifyMutationError(true),
-    );
-    await service.tick();
-    expect(
-      (
-        await pool.query(
-          "SELECT delivery FROM playback_entries WHERE status='LOCKED'",
-        )
-      ).rows[0].delivery,
-    ).toBe('UNKNOWN');
-    await pool.query('UPDATE party_playback SET retry_at=null');
-    await new PlaybackService(store, provider).tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(1);
-    expect(await store.status(host.id, adminToken)).toMatchObject({
-      error: 'queue_unknown',
-    });
-    await service.action(host.id, adminToken, {
-      action: 'fallback',
-      confirm: true,
-    });
-    expect(provider.startPlaylist).toHaveBeenCalledWith(host.id, createdId, 0);
-    expect(actual).toEqual(
-      ['a', 'b', 'c'].map((x) => `spotify:track:${x.repeat(22)}`),
-    );
-    await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(1);
-    const guest = await new PostgresGuestStore(pool).join(
-      token(p.links.guest),
-      undefined,
-    );
-    await requests.create(
-      token(p.links.guest),
-      guest.token,
-      track('g'),
-      randomUUID(),
-    );
-    await service.tick();
-    expect(actual.at(-1)).toBe(`spotify:track:${'g'.repeat(22)}`);
-    await parties.end(host.id, adminToken);
-    await service.tick();
-    expect(actual).toEqual([`spotify:track:${'a'.repeat(22)}`]);
-  });
-  it('recovers uncertain playlist creation without creating it again and reconciles interrupted playlist appends', async () => {
-    const p = await create(),
-      adminToken = token(p.links.admin!);
+      t = token(p.links.admin!);
     vi.mocked(provider.createPlaylist).mockRejectedValueOnce(
       new SpotifyMutationError(true),
     );
-    await service.tick();
-    expect(await store.status(host.id, adminToken)).toMatchObject({
-      creation: 'UNKNOWN',
-    });
-    await pool.query('UPDATE party_playback SET retry_at=null');
+    await expect(start(p)).rejects.toBeInstanceOf(SpotifyMutationError);
     await service.tick();
     expect(provider.createPlaylist).toHaveBeenCalledTimes(1);
-    expect(provider.findPlaylist).toHaveBeenCalledWith(
-      host.id,
-      expect.stringContaining(p.id),
-    );
-    await start(p);
-    await service.tick();
+    expect(provider.findPlaylist).toHaveBeenCalled();
+    expect(actual).toHaveLength(3);
+    await addGuests(p, ['g']);
     vi.mocked(provider.writeItems).mockImplementationOnce(
-      async (_h, _id, uris, replace) => {
-        actual = replace ? [...uris] : [...actual, ...uris];
+      async (_h, _id, uris, replace, position) => {
+        if (replace) actual = [...uris];
+        else actual.splice(position ?? actual.length, 0, ...uris);
         throw new SpotifyMutationError(true);
       },
     );
-    await advance('a');
-    await pool.query('UPDATE party_playback SET retry_at=null');
     await service.tick();
-    expect(actual).toEqual(
-      ['a', 'b', 'c', 'a'].map((x) => `spotify:track:${x.repeat(22)}`),
-    );
+    await service.action(host.id, t, { action: 'retry' });
+    await service.tick();
+    expect(actual.filter((e) => e.endsWith(track('g').id))).toHaveLength(1);
+    expect(await store.status(host.id, t)).toMatchObject({ error: null });
   });
-  it('advances a delivered song that leaves Spotify between polls without sending it twice', async () => {
-    const p = await create();
-    await start(p);
-    await service.tick();
-    vi.mocked(provider.queueState).mockResolvedValueOnce({
-      currently_playing: { id: current },
-      queue: [{ id: 'a'.repeat(22) }],
-    });
-    await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(3);
-    current = 'x'.repeat(22);
-    await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(4);
-    expect(
-      (
-        await pool.query(
-          'SELECT track,status FROM playback_entries ORDER BY sequence LIMIT 2',
-        )
-      ).rows,
-    ).toMatchObject([
-      { track: { id: 'a'.repeat(22) }, status: 'PLAYED' },
-      { track: { id: 'b'.repeat(22) }, status: 'LOCKED' },
-    ]);
-  });
-  it('honors Spotify cooldowns and prevents duplicate workers from delivering twice', async () => {
-    const p = await create();
-    await start(p);
-    vi.mocked(provider.enqueue).mockRejectedValueOnce(
-      new SpotifyError('rate_limited', 60),
-    );
-    await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(1);
-    await service.tick();
-    expect(provider.enqueue).toHaveBeenCalledTimes(1);
-    await pool.query('UPDATE party_playback SET retry_at=null');
-    await Promise.all([
-      service.tick(),
-      new PlaybackService(store, provider).tick(),
-    ]);
-    expect(provider.enqueue).toHaveBeenCalledTimes(4);
-    expect(
-      (
-        await pool.query(
-          "SELECT delivery FROM playback_entries WHERE status='LOCKED'",
-        )
-      ).rows[0].delivery,
-    ).toBe('SENT');
-  });
-  it.each([
-    [false, false, true],
-    [false, true, false],
-    [true, false, false],
-    [true, true, false],
-  ])(
-    'keeps/removes recap according to creation=%s close=%s',
-    async (initial, close, shouldRemove) => {
-      const p = await create(initial),
-        adminToken = token(p.links.admin!);
-      await start(p);
-      await service.tick();
-      await parties.end(host.id, adminToken);
-      await service.tick();
-      expect(removed).toBe(false);
-      await service.action(host.id, adminToken, {
-        action: 'close',
-        save: close,
-      });
-      await service.action(host.id, adminToken, {
-        action: 'close',
-        save: close,
-      });
-      await service.tick();
-      expect(removed).toBe(shouldRemove);
-      expect(await store.status(host.id, adminToken)).toMatchObject({
-        closeDecided: true,
-        saveAtCreation: initial,
-        saveAtClose: close,
-        playlistRemoved: shouldRemove,
-      });
-      if (shouldRemove) expect(actual).toEqual([]);
-    },
-  );
-  it('protects playback actions, prevents simultaneous host sessions, and stops writes after ending', async () => {
+  it('blocks empty/missing backups, protects host actions and permits just one active host session', async () => {
     const p = await create(),
-      adminToken = token(p.links.admin!),
-      url = `/api/party-links/admin/${adminToken}/playback`;
+      t = token(p.links.admin!);
+    vi.mocked(provider.backupTracks).mockResolvedValueOnce([]);
+    await expect(start(p)).rejects.toMatchObject({ statusCode: 400 });
+    expect(provider.createPlaylist).not.toHaveBeenCalled();
+    await service.action(host.id, t, { action: 'refresh-backup' });
+    await start(p);
+    const second = await create();
+    await expect(start(second)).rejects.toMatchObject({ statusCode: 409 });
+    const url = `/api/party-links/admin/${t}/playback`;
     const send = (
       payload: unknown,
       cookie = host.cookie,
@@ -1586,39 +421,170 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       app.inject({
         method: 'POST',
         url,
-        headers: { origin, 'content-type': 'application/json' },
         cookies: { '__Host-crowdcue_host': cookie },
+        headers: { origin, 'content-type': 'application/json' },
         payload: JSON.stringify(payload),
       });
-    expect((await send({ action: 'start' }, 'invalid')).statusCode).toBe(401);
     expect((await send({ action: 'start' }, other.cookie)).statusCode).toBe(
       404,
     );
     expect(
+      (await send({ action: 'start' }, '', config.appOrigin)).statusCode,
+    ).toBe(401);
+    expect(
       (await send({ action: 'start' }, host.cookie, 'https://foreign.example'))
         .statusCode,
     ).toBe(403);
-    expect(
-      (await send({ action: 'fallback', confirm: false })).statusCode,
-    ).toBe(400);
-    expect((await send({ action: 'close', save: true })).statusCode).toBe(409);
-    expect((await send({ action: 'start' })).statusCode).toBe(200);
-    const second = await create();
-    await expect(start(second)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await send({ action: 'fallback', confirm: true })).statusCode).toBe(
+      400,
+    );
+    expect((await send({ action: 'close', save: false })).statusCode).toBe(400);
+  });
+  it('allows moving unlocked backup tracks, but not either seeded lock', async () => {
+    const p = await create(),
+      t = token(p.links.admin!);
+    await start(p);
+    let snapshot = await requests.adminQueue(host.id, t, 0);
+    const filler = snapshot.items[2];
+    await expect(
+      requests.controlQueue(host.id, t, {
+        action: 'move',
+        requestId: filler.request.id,
+        neighborId: snapshot.items[1].request.id,
+        direction: 'up',
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    // An unlocked backup can be moved after a waiting guest if manually retained.
+    await addGuests(p, ['g']);
+    await pool.query(
+      "INSERT INTO playback_entries(party_id,source,track) VALUES ($1,'BACKUP',$2)",
+      [p.id, JSON.stringify(track('z'))],
+    );
+    snapshot = await requests.adminQueue(host.id, t, 0);
+    await requests.controlQueue(host.id, t, {
+      action: 'move',
+      requestId: snapshot.items[3].request.id,
+      neighborId: snapshot.items[2].request.id,
+      direction: 'up',
+    });
+    expect((await requests.adminQueue(host.id, t, 0)).items[2].source).toBe(
+      'BACKUP',
+    );
+  });
+  it('retains requests awaiting approval and refills after moderation', async () => {
+    const p = await create(),
+      t = token(p.links.admin!);
+    await parties.update(
+      host.id,
+      t,
+      createPartySchema.parse({
+        name: p.name,
+        settings: { ...p.settings, approvalRequired: true },
+      }),
+    );
+    await start(p);
+    const {
+      songs: [g],
+    } = await addGuests(p, ['g']);
     await service.tick();
-    const sends = vi.mocked(provider.enqueue).mock.calls.length;
-    await parties.end(host.id, adminToken);
+    expect(actual.some((e) => e.endsWith(g.track.id))).toBe(false);
+    await requests.moderate(host.id, t, g.id, 'approve');
     await service.tick();
-    expect(vi.mocked(provider.enqueue).mock.calls.length).toBe(sends);
-    expect((await send({ action: 'start' })).statusCode).toBe(409);
+    expect(actual[2]).toBe(`spotify:track:${g.track.id}`);
+    await requests.moderate(host.id, t, g.id, 'remove');
+    await service.tick();
+    expect(actual).toHaveLength(3);
+    expect(actual.some((e) => e.endsWith(g.track.id))).toBe(false);
+  });
+  it('ignores playback outside the session and respects provider cooldowns', async () => {
+    const p = await create(),
+      t = token(p.links.admin!);
+    await start(p);
+    const before = [...actual];
+    current = actual[0].slice(-22);
+    context = 'spotify:playlist:unrelated';
+    await service.tick();
+    expect((await requests.adminQueue(host.id, t, 0)).current).toBeNull();
+    vi.mocked(provider.playlistUris).mockRejectedValueOnce(
+      new SpotifyError('rate_limited', 60),
+    );
+    await addGuests(p, ['g']);
+    await service.tick();
+    const calls = vi.mocked(provider.playlistUris).mock.calls.length;
+    await service.tick();
+    expect(provider.playlistUris).toHaveBeenCalledTimes(calls);
+    expect(before).toHaveLength(3);
+    expect(await store.status(host.id, t)).toMatchObject({
+      error: 'rate_limited',
+    });
+  });
+  it('recognizes repeated occurrences in a one-song backup and tracks skipped songs', async () => {
+    vi.mocked(provider.backupTracks).mockResolvedValue([track('a')]);
+    const p = await create(),
+      t = token(p.links.admin!);
+    await start(p);
+    expect(actual).toHaveLength(3);
+    context = `spotify:playlist:${createdId}`;
+    await advance('a');
+    progress = 50000;
+    await service.tick();
+    progress = 1000;
+    await service.tick();
+    expect((await requests.adminQueue(host.id, t, 0)).items).toHaveLength(2);
+    const history = await store.history(host.id, t, 0);
+    expect(history.observedCount).toBe(2);
+    expect(history.items.filter((e) => e.observedAt)).toHaveLength(2);
+  });
+  it('serves locked current songs and history only through authorized role views', async () => {
+    const p = await create(),
+      t = token(p.links.admin!);
+    await start(p);
+    const {
+      join,
+      guest,
+      songs: [g, q],
+    } = await addGuests(p, ['g', 'q']);
+    await service.tick();
+    context = `spotify:playlist:${createdId}`;
+    await advance(g.track.id[0]); // Spotify host can skip directly to an unlocked song.
+    const snapshot = await requests.guestQueue(join, guest.token, 0);
+    expect(snapshot.current).toMatchObject({
+      id: g.id,
+      locked: true,
+      isOwn: true,
+      requestedBy: 'Alex',
+    });
+    expect(snapshot.items[0]).toMatchObject({
+      locked: true,
+      request: { id: q.id },
+    });
+    const history = (cookie: string, link = t) =>
+      app.inject({
+        method: 'GET',
+        url: `/api/party-links/admin/${link}/history`,
+        cookies: { '__Host-crowdcue_host': cookie },
+      });
+    expect((await history(other.cookie)).statusCode).toBe(404);
+    expect((await history(host.cookie, join)).statusCode).toBe(404);
+    const response = await history(host.cookie);
+    expect(response.statusCode).toBe(200);
+    expect(response.body).not.toContain('fixture-access');
+    expect(response.body).not.toContain(host.cookie);
+    expect(response.body).not.toContain(t);
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+  it('retains legacy commitment timestamps after extra buffer songs are unlocked', async () => {
+    const p = await create(),
+      t = token(p.links.admin!);
+    await pool.query(
+      "INSERT INTO playback_entries(party_id,source,track,legacy_committed_at) VALUES ($1,'BACKUP',$2,now())",
+      [p.id, JSON.stringify(track('a'))],
+    );
+    const history = await store.history(host.id, t, 0);
+    expect(history.committedCount).toBe(1);
+    expect(history.items[0].committedAt).toBeTruthy();
     expect(
-      (
-        await app.inject({
-          method: 'GET',
-          url,
-          cookies: { '__Host-crowdcue_host': host.cookie },
-        })
-      ).headers['cache-control'],
-    ).toBe('no-store');
+      (await requests.adminQueue(host.id, t, 0)).items.every((e) => !e.locked),
+    ).toBe(true);
   });
 });

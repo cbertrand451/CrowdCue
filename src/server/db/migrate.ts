@@ -11,6 +11,8 @@ import { realtimeSchema } from './migrations/006-realtime.js';
 import { eventHistorySchema } from './migrations/008-event-history.js';
 import { displaySchema } from './migrations/007-display.js';
 
+import { sessionPlaylistSchema } from './migrations/009-session-playlist.js';
+
 const migrations = [
   { version: 1, name: 'initial', sql: initialSchema },
   { version: 2, name: 'spotify-auth', sql: spotifyAuthSchema },
@@ -20,6 +22,7 @@ const migrations = [
   { version: 6, name: 'realtime', sql: realtimeSchema },
   { version: 7, name: 'display', sql: displaySchema },
   { version: 8, name: 'event-history', sql: eventHistorySchema },
+  { version: 9, name: 'session-playlist', sql: sessionPlaylistSchema },
 ];
 
 export async function migrate(pool: pg.Pool) {

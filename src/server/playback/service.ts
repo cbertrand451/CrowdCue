@@ -2,12 +2,10 @@ import { NightlyPlaylists } from './playlists.js';
 import type { PoolClient } from 'pg';
 import type { AuthService } from '../auth/service.js';
 import { SpotifyError } from '../spotify/client.js';
-import { SpotifyMutationError } from '../spotify/playback.js';
 import { RequestError } from '../requests/contracts.js';
 import { PlaybackStore, type Session } from './store.js';
 import { type playbackActionSchema } from './contracts.js';
 import { fillBackupBuffer } from './scheduling.js';
-import { upcoming } from './ordering.js';
 import type { z } from 'zod';
 import type { SearchResult } from '../search/contracts.js';
 export type PlaybackProvider = Pick<
@@ -17,11 +15,9 @@ export type PlaybackProvider = Pick<
   | 'backupTracks'
   | 'playlistUris'
   | 'writeItems'
-  | 'removePlaylist'
+  | 'moveItem'
+  | 'removeItems'
   | 'player'
-  | 'queueState'
-  | 'enqueue'
-  | 'startPlaylist'
 >;
 export class PlaybackService {
   private readonly playlists: NightlyPlaylists;
@@ -68,19 +64,11 @@ export class PlaybackService {
           await this.process(client, s);
         } catch (error) {
           const state = await this.store.session(client, s.party_id);
-          const unknown = (
-            await client.query(
-              "SELECT 1 FROM playback_entries WHERE party_id=$1 AND delivery='UNKNOWN' LIMIT 1",
-              [s.party_id],
-            )
-          ).rowCount;
           const code = ['UNKNOWN', 'CREATING'].includes(state.playlist_creation)
             ? 'creation_unknown'
-            : unknown
-              ? 'queue_unknown'
-              : error instanceof SpotifyError
-                ? error.kind
-                : 'unavailable';
+            : error instanceof SpotifyError
+              ? error.kind
+              : 'unavailable';
           await client.query(
             'UPDATE party_playback SET error_code=$2,retry_at=now()+make_interval(secs=>$3),updated_at=now() WHERE party_id=$1',
             [
@@ -158,54 +146,19 @@ export class PlaybackService {
         );
       }
     }
-    if (
-      s.status === 'ENDED' &&
-      s.close_decided &&
-      !s.save_at_creation &&
-      !s.save_at_close &&
-      s.playlist_creation === 'NEW'
-    ) {
+    if (s.status === 'ENDED') {
       await client.query(
-        'UPDATE party_playback SET playlist_removed=true,error_code=null,updated_at=now() WHERE party_id=$1',
+        'UPDATE party_playback SET completed=true,enabled=false WHERE party_id=$1',
         [s.party_id],
       );
+      return;
+    }
+    if (!s.enabled) {
+      if (observationError) throw observationError;
       return;
     }
     const playlistId = await this.playlists.ensure(client, s);
     if (!playlistId) return;
-    if (
-      s.status === 'ENDED' &&
-      s.close_decided &&
-      !s.save_at_creation &&
-      !s.save_at_close
-    ) {
-      // Spotify has no permanent-delete endpoint. Clear the private playlist and remove it from the host library.
-      await this.spotify.writeItems(s.host_account_id, playlistId, [], true);
-      await this.spotify.removePlaylist(s.host_account_id, playlistId);
-      await client.query(
-        'UPDATE party_playback SET playlist_removed=true,error_code=null,retry_at=null,updated_at=now() WHERE party_id=$1',
-        [s.party_id],
-      );
-      return;
-    }
-    if (!s.enabled || s.status !== 'ACTIVE') {
-      if (!(await this.playlists.sync(client, s, playlistId))) return;
-      if (observationError) throw observationError;
-      if (
-        s.status === 'ENDED' &&
-        s.close_decided &&
-        (s.save_at_creation || s.save_at_close)
-      )
-        await client.query(
-          'UPDATE party_playback SET completed=true WHERE party_id=$1',
-          [s.party_id],
-        );
-      await client.query(
-        'UPDATE party_playback SET error_code=null,retry_at=null,updated_at=now() WHERE party_id=$1',
-        [s.party_id],
-      );
-      return;
-    }
     if (!s.backup_source_id) {
       await client.query(
         "UPDATE party_playback SET error_code='backup_required',updated_at=now() WHERE party_id=$1",
@@ -214,58 +167,13 @@ export class PlaybackService {
       return;
     }
     const tracks = await this.backup(s);
-    if (!tracks.length) {
-      await client.query(
-        "UPDATE party_playback SET error_code='backup_empty',updated_at=now() WHERE party_id=$1",
-        [s.party_id],
-      );
-      return;
-    }
     if (observationError) throw observationError;
-    const queue =
-      s.mode === 'QUEUE'
-        ? await this.spotify.queueState(s.host_account_id)
-        : null;
-    if (queue)
-      await this.store.change(s.party_id, async (c, state) => {
-        if (!state.enabled || state.status !== 'ACTIVE') return;
-        const locked = (
-          await c.query<{
-            id: string;
-            request_id: string | null;
-            track: { id: string };
-            delivery_seen: boolean;
-          }>(
-            "SELECT id,request_id,track,delivery_seen FROM playback_entries WHERE party_id=$1 AND status='LOCKED' AND delivery='SENT'",
-            [s.party_id],
-          )
-        ).rows[0];
-        if (!locked) return;
-        if (queue.queue.some((t) => t.id === locked.track.id))
-          await c.query(
-            'UPDATE playback_entries SET delivery_seen=true WHERE id=$1',
-            [locked.id],
-          );
-        else if (
-          locked.delivery_seen &&
-          player?.item?.id &&
-          player.item.id !== locked.track.id
-        ) {
-          await c.query(
-            "UPDATE playback_entries SET status='PLAYED' WHERE id=$1",
-            [locked.id],
-          );
-          if (locked.request_id)
-            await c.query(
-              "UPDATE song_requests SET status='PLAYED' WHERE id=$1",
-              [locked.request_id],
-            );
-        }
-      });
     const scheduled = await this.store.schedule(
       s.party_id,
       tracks,
-      player?.item?.id,
+      player?.item?.id && player.item.uri === `spotify:track:${player.item.id}`
+        ? player.item.id
+        : null,
       player?.progress_ms,
       player?.context?.uri === `spotify:playlist:${playlistId}`,
       { sourceId: s.backup_source_id, allowExplicit: s.allow_explicit_tracks },
@@ -276,92 +184,14 @@ export class PlaybackService {
     if (!scheduled) return;
     s = await this.store.session(client, s.party_id);
     if (!s.enabled || s.status !== 'ACTIVE') return;
-    if (
-      s.mode === 'PLAYLIST' &&
-      !(await this.playlists.sync(client, s, playlistId))
-    )
-      return;
-    if (!player?.is_playing || player.device?.is_restricted) {
-      await client.query(
-        "UPDATE party_playback SET error_code='no_active_device',updated_at=now() WHERE party_id=$1",
-        [s.party_id],
-      );
-      return;
-    }
-    // Spotify's playlist/autoplay queue is separate from our explicit three-song buffer.
-    // Keep acknowledged sends durable; unchanged polls and restarts never resend them.
-    if (s.mode === 'QUEUE') {
-      const buffer = (
-        await upcoming(client, s.party_id, s.voting_enabled)
-      ).slice(0, 3);
-      for (const next of buffer) {
-        if (next.delivery === 'UNKNOWN') {
-          await client.query(
-            "UPDATE party_playback SET error_code='queue_unknown',updated_at=now() WHERE party_id=$1",
-            [s.party_id],
-          );
-          return;
-        }
-        if (next.delivery !== 'PENDING') continue;
-        const claimed = await this.store.change(
-          s.party_id,
-          async (c, current) => {
-            if (
-              !current.enabled ||
-              current.status !== 'ACTIVE' ||
-              current.mode !== 'QUEUE'
-            )
-              return false;
-            // Re-read the order under the same row lock used by votes/moderation.
-            const candidates = (
-              await upcoming(c, s.party_id, current.voting_enabled)
-            ).slice(0, 3);
-            if (
-              candidates.find((e) => e.delivery === 'PENDING')?.id !== next.id
-            )
-              return false;
-            const result = await c.query(
-              "UPDATE playback_entries SET delivery='SENDING',locked_at=COALESCE(locked_at,clock_timestamp()) WHERE id=$1 AND delivery='PENDING' AND status IN ('WAITING','LOCKED')",
-              [next.id],
-            );
-            if (!result.rowCount) return false;
-            if (next.request_id)
-              await c.query(
-                "UPDATE song_requests SET status='QUEUED' WHERE id=$1",
-                [next.request_id],
-              );
-            return true;
-          },
-        );
-        if (!claimed) return;
-        try {
-          await this.spotify.enqueue(s.host_account_id, next.track.id);
-        } catch (error) {
-          await client.query(
-            'UPDATE playback_entries SET delivery=$2 WHERE id=$1',
-            [
-              next.id,
-              error instanceof SpotifyMutationError && error.uncertain
-                ? 'UNKNOWN'
-                : 'PENDING',
-            ],
-          );
-          throw error;
-        }
-        await client.query(
-          "UPDATE playback_entries SET delivery='SENT' WHERE id=$1",
-          [next.id],
-        );
-      }
-    }
-    if (
-      s.mode === 'QUEUE' &&
-      !(await this.playlists.sync(client, s, playlistId))
-    )
-      return;
+    const synced = await this.store.change(s.party_id, async (c, state) => {
+      if (!state.enabled || state.status !== 'ACTIVE') return false;
+      return this.playlists.sync(c, state, playlistId);
+    });
+    if (!synced) return;
     await client.query(
-      'UPDATE party_playback SET error_code=null,retry_at=null,updated_at=now() WHERE party_id=$1',
-      [s.party_id],
+      "UPDATE party_playback SET error_code=CASE WHEN $2 THEN 'backup_empty' ELSE NULL END,retry_at=null,updated_at=now() WHERE party_id=$1",
+      [s.party_id, !tracks.length],
     );
   }
   async action(
@@ -371,25 +201,6 @@ export class PlaybackService {
   ) {
     const id = await this.store.owned(hostId, token);
     const result = await this.withLock(id, async (client, s) => {
-      if (input.action === 'close') {
-        if (s.status !== 'ENDED')
-          throw new RequestError(
-            409,
-            'End the session before choosing whether to save the playlist.',
-          );
-        await this.store.change(id, async (c, current) => {
-          if (current.close_decided && current.save_at_close !== input.save)
-            throw new RequestError(
-              409,
-              'The summary choice has already been saved.',
-            );
-          await c.query(
-            'UPDATE party_playback SET save_at_close=$2,close_decided=true,retry_at=null,updated_at=now() WHERE party_id=$1',
-            [id, input.save],
-          );
-        });
-        return true;
-      }
       if (s.status !== 'ACTIVE')
         throw new RequestError(409, 'This party has ended.');
       if (input.action === 'refresh-backup') {
@@ -470,48 +281,13 @@ export class PlaybackService {
               'End the other active queue on this Spotify account first.',
             );
           await c.query(
-            'UPDATE party_playback SET enabled=true,retry_at=null WHERE party_id=$1',
-            [id],
+            "UPDATE party_playback SET enabled=true,mode='PLAYLIST',playlist_name=COALESCE(playlist_name,$2),playlist_description=CASE WHEN enabled THEN playlist_description ELSE $3 END,retry_at=null WHERE party_id=$1",
+            [id, input.name ?? s.name, input.description ?? ''],
           );
         });
+        await this.process(client, await this.store.session(client, id));
         return true;
       }
-      if (!s.playlist_id)
-        throw new RequestError(
-          409,
-          'Wait for the nightly playlist to be created first.',
-        );
-      if (!s.enabled)
-        throw new RequestError(409, 'Start this session queue first.');
-      // Switch first so a retry/restart cannot also deliver the same waiting song through the queue API.
-      await this.store.change(id, async (c, current) => {
-        if (current.status !== 'ACTIVE')
-          throw new RequestError(409, 'This party has ended.');
-        await c.query(
-          "UPDATE party_playback SET mode='PLAYLIST',retry_at=null WHERE party_id=$1",
-          [id],
-        );
-      });
-      s = await this.store.session(client, id);
-      await this.playlists.sync(client, s, s.playlist_id!);
-      const front = (await upcoming(client, id, s.voting_enabled)).find(
-        (e) => e.locked_at !== null,
-      );
-      const offset = front
-        ? (
-            await client.query<{ count: number }>(
-              'SELECT count(*)::int AS count FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL AND (locked_at,sequence)<(SELECT locked_at,sequence FROM playback_entries WHERE id=$2)',
-              [id, front.id],
-            )
-          ).rows[0].count
-        : (
-            await client.query<{ count: number }>(
-              'SELECT count(*)::int AS count FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL',
-              [id],
-            )
-          ).rows[0].count;
-      await this.spotify.startPlaylist(hostId, s.playlist_id!, offset);
-      return true;
     });
     if (!result)
       throw new RequestError(

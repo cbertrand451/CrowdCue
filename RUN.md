@@ -50,7 +50,7 @@ Leave `DATABASE_URL` absent or blank. Do not copy an example PostgreSQL URL; the
 
 Restart `npm run local`, open the exact address above, and click **Connect Spotify**. Spotify development-mode apps require an eligible account on the app's allowed-users list; queue features may require Premium. Start music on your chosen device in Spotify normally. CrowdCue does not play audio itself.
 
-The existing app requests playlist modification permissions for its nightly event playlist as well as playback queue permissions; review Spotify's consent screen. This local setup change does not add new Spotify scopes or test live Spotify writes.
+CrowdCue requests private playlist modification and playback read permissions. Start session creates a private playlist; press Play in Spotify yourself with Shuffle, Smart Shuffle and Repeat off. Current/next are locked in CrowdCue. Session playlists are kept; manual removal instructions appear after ending. No playback modification or public playlist modification permission is requested, and automated tests never perform live Spotify writes. Reconnect existing hosts after updating.
 
 ## 4. Try the existing party flow
 

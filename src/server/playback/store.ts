@@ -34,6 +34,8 @@ export interface Session {
   playlist_synced_at: Date | null;
   status: 'ACTIVE' | 'ENDED';
   name: string;
+  playlist_name: string | null;
+  playlist_description: string;
   backup_source_id: string | null;
   backup_tracks: SearchResult['tracks'];
   allow_explicit_tracks: boolean;
@@ -67,7 +69,7 @@ export class PlaybackStore {
     const s = await this.session(this.pool, id);
     const counts = (
       await this.pool.query<{ locked: number; guest: number; backup: number }>(
-        `SELECT count(*) FILTER (WHERE locked_at IS NOT NULL)::int AS locked,count(*) FILTER (WHERE locked_at IS NOT NULL AND source='GUEST')::int AS guest,count(*) FILTER (WHERE locked_at IS NOT NULL AND source='BACKUP')::int AS backup FROM playback_entries WHERE party_id=$1`,
+        `SELECT count(*) FILTER (WHERE COALESCE(legacy_committed_at,locked_at) IS NOT NULL)::int AS locked,count(*) FILTER (WHERE COALESCE(legacy_committed_at,locked_at) IS NOT NULL AND source='GUEST')::int AS guest,count(*) FILTER (WHERE COALESCE(legacy_committed_at,locked_at) IS NOT NULL AND source='BACKUP')::int AS backup FROM playback_entries WHERE party_id=$1`,
         [id],
       )
     ).rows[0];
@@ -183,10 +185,6 @@ export class PlaybackStore {
           s.allow_explicit_tracks !== expectedBackup.allowExplicit)
       )
         return false;
-      await client.query(
-        "UPDATE playback_entries SET delivery='UNKNOWN' WHERE party_id=$1 AND delivery='SENDING'",
-        [id],
-      );
       const playing = (
         await client.query<{
           id: string;
@@ -197,17 +195,6 @@ export class PlaybackStore {
           [id],
         )
       ).rows[0];
-      if (playing && currentId && currentId !== playing.track.id) {
-        await client.query(
-          "UPDATE playback_entries SET status='PLAYED' WHERE id=$1",
-          [playing.id],
-        );
-        if (playing.request_id)
-          await client.query(
-            "UPDATE song_requests SET status='PLAYED' WHERE id=$1",
-            [playing.request_id],
-          );
-      }
       let rows = await upcoming(client, id, s.voting_enabled);
       const restarted =
         !!currentId &&
@@ -215,24 +202,16 @@ export class PlaybackStore {
           (progressMs != null &&
             s.last_progress_ms != null &&
             progressMs < s.last_progress_ms - 1000));
-      const observed = rows.find(
-        (e) =>
-          e.track.id === currentId &&
-          restarted &&
-          ((e.locked_at !== null && e.delivery === 'SENT') ||
-            (s.mode === 'PLAYLIST' && playlistContext)),
-      );
-      await client.query(
-        'UPDATE party_playback SET last_track_id=$2,last_progress_ms=$3 WHERE party_id=$1',
-        [id, currentId ?? null, progressMs ?? null],
-      );
-      if (observed && restarted) {
-        const earlier = rows
-          .slice(0, rows.indexOf(observed))
-          .filter((e) => e.locked_at !== null);
-        for (const e of earlier) {
+      // Ignore unrelated playback and local tracks; a paused session still keeps its locks.
+      const observed =
+        playlistContext && currentId && (!playing || restarted)
+          ? rows.find((e) => e.track.id === currentId)
+          : undefined;
+      if (observed) {
+        const earlier = rows.slice(0, rows.indexOf(observed));
+        for (const e of [...(playing ? [playing] : []), ...earlier]) {
           await client.query(
-            "UPDATE playback_entries SET status='PLAYED' WHERE id=$1",
+            "UPDATE playback_entries SET status='PLAYED',locked_at=COALESCE(locked_at,clock_timestamp()) WHERE id=$1",
             [e.id],
           );
           if (e.request_id)
@@ -241,20 +220,8 @@ export class PlaybackStore {
               [e.request_id],
             );
         }
-        if (playing) {
-          await client.query(
-            "UPDATE playback_entries SET status='PLAYED' WHERE id=$1",
-            [playing.id],
-          );
-          if (playing.request_id)
-            await client.query(
-              "UPDATE song_requests SET status='PLAYED' WHERE id=$1",
-              [playing.request_id],
-            );
-        }
-        // Playlist fallback may start a waiting song directly. Record its commitment.
         await client.query(
-          "UPDATE playback_entries SET status='PLAYING',locked_at=COALESCE(locked_at,now()),delivery='SENT',observed_at=CASE WHEN $2 THEN COALESCE(observed_at,now()) ELSE observed_at END WHERE id=$1",
+          "UPDATE playback_entries SET status='PLAYING',locked_at=COALESCE(locked_at,clock_timestamp()),delivery='SENT',observed_at=CASE WHEN $2 THEN COALESCE(observed_at,now()) ELSE observed_at END WHERE id=$1",
           [observed.id, isPlaying],
         );
         if (observed.request_id)
@@ -263,6 +230,11 @@ export class PlaybackStore {
             [observed.request_id],
           );
       }
+      if (playlistContext)
+        await client.query(
+          'UPDATE party_playback SET last_track_id=$2,last_progress_ms=$3 WHERE party_id=$1',
+          [id, currentId ?? null, progressMs ?? null],
+        );
       await client.query(
         'UPDATE party_playback SET backup_tracks=$2 WHERE party_id=$1',
         [id, JSON.stringify(backup)],
@@ -273,6 +245,14 @@ export class PlaybackStore {
           'UPDATE party_playback SET initialized=true WHERE party_id=$1',
           [id],
         );
+      if (!s.initialized) {
+        const seed = (await upcoming(client, id, s.voting_enabled)).slice(0, 2);
+        for (const e of seed)
+          await client.query(
+            "UPDATE playback_entries SET status='LOCKED',locked_at=clock_timestamp() WHERE id=$1",
+            [e.id],
+          );
+      }
       const requests = (
         await client.query<GuestEntryRow>(
           `SELECT r.* FROM song_requests r WHERE party_id=$1 AND status='APPROVED' AND NOT EXISTS(SELECT 1 FROM playback_entries e WHERE e.request_id=r.id) ORDER BY r.created_at,r.id`,
@@ -281,10 +261,18 @@ export class PlaybackStore {
       ).rows;
       for (const r of requests) await insertGuestEntry(client, id, r);
       rows = await upcoming(client, id, s.voting_enabled);
-      if (!rows.some((e) => e.status === 'LOCKED') && rows[0]) {
-        const e = rows[0];
+      const hasPlaying = (
         await client.query(
-          "UPDATE playback_entries SET status='LOCKED',locked_at=COALESCE(locked_at,clock_timestamp()) WHERE id=$1",
+          "SELECT 1 FROM playback_entries WHERE party_id=$1 AND status='PLAYING'",
+          [id],
+        )
+      ).rowCount;
+      const locked = rows.filter((e) => e.locked_at !== null).length;
+      for (const e of rows
+        .filter((e) => e.locked_at === null)
+        .slice(0, Math.max(0, (hasPlaying ? 1 : 2) - locked))) {
+        await client.query(
+          "UPDATE playback_entries SET status='LOCKED',locked_at=clock_timestamp() WHERE id=$1",
           [e.id],
         );
         if (e.request_id)

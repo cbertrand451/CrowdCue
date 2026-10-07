@@ -130,9 +130,9 @@ export function QueueBoard({
         <>
           <p className="muted">
             {snapshot.hostOrdered
-              ? 'Host order is active. Votes are counted; new guest songs follow the host’s ordered songs. Backup slots and songs committed to Spotify stay fixed.'
+              ? 'Host order is active. Votes are counted; new guest songs follow the host’s ordered songs. Current and next songs stay locked.'
               : snapshot.votingEnabled
-                ? 'Guest songs rank by votes. Backup slots stay in place; songs committed to Spotify cannot change.'
+                ? 'Guest songs rank by votes behind the locked current and next songs. Unlocked backup songs give way to guest requests.'
                 : 'Voting is off. Guest songs follow request order.'}
           </p>
           {role === 'admin' &&
@@ -161,6 +161,15 @@ export function QueueBoard({
                 : 'No songs on this page. Return to the front of the queue.'}
             </p>
           )}
+          {snapshot.current && (
+            <div className="now-playing" aria-label="Current song">
+              <h3>Now playing · Locked</h3>
+              <p>
+                {snapshot.current.track.title} ·{' '}
+                {snapshot.current.track.artists.join(', ')}
+              </p>
+            </div>
+          )}
           <ol
             className="search-results queue-results"
             start={snapshot.items[0]?.position ?? offset + 1}
@@ -168,7 +177,7 @@ export function QueueBoard({
             {snapshot.items.map(
               ({ position, request, locked, source, delivery }, index) => {
                 const guest = (item: QueueSnapshot['items'][number]) =>
-                  item.source === 'GUEST' && !item.locked;
+                  !item.locked;
                 const before = snapshot.items
                   .slice(0, index)
                   .filter(guest)
@@ -207,10 +216,10 @@ export function QueueBoard({
                         <p className="ready">
                           Locked ·{' '}
                           {delivery === 'SENT'
-                            ? 'Sent to Spotify'
+                            ? 'In session playlist'
                             : delivery === 'UNKNOWN'
                               ? 'Delivery needs host attention'
-                              : 'Awaiting Spotify delivery'}
+                              : 'Next up'}
                         </p>
                       )}
                       {position === 1 &&
@@ -221,7 +230,6 @@ export function QueueBoard({
                     </div>
                     {role === 'admin' &&
                       snapshot.status === 'ACTIVE' &&
-                      source === 'GUEST' &&
                       !locked && (
                         <div className="queue-controls">
                           <button
@@ -288,8 +296,8 @@ export function QueueBoard({
         </>
       )}
       <p className="muted">
-        Only locked #1 is committed to Spotify. The host can remove guest songs
-        before they reach #1.
+        Current and next songs cannot be moved or removed in CrowdCue. All later
+        guest songs remain open to voting and host reordering.
       </p>
     </section>
   );

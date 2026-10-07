@@ -7,9 +7,7 @@ import type { AuthConfig } from '../auth/config.js';
 export const spotifyScopes = [
   'user-read-private',
   'user-read-playback-state',
-  'user-modify-playback-state',
   'playlist-modify-private',
-  'playlist-modify-public',
   'playlist-read-private',
   'playlist-read-collaborative',
 ];

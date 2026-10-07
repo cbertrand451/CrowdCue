@@ -48,7 +48,7 @@ export async function readPartyStatistics(
       count(*) FILTER (WHERE source='GUEST')::int AS guest,
       count(*) FILTER (WHERE source='BACKUP')::int AS backup,
       count(observed_at)::int AS observed
-      FROM playback_entries WHERE party_id=$1 AND locked_at IS NOT NULL`,
+      FROM playback_entries WHERE party_id=$1 AND COALESCE(legacy_committed_at,locked_at) IS NOT NULL`,
         [party.id],
       )
     ).rows[0];

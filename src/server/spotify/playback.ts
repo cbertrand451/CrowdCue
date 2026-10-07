@@ -101,7 +101,7 @@ export class SpotifyPlayback {
           ? 'no_active_device'
           : 'unavailable',
       );
-    if (response.status === 204 || method === 'DELETE') return null;
+    if (response.status === 204) return null;
     try {
       return (await response.json()) as unknown;
     } catch {
@@ -111,7 +111,7 @@ export class SpotifyPlayback {
   async createPlaylist(token: string, name: string, description: string) {
     const parsed = z.object({ id: idSchema }).safeParse(
       await this.call('me/playlists', token, 'POST', {
-        name: `CrowdCue · ${name}`.slice(0, 100),
+        name: name.slice(0, 100),
         description,
         public: false,
         collaborative: false,
@@ -200,30 +200,60 @@ export class SpotifyPlayback {
     id: string,
     uris: string[],
     replace: boolean,
+    position?: number,
   ) {
     idSchema.parse(id);
     z.array(z.string().regex(/^spotify:track:[A-Za-z0-9]{22}$/))
       .max(100)
       .parse(uris);
-    const result = z
-      .object({ snapshot_id: z.string().min(1) })
-      .safeParse(
-        await this.call(
-          `playlists/${id}/items`,
-          token,
-          replace ? 'PUT' : 'POST',
-          { uris },
-        ),
-      );
+    const result = z.object({ snapshot_id: z.string().min(1) }).safeParse(
+      await this.call(
+        `playlists/${id}/items`,
+        token,
+        replace ? 'PUT' : 'POST',
+        {
+          uris,
+          ...(position === undefined
+            ? {}
+            : { position: z.number().int().nonnegative().parse(position) }),
+        },
+      ),
+    );
     if (!result.success) throw new SpotifyMutationError(true);
   }
-  async removePlaylist(token: string, id: string) {
+  async moveItem(token: string, id: string, from: number, to: number) {
     idSchema.parse(id);
-    await this.call(
-      `me/library?uris=${encodeURIComponent(`spotify:playlist:${id}`)}`,
-      token,
-      'DELETE',
-    );
+    z.number().int().nonnegative().parse(from);
+    z.number().int().nonnegative().parse(to);
+    const result = await this.call(`playlists/${id}/items`, token, 'PUT', {
+      range_start: from,
+      insert_before: to,
+      range_length: 1,
+    });
+    if (!z.object({ snapshot_id: z.string().min(1) }).safeParse(result).success)
+      throw new SpotifyMutationError(true);
+  }
+  async removeItems(
+    token: string,
+    id: string,
+    items: { uri: string; positions: number[] }[],
+  ) {
+    idSchema.parse(id);
+    z.array(
+      z.object({
+        uri: z.string().regex(/^spotify:track:[A-Za-z0-9]{22}$/),
+        positions: z.array(z.number().int().nonnegative()).min(1),
+      }),
+    )
+      .min(1)
+      .max(100)
+      .parse(items);
+    // Only the managed session playlist is supplied by the synchronization service.
+    const result = await this.call(`playlists/${id}/items`, token, 'DELETE', {
+      items,
+    });
+    if (!z.object({ snapshot_id: z.string().min(1) }).safeParse(result).success)
+      throw new SpotifyMutationError(true);
   }
   async player(token: string): Promise<SpotifyPlayer | null> {
     const result = await this.call('me/player', token);
@@ -242,30 +272,5 @@ export class SpotifyPlayback {
       .safeParse(result);
     if (!parsed.success) throw new SpotifyError('unavailable');
     return { ...parsed.data, track: normalizedTrack(parsed.data.item) };
-  }
-  async queueState(token: string) {
-    const result = z
-      .object({
-        currently_playing: z.object({ id: z.string().nullable() }).nullable(),
-        queue: z.array(z.object({ id: z.string().nullable() })),
-      })
-      .safeParse(await this.call('me/player/queue', token));
-    if (!result.success) throw new SpotifyError('unavailable');
-    return result.data;
-  }
-  async enqueue(token: string, id: string) {
-    idSchema.parse(id);
-    await this.call(
-      `me/player/queue?uri=${encodeURIComponent(`spotify:track:${id}`)}`,
-      token,
-      'POST',
-    );
-  }
-  async startPlaylist(token: string, id: string, position: number) {
-    idSchema.parse(id);
-    await this.call('me/player/play', token, 'PUT', {
-      context_uri: `spotify:playlist:${id}`,
-      offset: { position },
-    });
   }
 }

@@ -227,8 +227,8 @@ export function AdminDashboard({
               />
             </label>
             <p className="muted">
-              Queue mode: Spotify queue. Three songs stay in CrowdCue; only
-              locked #1 is sent to Spotify.
+              The session playlist is the queue. Current and next songs are
+              locked for everyone; all later guest songs can be reordered.
             </p>
             <button type="submit">{busy ? 'Saving…' : 'Save settings'}</button>
           </fieldset>

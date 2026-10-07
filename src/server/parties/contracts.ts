@@ -20,10 +20,10 @@ export const partySettingsSchema = z
       .regex(/^[A-Za-z0-9]{22}$/)
       .nullable()
       .default(null),
-    saveRecapPlaylist: z.boolean().default(false),
+    saveRecapPlaylist: z.boolean().default(true),
     queueBehavior: z
       .enum(['SPOTIFY_QUEUE', 'BACKUP_PLAYLIST'])
-      .default('SPOTIFY_QUEUE'),
+      .default('BACKUP_PLAYLIST'),
   })
   .strict();
 export const createPartySchema = z

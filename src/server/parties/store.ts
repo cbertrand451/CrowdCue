@@ -196,14 +196,14 @@ export class PostgresPartyStore implements PartyStore {
           settings.maxActiveRequestsPerGuest,
           settings.allowExplicitTracks,
           settings.requestCooldownSeconds,
-          settings.queueBehavior,
+          'BACKUP_PLAYLIST',
           settings.backupSourceId,
-          settings.saveRecapPlaylist,
+          true,
         ],
       );
       await client.query(
         'INSERT INTO party_playback (party_id,host_account_id,save_at_creation) VALUES ($1,$2,$3)',
-        [id, hostId, settings.saveRecapPlaylist],
+        [id, hostId, true],
       );
       const encrypted = this.cipher.encrypt(
         JSON.stringify({ admin: adminToken, display: displayToken }),
@@ -303,7 +303,7 @@ export class PostgresPartyStore implements PartyStore {
             s.maxActiveRequestsPerGuest,
             s.allowExplicitTracks,
             s.requestCooldownSeconds,
-            s.queueBehavior,
+            'BACKUP_PLAYLIST',
             s.backupSourceId,
           ],
         );

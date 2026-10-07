@@ -22,7 +22,6 @@ export function PartyCreation() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [name, setName] = useState('');
   const [backupSource, setBackupSource] = useState('');
-  const [saveRecapPlaylist, setSaveRecapPlaylist] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [votingEnabled, setVotingEnabled] = useState(true);
   const [requireGuestNames, setRequireGuestNames] = useState(false);
@@ -106,7 +105,7 @@ export function PartyCreation() {
         requireGuestNames,
         allowExplicitTracks,
         backupSourceId,
-        saveRecapPlaylist,
+        saveRecapPlaylist: true,
       },
     });
     if (!parsed.success) {
@@ -187,24 +186,12 @@ export function PartyCreation() {
             />
           </label>
           <p className="muted">
-            Use a playlist you own or can edit. It supplies songs when guests
-            have none waiting. You can add it later.
+            Use any Spotify playlist your account can read. It supplies songs
+            when guests have none waiting. You can add it later.
           </p>
-          <label>
-            Save the nightly playlist?
-            <select
-              value={saveRecapPlaylist ? 'yes' : 'no'}
-              onChange={(event) =>
-                setSaveRecapPlaylist(event.target.value === 'yes')
-              }
-            >
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
-          </label>
           <p className="muted">
-            A temporary private playlist records locked songs either way. You’ll
-            be asked again at closeout.
+            Your private session playlist stays in Spotify after the party. You
+            can remove it manually.
           </p>
           <div className="party-preferences">
             <label>

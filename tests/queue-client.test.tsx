@@ -153,7 +153,7 @@ it('offers host ordering and restoring votes, with one mutation at a time', asyn
     ),
   ).toEqual({ action: 'reset' });
 });
-it('hides queue controls from guests and on locked, backup and ended songs', async () => {
+it('hides controls from guests and locked/ended songs, permits unlocked backups', async () => {
   const data = {
     ...snapshot(),
     hostOrdered: true,
@@ -174,7 +174,10 @@ it('hides queue controls from guests and on locked, backup and ended songs', asy
   rerender(<QueueBoard role="admin" token={'a'.repeat(43)} />);
   await screen.findByRole('button', { name: 'Restore vote order' });
   expect(
-    screen.queryByRole('button', { name: /Move/ }),
+    screen.getByRole('button', { name: 'Move Second song up' }),
+  ).toBeDisabled();
+  expect(
+    screen.queryByRole('button', { name: 'Move First song up' }),
   ).not.toBeInTheDocument();
   fetcher.mockResolvedValue(reply({ ...data, status: 'ENDED' }));
   fireEvent.click(screen.getByRole('button', { name: 'Refresh queue' }));

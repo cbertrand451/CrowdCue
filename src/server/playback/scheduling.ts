@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { trackSchema } from '../search/contracts.js';
 export interface GuestEntryRow {
@@ -43,6 +44,7 @@ export async function insertGuestEntry(
       r.created_at,
     ],
   );
+  await fillBackupBuffer(client, partyId);
 }
 // Called only while holding the party row lock. No provider calls in this transaction.
 export async function fillBackupBuffer(client: PoolClient, partyId: string) {
@@ -51,9 +53,10 @@ export async function fillBackupBuffer(client: PoolClient, partyId: string) {
       enabled: boolean;
       backup_tracks: unknown[];
       source_cursor: number;
+      initialized: boolean;
       allow_explicit_tracks: boolean;
     }>(
-      `SELECT b.enabled,b.backup_tracks,b.source_cursor,s.allow_explicit_tracks FROM party_playback b JOIN party_settings s ON s.party_id=b.party_id WHERE b.party_id=$1`,
+      `SELECT b.enabled,b.initialized,b.backup_tracks,b.source_cursor,s.allow_explicit_tracks FROM party_playback b JOIN party_settings s ON s.party_id=b.party_id WHERE b.party_id=$1`,
       [partyId],
     )
   ).rows[0];
@@ -62,35 +65,45 @@ export async function fillBackupBuffer(client: PoolClient, partyId: string) {
     .map((t) => trackSchema.parse(t))
     .filter((t) => state.allow_explicit_tracks || !t.explicit);
   if (!tracks.length) return;
+  const playing = (
+    await client.query(
+      "SELECT 1 FROM playback_entries WHERE party_id=$1 AND status='PLAYING'",
+      [partyId],
+    )
+  ).rowCount;
+  const minimum = playing ? 2 : 3;
+  const guests = (
+    await client.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM playback_entries WHERE party_id=$1 AND status IN ('WAITING','LOCKED') AND (source='GUEST' OR locked_at IS NOT NULL)",
+      [partyId],
+    )
+  ).rows[0].count;
+  const needed = Math.max(0, minimum - guests);
+  // Guests replace only unlocked filler. Locked current/next never change.
+  await client.query(
+    `UPDATE playback_entries SET status='REMOVED' WHERE id IN (
+    SELECT id FROM playback_entries WHERE party_id=$1 AND source='BACKUP' AND status='WAITING' AND locked_at IS NULL ORDER BY sequence OFFSET $2)`,
+    [partyId, needed],
+  );
   const count = (
     await client.query<{ count: number }>(
       "SELECT count(*)::int AS count FROM playback_entries WHERE party_id=$1 AND status IN ('WAITING','LOCKED')",
       [partyId],
     )
   ).rows[0].count;
-  let cursor = state.source_cursor;
-  for (let n = count; n < 3; n++) {
+  for (let n = count; n < minimum; n++) {
     const previous = (
       await client.query<{ track: { id: string } }>(
         "SELECT track FROM playback_entries WHERE party_id=$1 AND status!='REMOVED' ORDER BY sequence DESC LIMIT 1",
         [partyId],
       )
     ).rows[0]?.track.id;
-    let t = tracks[cursor % tracks.length];
-    cursor++;
-    let scanned = 1;
-    while (t.id === previous && scanned < tracks.length) {
-      t = tracks[cursor % tracks.length];
-      cursor++;
-      scanned++;
-    }
+    const candidates = tracks.filter((t) => t.id !== previous);
+    const choices = candidates.length ? candidates : tracks;
+    const t = choices[randomInt(choices.length)];
     await client.query(
       "INSERT INTO playback_entries (party_id,source,track) VALUES ($1,'BACKUP',$2)",
       [partyId, JSON.stringify(t)],
     );
   }
-  await client.query(
-    'UPDATE party_playback SET source_cursor=$2 WHERE party_id=$1',
-    [partyId, cursor],
-  );
 }

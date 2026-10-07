@@ -179,32 +179,32 @@ export class AuthService {
       this.spotify.playback.playlistUris(t, id),
     );
   }
-  writeItems(hostId: string, id: string, uris: string[], replace: boolean) {
+  writeItems(
+    hostId: string,
+    id: string,
+    uris: string[],
+    replace: boolean,
+    position?: number,
+  ) {
     return this.playbackCall(hostId, (t) =>
-      this.spotify.playback.writeItems(t, id, uris, replace),
+      this.spotify.playback.writeItems(t, id, uris, replace, position),
     );
   }
-  removePlaylist(hostId: string, id: string) {
+  moveItem(hostId: string, id: string, from: number, to: number) {
     return this.playbackCall(hostId, (t) =>
-      this.spotify.playback.removePlaylist(t, id),
+      this.spotify.playback.moveItem(t, id, from, to),
+    );
+  }
+  removeItems(
+    hostId: string,
+    id: string,
+    items: { uri: string; positions: number[] }[],
+  ) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.removeItems(t, id, items),
     );
   }
   player(hostId: string) {
     return this.playbackCall(hostId, (t) => this.spotify.playback.player(t));
-  }
-  queueState(hostId: string) {
-    return this.playbackCall(hostId, (t) =>
-      this.spotify.playback.queueState(t),
-    );
-  }
-  enqueue(hostId: string, id: string) {
-    return this.playbackCall(hostId, (t) =>
-      this.spotify.playback.enqueue(t, id),
-    );
-  }
-  startPlaylist(hostId: string, id: string, position: number) {
-    return this.playbackCall(hostId, (t) =>
-      this.spotify.playback.startPlaylist(t, id, position),
-    );
   }
 }

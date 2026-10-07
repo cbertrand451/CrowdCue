@@ -29,71 +29,50 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-it('requires clearing Spotify queue before recovery and shows confirmed recovery mode', async () => {
-  const fetcher = vi.fn().mockResolvedValue(reply(status));
-  fetcher.mockImplementation(async (_url: string, options?: RequestInit) =>
-    reply(
-      options?.method === 'POST' ? { ...status, mode: 'PLAYLIST' } : status,
-    ),
-  );
-  vi.stubGlobal('fetch', fetcher);
-  render(<PlaybackPanel token={'a'.repeat(43)} active onExpired={vi.fn()} />);
-  await screen.findByText('4 songs committed · 1 guest songs · 3 backup songs');
-  expect(
-    screen.getByRole('button', { name: 'Start playlist recovery' }),
-  ).toBeDisabled();
-  fireEvent.click(
-    screen.getByRole('checkbox', {
-      name: 'I cleared pending songs in Spotify',
-    }),
-  );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Start playlist recovery' }),
-  );
-  await screen.findByText('Playlist recovery enabled');
-  expect(
-    JSON.parse(
-      fetcher.mock.calls.find((x) => x[1]?.method === 'POST')![1]!
-        .body as string,
-    ),
-  ).toEqual({ action: 'fallback', confirm: true });
-});
-it('asks again at closeout and keeps the first Yes decision visible', async () => {
-  const initial = {
-    ...status,
-    enabled: false,
-    ended: true,
-    saveAtCreation: true,
-  };
+it('customizes the session playlist and instructs manual Spotify playback', async () => {
   const fetcher = vi
     .fn()
-    .mockImplementation(async (_url: string, options?: RequestInit) =>
+    .mockImplementation(async (_url, opts) =>
       reply(
-        options?.method === 'POST'
-          ? { ...initial, closeDecided: true, saveAtClose: false }
-          : initial,
+        opts?.method === 'POST'
+          ? status
+          : { ...status, enabled: false, playlistUrl: null },
       ),
     );
+  vi.stubGlobal('fetch', fetcher);
+  render(<PlaybackPanel token={'a'.repeat(43)} active onExpired={vi.fn()} />);
+  fireEvent.change(
+    await screen.findByLabelText(
+      'Session playlist name (defaults to party name)',
+    ),
+    { target: { value: 'Dance floor' } },
+  );
+  fireEvent.change(screen.getByLabelText('Playlist description'), {
+    target: { value: 'Birthday' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+  await screen.findByRole('link', { name: 'Open session playlist in Spotify' });
+  expect(
+    JSON.parse(
+      fetcher.mock.calls.find((x) => x[1]?.method === 'POST')![1].body,
+    ),
+  ).toEqual({ action: 'start', name: 'Dance floor', description: 'Birthday' });
+  expect(
+    screen.queryByRole('button', { name: 'Start playlist recovery' }),
+  ).not.toBeInTheDocument();
+});
+it('keeps the playlist at closeout and shows manual deletion instructions without any write', async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(reply({ ...status, enabled: false, ended: true }));
   vi.stubGlobal('fetch', fetcher);
   render(
     <PlaybackPanel token={'a'.repeat(43)} active={false} onExpired={vi.fn()} />,
   );
-  await screen.findByRole('combobox', { name: 'Save the nightly playlist?' });
-  expect(
-    screen.getByText(
-      'You chose Yes at creation, so this playlist will be kept either way.',
-    ),
-  ).toBeVisible();
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Finish session summary' }),
-  );
-  await screen.findByText('The nightly playlist is saved.');
-  expect(
-    JSON.parse(
-      fetcher.mock.calls.find((x) => x[1]?.method === 'POST')![1]!
-        .body as string,
-    ),
-  ).toEqual({ action: 'close', save: false });
+  await screen.findByText('Your session playlist stays in Spotify.');
+  expect(screen.getByText(/To delete it yourself/)).toBeVisible();
+  expect(fetcher.mock.calls.every((x) => x[1]?.method !== 'POST')).toBe(true);
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 });
 it('clears private session details on expired host authentication', async () => {
   const expired = vi.fn();
@@ -103,7 +82,7 @@ it('clears private session details on expired host authentication', async () => 
     .mockResolvedValue(reply({}, 401));
   vi.stubGlobal('fetch', fetcher);
   render(<PlaybackPanel token={'a'.repeat(43)} active onExpired={expired} />);
-  await screen.findByRole('link', { name: 'Open nightly playlist in Spotify' });
+  await screen.findByRole('link', { name: 'Open session playlist in Spotify' });
   fireEvent.click(
     screen.getByRole('button', { name: 'Refresh Spotify status' }),
   );
@@ -139,7 +118,7 @@ it('shows the backup source/count and checks it without starting playback', asyn
     screen.getByRole('button', { name: 'Check / refresh backup playlist' }),
   );
   await screen.findByText(
-    '7 usable songs loaded. Backup songs cycle when guests have no songs waiting.',
+    '7 usable songs loaded. Random backup songs fill gaps when guests have no songs waiting.',
   );
   expect(
     JSON.parse(

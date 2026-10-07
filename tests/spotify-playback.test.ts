@@ -16,26 +16,16 @@ const response = (body: unknown, status = 200, headers?: HeadersInit) =>
     status,
     headers,
   });
-it('uses Spotify queue on the active device, handles 204, and starts playlist recovery without a device picker', async () => {
-  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(null, 204));
-  const api = new SpotifyPlayback(fetcher);
-  await api.enqueue('fixture-access', id);
-  expect(fetcher.mock.calls[0][0]).toBe(
-    `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(`spotify:track:${id}`)}`,
+it('reads playback without playback mutation or library deletion methods', async () => {
+  const api = new SpotifyPlayback(
+    vi.fn<typeof fetch>().mockResolvedValue(response(null, 204)),
   );
-  expect(fetcher.mock.calls[0][1]).toMatchObject({
-    method: 'POST',
-    redirect: 'error',
-    headers: { authorization: 'Bearer fixture-access' },
-  });
-  await api.startPlaylist('fixture-access', playlist, 4);
-  expect(JSON.parse(fetcher.mock.calls[1][1]!.body as string)).toEqual({
-    context_uri: `spotify:playlist:${playlist}`,
-    offset: { position: 4 },
-  });
   expect(await api.player('fixture-access')).toBeNull();
+  expect(api).not.toHaveProperty('enqueue');
+  expect(api).not.toHaveProperty('startPlaylist');
+  expect(api).not.toHaveProperty('removePlaylist');
 });
-it('creates a private playlist, writes ordered batches through current items endpoints, and removes only that playlist from the library', async () => {
+it('creates a private playlist, writes ordered batches through current items endpoints, without playback mutations', async () => {
   const fetcher = vi
     .fn<typeof fetch>()
     .mockResolvedValueOnce(response({ id: playlist }, 201))
@@ -73,11 +63,6 @@ it('creates a private playlist, writes ordered batches through current items end
   expect(fetcher.mock.calls[1][0]).toBe(
     `https://api.spotify.com/v1/playlists/${playlist}/items`,
   );
-  await api.removePlaylist('fixture-access', playlist);
-  expect(fetcher.mock.calls[3][0]).toBe(
-    `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(`spotify:playlist:${playlist}`)}`,
-  );
-  expect(fetcher.mock.calls[3][1]!.method).toBe('DELETE');
 });
 it('distinguishes uncertain writes from rejected commands and honors Retry-After', async () => {
   const fetcher = vi
@@ -88,26 +73,38 @@ it('distinguishes uncertain writes from rejected commands and honors Retry-After
     .mockResolvedValueOnce(response({}, 401))
     .mockResolvedValueOnce(response({}, 404));
   const api = new SpotifyPlayback(fetcher);
-  await expect(api.enqueue('fixture-access', id)).rejects.toMatchObject({
+  await expect(
+    api.writeItems('fixture-access', playlist, [`spotify:track:${id}`], true),
+  ).rejects.toMatchObject({
     uncertain: true,
   });
-  await expect(api.enqueue('fixture-access', id)).rejects.toMatchObject({
+  await expect(
+    api.writeItems('fixture-access', playlist, [`spotify:track:${id}`], true),
+  ).rejects.toMatchObject({
     uncertain: true,
   });
-  await expect(api.enqueue('fixture-access', id)).rejects.toMatchObject({
+  await expect(
+    api.writeItems('fixture-access', playlist, [`spotify:track:${id}`], true),
+  ).rejects.toMatchObject({
     uncertain: false,
     kind: 'rate_limited',
     retryAfter: 45,
   });
-  await expect(api.enqueue('fixture-access', id)).rejects.toMatchObject({
+  await expect(
+    api.writeItems('fixture-access', playlist, [`spotify:track:${id}`], true),
+  ).rejects.toMatchObject({
     uncertain: false,
     kind: 'reauthenticate',
   });
-  await expect(api.enqueue('fixture-access', id)).rejects.toMatchObject({
+  await expect(
+    api.writeItems('fixture-access', playlist, [`spotify:track:${id}`], true),
+  ).rejects.toMatchObject({
     uncertain: false,
-    kind: 'no_active_device',
+    kind: 'unavailable',
   });
-  await expect(api.enqueue('fixture-access', 'not-a-track')).rejects.toThrow();
+  await expect(
+    api.writeItems('fixture-access', playlist, ['not-a-track'], true),
+  ).rejects.toThrow();
   expect(fetcher).toHaveBeenCalledTimes(5);
 });
 it('filters unsafe/unplayable backup items and follows pagination without using remote next URLs', async () => {
@@ -174,21 +171,31 @@ it('refreshes one rejected token before a safe 401 retry but never retries uncer
   const fetcher = vi
     .fn<typeof fetch>()
     .mockResolvedValueOnce(response({}, 401))
-    .mockResolvedValueOnce(response(null, 204))
+    .mockResolvedValueOnce(response({ snapshot_id: 'new' }))
     .mockRejectedValueOnce(new Error('network'));
   const service = new AuthService(
     config,
     store,
     new SpotifyClient(config, fetcher),
   );
-  await service.enqueue('verified-host', id);
+  await service.writeItems(
+    'verified-host',
+    playlist,
+    [`spotify:track:${id}`],
+    true,
+  );
   expect(accessToken.mock.calls[1][2]).toBe('old-token');
   expect(fetcher.mock.calls[1][1]!.headers).toMatchObject({
     authorization: 'Bearer new-token',
   });
-  await expect(service.enqueue('verified-host', id)).rejects.toBeInstanceOf(
-    SpotifyMutationError,
-  );
+  await expect(
+    service.writeItems(
+      'verified-host',
+      playlist,
+      [`spotify:track:${id}`],
+      true,
+    ),
+  ).rejects.toBeInstanceOf(SpotifyMutationError);
   expect(fetcher).toHaveBeenCalledTimes(3);
 });
 it('accepts only Spotify playlist links, URIs, or IDs', () => {
@@ -250,4 +257,40 @@ it('normalizes observed track metadata and filters unsafe artwork and private de
     }),
   );
   expect((await api.player('fixture-access'))?.track).toBeNull();
+});
+
+it('moves and removes individual occurrences without replacing playlist contents', async () => {
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async () => response({ snapshot_id: 'updated' }));
+  const api = new SpotifyPlayback(fetcher);
+  await api.moveItem('fixture-access', playlist, 5, 2);
+  expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string)).toEqual({
+    range_start: 5,
+    insert_before: 2,
+    range_length: 1,
+  });
+  await api.writeItems(
+    'fixture-access',
+    playlist,
+    [`spotify:track:${id}`],
+    false,
+    2,
+  );
+  expect(JSON.parse(fetcher.mock.calls[1][1]!.body as string)).toEqual({
+    uris: [`spotify:track:${id}`],
+    position: 2,
+  });
+  await api.removeItems('fixture-access', playlist, [
+    { uri: `spotify:track:${id}`, positions: [7] },
+  ]);
+  expect(fetcher.mock.calls[2][1]!.method).toBe('DELETE');
+  expect(JSON.parse(fetcher.mock.calls[2][1]!.body as string)).toEqual({
+    items: [{ uri: `spotify:track:${id}`, positions: [7] }],
+  });
+  expect(
+    fetcher.mock.calls.every(([url]) =>
+      String(url).includes(`/playlists/${playlist}/items`),
+    ),
+  ).toBe(true);
 });

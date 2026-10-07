@@ -157,7 +157,7 @@ describe.skipIf(!url)('party creation and authorization', () => {
         allowExplicitTracks: true,
         maxActiveRequestsPerGuest: null,
         requestCooldownSeconds: 0,
-        queueBehavior: 'SPOTIFY_QUEUE',
+        queueBehavior: 'BACKUP_PLAYLIST',
       },
     });
     expect(response.headers.location).toBe(`/api/parties/${party.id}`);

@@ -169,7 +169,10 @@ export function TVDisplay({ token }: { token: string }) {
       {snapshot && (
         <div className="tv-content">
           <section className="tv-now" aria-label="Now playing">
-            <p className="tv-eyebrow">{label}</p>
+            <p className="tv-eyebrow">
+              {label}
+              {now?.locked && !ended ? ' · Locked in CrowdCue' : ''}
+            </p>
             {ended ? (
               <div className="tv-empty">
                 <span aria-hidden="true">♫</span>
