@@ -21,7 +21,8 @@
     "auth:keygen": "tsx src/server/auth/keygen.ts",
     "local": "node scripts/local.mjs",
     "local:setup": "node scripts/local.mjs --setup",
-    "test:local": "node scripts/local.mjs --test"
+    "test:local": "node scripts/local.mjs --test",
+    "start:cloud": "node --conditions=production dist/server/cloud-start.js"
   },
   "repository": {
     "type": "git",

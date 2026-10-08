@@ -6,8 +6,9 @@ if (!url || !/^postgres(ql)?:\/\//.test(url)) {
   console.error('Set DATABASE_URL to a PostgreSQL connection URL.');
   process.exitCode = 1;
 } else {
-  const pool = createDatabase(url);
+  let pool: ReturnType<typeof createDatabase> | undefined;
   try {
+    pool = createDatabase(url);
     const completed = await migrate(pool);
     console.log(
       completed.length
@@ -21,6 +22,6 @@ if (!url || !/^postgres(ql)?:\/\//.test(url)) {
     );
     process.exitCode = 1;
   } finally {
-    await pool.end();
+    await pool?.end();
   }
 }

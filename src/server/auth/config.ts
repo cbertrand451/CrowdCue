@@ -49,6 +49,14 @@ export function readAuthConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error('Invalid environment configuration: SPOTIFY_AUTH_ENABLED');
   }
   const redirect = env.SPOTIFY_REDIRECT_URI || env.SPOTIFY_REDIRECT_URL;
+  // Render generates a persistent base64-encoded 256-bit secret. Keep the
+  // existing key-ring format available for imports and future key rotation.
+  const keyId = env.TOKEN_ENCRYPTION_KEY_ID || 'v1';
+  const keyRing =
+    env.TOKEN_ENCRYPTION_KEYS ||
+    (env.TOKEN_ENCRYPTION_KEY
+      ? JSON.stringify({ [keyId]: env.TOKEN_ENCRYPTION_KEY })
+      : undefined);
   let defaultOrigin: string | undefined;
   try {
     defaultOrigin = new URL(redirect || '').origin;
@@ -59,7 +67,8 @@ export function readAuthConfig(env: NodeJS.ProcessEnv = process.env) {
     ...env,
     SPOTIFY_REDIRECT_URI: redirect,
     APP_ORIGIN: env.APP_ORIGIN || defaultOrigin,
-    TOKEN_ENCRYPTION_KEY_ID: env.TOKEN_ENCRYPTION_KEY_ID || 'v1',
+    TOKEN_ENCRYPTION_KEY_ID: keyId,
+    TOKEN_ENCRYPTION_KEYS: keyRing,
   });
   if (!result.success) {
     throw new Error(

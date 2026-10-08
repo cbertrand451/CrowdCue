@@ -2,7 +2,17 @@
 
 CrowdCue is a collaborative Spotify party-request application. The application foundation, PostgreSQL database structure, Spotify OAuth authentication, and party creation system are implemented. The guest interface and party-scoped guest sessions are implemented. Spotify song search, song requests with host moderation, and voting are implemented. Session playlists, random backup refill, current/next locking, live voting/reordering and manual playlist cleanup instructions are implemented. Product requirements live in [PROJECT_SPEC.md](PROJECT_SPEC.md); contributor instructions live in [AGENTS.md](AGENTS.md).
 
-## Quick local start — no database installation
+## Public hosting — no local installation
+
+Deploy CrowdCue to **Render Free + Supabase Free** using [DEPLOY.md](DEPLOY.md).
+No PostgreSQL, Node, Docker, or app download is required on your computer.
+The included `render.yaml` uses the development branch, builds the app, applies
+migrations automatically, and starts the existing frontend/backend together.
+Public HTTPS Guest links and QR codes use Render's assigned address.
+Provider account setup and Spotify callback registration are required before
+live use. Free hosting can sleep; see the deployment guide for limits.
+
+## Optional local start — no database installation
 
 Download the **codex/crowdcue-build** branch as a ZIP from GitHub, extract it, and open the extracted folder in VS Code. Install **Node.js 24 LTS** (npm is included). In the VS Code terminal:
 
@@ -60,7 +70,7 @@ npm run build
 npm start
 ```
 
-Visit `http://127.0.0.1:3000`. `npm start` explicitly selects production mode. Deployment should provide HTTPS through a reverse proxy and use `HOST=0.0.0.0` when binding inside a container. Deployment automation is deferred. SIGINT/SIGTERM close Fastify gracefully. Install build dependencies before building; a runtime-only installation may use `npm ci --omit=dev` after the build artifacts have been produced.
+Visit `http://127.0.0.1:3000`. `npm start` explicitly selects production mode. Public hosting uses `npm run start:cloud` and the Render Blueprint documented in [DEPLOY.md](DEPLOY.md). Deployment provides HTTPS through a reverse proxy and uses `HOST=0.0.0.0`. SIGINT/SIGTERM close Fastify gracefully. Install build dependencies before building; a runtime-only installation may use `npm ci --omit=dev` after the build artifacts have been produced.
 
 If your local `.env` enables OAuth with an HTTP loopback callback, use `SPOTIFY_AUTH_ENABLED=false npm start` for a local production-build smoke test, or supply HTTPS OAuth settings for a production authentication test.
 
@@ -376,6 +386,14 @@ Every API response uses private caching/referrer/indexing headers, including err
 Request/error serializers omit private URLs, query strings, bodies, cookies and raw exception messages/stacks; existing logs record safe operation categories/request IDs. Deployment proxy/access logs must still redact private paths, OAuth codes and cookies. No migration is needed. The production dependency audit at implementation reported zero vulnerabilities; rerun `npm audit --omit=dev` as dependencies evolve.
 
 Spotify sign-in now starts with a same-origin POST accepting JSON, followed by navigation to a validated `https://accounts.spotify.com/authorize` URL. This preserves `no-referrer` privacy and exact Origin checks: Chromium may send `Origin: null` for a plain HTML form under that policy. The response contains only the public authorization URL; the OAuth binding cookie stays HttpOnly and grants remain server-side. The login endpoint retains 303 responses for callers without `Accept: application/json` and requires a valid Origin for either response format. Duplicate browser starts are prevented and failures can retry.
+
+### Public hosting milestone
+
+Prepared: Render Free Blueprint, public-origin defaults, verified PostgreSQL TLS,
+persistent generated encryption key and automatic startup migrations. Browser-only
+Render/Supabase setup is documented in [DEPLOY.md](DEPLOY.md); no local database
+installation is required. Actual hosting and mobile/Spotify acceptance remain
+pending provider account setup and callback registration.
 
 ### Local setup milestone
 

@@ -927,6 +927,22 @@ Default request bodies are bounded to 4 KiB with smaller per-route limits; authe
 
 Spotify sign-in now starts with a same-origin POST accepting JSON, followed by navigation to a validated `https://accounts.spotify.com/authorize` URL. This preserves `no-referrer` privacy and exact Origin checks: Chromium may send `Origin: null` for a plain HTML form under that policy. The response contains only the public authorization URL; the OAuth binding cookie stays HttpOnly and grants remain server-side. The login endpoint retains 303 responses for callers without `Accept: application/json` and requires a valid Origin for either response format. Duplicate browser starts are prevented and failures can retry.
 
+## Public hosting requirement (October 2026)
+
+Public hosting uses a free Render web service and hosted Supabase PostgreSQL;
+the user must not need to install PostgreSQL or run CrowdCue on their computer.
+The React frontend, Fastify API, WebSockets and Spotify worker remain a single
+Node application. The Render Blueprint builds the application, generates a
+persistent encryption key, and applies the existing migrations before startup.
+The trusted public HTTPS origin supplies all role links and Guest QR URLs.
+Database TLS verifies the provider certificate. Supabase's Data API must be
+disabled before deployment because only CrowdCue's backend may access private
+database records. Use the session pooler for notifications and session locks.
+Local execution remains optional; cloud deployment does not import local data.
+Repository preparation is complete; actual provider provisioning and live
+phone/Spotify acceptance require connected accounts and callback registration.
+See `DEPLOY.md` for the browser-only setup and free-plan limitations.
+
 ## Local execution requirement (October 2026)
 
 A GitHub branch ZIP opened in a local VS Code folder must run with Node.js 24 and its included npm, without separately installing PostgreSQL, Docker, Python, or database administration tools. `npm ci` installs a pinned bundled PostgreSQL dependency; `npm run local` starts a loopback-only persistent database, creates local databases, applies the existing migrations, generates/reuses the ignored encryption key, and starts the existing frontend/backend. Persistent local data and keys must survive normal restarts. An explicit `DATABASE_URL` continues to select an external PostgreSQL database. Real Spotify features still require the host’s configured Spotify application and OAuth consent. Local automated tests use a separate bundled test database.
