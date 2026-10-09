@@ -21,6 +21,7 @@ export function QueueBoard({
   const liveRevision = useLiveRevision();
   const [snapshot, setSnapshot] = useState<QueueSnapshot>();
   const [offset, setOffset] = useState(0);
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const mutation = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
@@ -101,6 +102,7 @@ export function QueueBoard({
         if (!controller.signal.aborted)
           setError('Unable to load the queue. Try refreshing it.');
       } finally {
+        if (!controller.signal.aborted) setRefreshBusy(false);
         if (!controller.signal.aborted)
           timer = setTimeout(() => void load(), 5000);
       }
@@ -118,9 +120,21 @@ export function QueueBoard({
         <button
           type="button"
           className="secondary"
-          onClick={() => setAttempt((value) => value + 1)}
+          disabled={refreshBusy}
+          aria-busy={refreshBusy}
+          onClick={() => {
+            setRefreshBusy(true);
+            setAttempt((v) => v + 1);
+          }}
         >
-          Refresh queue
+          {refreshBusy ? (
+            <>
+              <span className="loading-spinner" aria-hidden="true" />
+              Refreshing…
+            </>
+          ) : (
+            'Refresh queue'
+          )}
         </button>
       </div>
       {actionError && <p role="alert">{actionError}</p>}
@@ -130,9 +144,9 @@ export function QueueBoard({
         <>
           <p className="muted">
             {snapshot.hostOrdered
-              ? 'Host order is active. Votes are counted; new guest songs follow the host’s ordered songs. Current and next songs stay locked.'
+              ? 'Host order is active. Votes are counted; new guest songs follow the host’s ordered songs. Current and the next two songs stay locked.'
               : snapshot.votingEnabled
-                ? 'Guest songs rank by votes behind the locked current and next songs. Unlocked backup songs give way to guest requests.'
+                ? 'Guest songs rank by votes behind the locked current and the next two songs. Unlocked backup songs give way to guest requests.'
                 : 'Voting is off. Guest songs follow request order.'}
           </p>
           {role === 'admin' &&
@@ -191,6 +205,21 @@ export function QueueBoard({
                     >
                       {position}
                     </span>
+                    {request.track.artworkUrl ? (
+                      <img
+                        className="queue-artwork"
+                        src={request.track.artworkUrl}
+                        alt={`${request.track.album} artwork`}
+                        width={64}
+                        height={64}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="artwork-placeholder" aria-hidden="true">
+                        ♪
+                      </span>
+                    )}
                     <div className="track-details">
                       <a
                         href={request.track.spotifyUrl}
@@ -296,8 +325,8 @@ export function QueueBoard({
         </>
       )}
       <p className="muted">
-        Current and next songs cannot be moved or removed in CrowdCue. All later
-        guest songs remain open to voting and host reordering.
+        Current and the next two songs cannot be moved or removed in CrowdCue.
+        All later guest songs remain open to voting and host reordering.
       </p>
     </section>
   );

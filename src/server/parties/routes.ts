@@ -89,6 +89,26 @@ export async function partyRoutes(
       return reply.code(400).send({ error: 'Invalid party list page.' });
     return store.list(host.accountId, query.data.offset);
   });
+  app.post<{ Params: { id: string } }>(
+    '/api/parties/:id/close',
+    { ...limited(30), bodyLimit: 1024 },
+    async (request, reply) => {
+      if (!auth || !store)
+        return reply
+          .code(503)
+          .send({ error: 'Parties are not available yet.' });
+      if (request.headers.origin !== auth.config.appOrigin)
+        return reply
+          .code(403)
+          .send({ error: 'Open CrowdCue to close a party.' });
+      const host = await auth.requireHost(request.cookies[hostCookie]);
+      if (!z.uuid().safeParse(request.params.id).success)
+        throw new PartyError(404, 'Party not found.');
+      if (!z.object({}).strict().safeParse(request.body).success)
+        return reply.code(400).send({ error: 'Send an empty JSON object.' });
+      return store.close(host.accountId, request.params.id);
+    },
+  );
   app.get<{ Params: { id: string } }>(
     '/api/parties/:id',
     limited(60),

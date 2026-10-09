@@ -18,6 +18,7 @@ export function LeaderboardPanel({
 }) {
   const revision = useLiveRevision();
   const [leaderboard, setLeaderboard] = useState<Leaderboard>();
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string>();
   useEffect(() => {
@@ -48,6 +49,7 @@ export function LeaderboardPanel({
         if (!controller.signal.aborted)
           setError('Unable to load leaderboard. Try refreshing it.');
       } finally {
+        if (!controller.signal.aborted) setRefreshBusy(false);
         if (!controller.signal.aborted)
           timer = setTimeout(() => void load(), 5000);
       }
@@ -65,9 +67,21 @@ export function LeaderboardPanel({
         <button
           type="button"
           className="secondary"
-          onClick={() => setAttempt((x) => x + 1)}
+          disabled={refreshBusy}
+          aria-busy={refreshBusy}
+          onClick={() => {
+            setRefreshBusy(true);
+            setAttempt((v) => v + 1);
+          }}
         >
-          Refresh leaderboard
+          {refreshBusy ? (
+            <>
+              <span className="loading-spinner" aria-hidden="true" />
+              Refreshing…
+            </>
+          ) : (
+            'Refresh leaderboard'
+          )}
         </button>
       </div>
       <p className="muted">

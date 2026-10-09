@@ -142,7 +142,16 @@ describe.skipIf(!database)('read-only TV display snapshots', () => {
       voted = await request(letter);
     await pool.query(
       'INSERT INTO votes(party_id,request_id,guest_id) VALUES($1,$2,$3)',
-      [party.id, voted, guest],
+      [
+        party.id,
+        voted,
+        (
+          await pool.query<{ id: string }>(
+            "INSERT INTO guests(party_id,session_token_hash,expires_at) VALUES($1,$2,now()+interval '1 day') RETURNING id",
+            [party.id, hashToken(newToken())],
+          )
+        ).rows[0].id,
+      ],
     );
     await request('p', 'REQUESTED');
     const result = await snapshot();

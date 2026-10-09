@@ -127,7 +127,11 @@ export function SpotifyConnection({
           <p aria-live="polite">Unable to check Spotify. Please try again.</p>
           <button
             type="button"
-            onClick={() => setAttempt((value) => value + 1)}
+            onClick={() => {
+              setFailed(false);
+              setConnection(undefined);
+              setAttempt((value) => value + 1);
+            }}
           >
             Try again
           </button>

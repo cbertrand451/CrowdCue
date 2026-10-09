@@ -30,6 +30,7 @@ function RolePage({ role, token }: { role: 'guest' | 'admin'; token: string }) {
   const { revision, connected } = usePartyRealtime(role, token);
   const [party, setParty] = useState<PageParty | PartyDetails>();
   const [error, setError] = useState<string>();
+  const [retryBusy, setRetryBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(0);
   const authenticationChanged = useCallback((authenticated: boolean) => {
     if (!authenticated) {
@@ -73,6 +74,7 @@ function RolePage({ role, token }: { role: 'guest' | 'admin'; token: string }) {
         if (!controller.signal.aborted)
           setError('Unable to load this party. Please try again.');
       } finally {
+        if (!controller.signal.aborted) setRetryBusy(false);
         if (!controller.signal.aborted)
           timer = setTimeout(() => void load(), 15_000);
       }
@@ -103,9 +105,13 @@ function RolePage({ role, token }: { role: 'guest' | 'admin'; token: string }) {
             <button
               type="button"
               className="secondary"
-              onClick={() => setRefreshing((value) => value + 1)}
+              disabled={retryBusy}
+              onClick={() => {
+                setRetryBusy(true);
+                setRefreshing((value) => value + 1);
+              }}
             >
-              Try again
+              {retryBusy ? 'Loading…' : 'Try again'}
             </button>
           </div>
         )}

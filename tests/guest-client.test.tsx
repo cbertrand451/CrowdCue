@@ -84,10 +84,11 @@ it('joins anonymously once and lets a guest save a name without host controls', 
     await pending;
   });
   expect(await screen.findByText('Joined as a guest.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Guest Name' }));
   fireEvent.change(screen.getByLabelText('Your name (optional)'), {
     target: { value: '  Alex  ' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Update' }));
   await screen.findByText('Your name is saved.');
   expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({
     displayName: 'Alex',
@@ -120,11 +121,12 @@ it('restores an existing guest and displays current preferences and required-nam
     />,
   );
   expect(
-    screen.getByText(
-      'The host now requires a name. Add yours before requesting songs or voting.',
-    ),
+    screen.getByText('Enter your name to join the party.'),
   ).toBeInTheDocument();
-  expect(screen.getByText('Voting is turned off.')).toBeInTheDocument();
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('navigation', { name: 'Guest menus' }),
+  ).not.toBeInTheDocument();
   const form = screen.getByLabelText('Your name').closest('form')!;
   fireEvent.submit(form);
   expect(
@@ -145,7 +147,7 @@ it('shows ended-party state without join or edit controls', async () => {
     screen.queryByRole('button', { name: 'Join party' }),
   ).not.toBeInTheDocument();
   expect(
-    screen.queryByRole('button', { name: 'Save name' }),
+    screen.queryByRole('button', { name: 'Update' }),
   ).not.toBeInTheDocument();
 });
 it('recovers from session errors and handles a party ending during joining', async () => {

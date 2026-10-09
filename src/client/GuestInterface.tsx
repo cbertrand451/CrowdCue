@@ -1,3 +1,5 @@
+import { DashboardNavigation } from './DashboardNavigation';
+import { Modal } from './Modal';
 import { LeaderboardPanel } from './LeaderboardPanel';
 import {
   useCallback,
@@ -24,6 +26,8 @@ export function GuestInterface({
   party: PublicParty;
   token: string;
 }) {
+  const [menu, setMenu] = useState('search');
+  const [editing, setEditing] = useState(false);
   const [guest, setGuest] = useState<GuestSession | null>(null);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -75,11 +79,11 @@ export function GuestInterface({
     }, 60_000);
     return () => clearInterval(timer);
   }, [guest]);
-  async function join(event: FormEvent) {
+  async function join(event: FormEvent, anonymous = false) {
     event.preventDefault();
     if (inFlight.current) return;
     const input = guestInputSchema.safeParse({
-      displayName: name.trim() || null,
+      displayName: anonymous ? null : name.trim() || null,
     });
     if (
       !input.success ||
@@ -126,6 +130,8 @@ export function GuestInterface({
       const result = responseSchema.parse(await response.json());
       if (!active?.signal.aborted) {
         setGuest(result.guest);
+        setName(result.guest?.displayName ?? '');
+        setEditing(false);
         setFeedback(guest ? 'Your name is saved.' : 'You’ve joined the party.');
       }
     } catch {
@@ -136,123 +142,197 @@ export function GuestInterface({
       if (!active?.signal.aborted) setBusy(false);
     }
   }
+  const ready =
+    !!guest && (!party.settings.requireGuestNames || !!guest.displayName);
+  const nameForm = (
+    <form onSubmit={(event) => void join(event)}>
+      <fieldset disabled={busy}>
+        <label htmlFor="guest-name">
+          Your name{party.settings.requireGuestNames ? '' : ' (optional)'}
+        </label>
+        <input
+          id="guest-name"
+          autoFocus
+          autoComplete="nickname"
+          maxLength={80}
+          required={party.settings.requireGuestNames}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <div className="party-actions">
+          <button type="submit">
+            {busy ? 'Saving…' : editing ? 'Update' : 'Join party'}
+          </button>
+          {editing ? (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setEditing(false);
+                setError(undefined);
+              }}
+            >
+              Cancel
+            </button>
+          ) : (
+            !party.settings.requireGuestNames && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={(event) => void join(event, true)}
+              >
+                Continue as guest
+              </button>
+            )
+          )}
+        </div>
+      </fieldset>
+    </form>
+  );
   return (
     <section className="guest-interface" aria-label="Guest access">
       {loading ? (
-        <p aria-live="polite">Checking your guest session…</p>
+        <p role="status">Checking your guest session…</p>
       ) : (
         <>
-          {guest && (
-            <p className="ready">Joined as {guest.displayName || 'a guest'}.</p>
-          )}
-          {party.status === 'ACTIVE' && (
-            <>
-              <h2>{guest ? 'Your guest name' : 'Join the party'}</h2>
+          {party.status === 'ACTIVE' && !ready && (
+            <div className="guest-welcome">
+              <span className="cue-mark" aria-hidden="true">
+                ≋
+              </span>
+              <p className="label">Your crowd. Your soundtrack.</p>
+              <h2>Welcome to {party.name}</h2>
               <p className="muted">
                 {party.settings.requireGuestNames
-                  ? 'The host asks everyone to use a name.'
-                  : 'A name is optional. No account needed.'}
+                  ? 'Enter your name to join the party.'
+                  : 'Pick a name or jump in as a guest. No account needed.'}
               </p>
-              {guest &&
-                party.settings.requireGuestNames &&
-                !guest.displayName && (
-                  <p role="alert">
-                    The host now requires a name. Add yours before requesting
-                    songs or voting.
-                  </p>
-                )}
-              <form onSubmit={join}>
-                <fieldset disabled={busy}>
-                  <label htmlFor="guest-name">
-                    Your name
-                    {party.settings.requireGuestNames ? '' : ' (optional)'}
-                  </label>
-                  <input
-                    id="guest-name"
-                    autoComplete="nickname"
-                    maxLength={80}
-                    required={party.settings.requireGuestNames}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                  />
-                  <button type="submit">
-                    {busy ? 'Joining…' : guest ? 'Save name' : 'Join party'}
+              {nameForm}
+            </div>
+          )}
+          {guest && (ready || party.status === 'ENDED') && (
+            <>
+              <div className="guest-toolbar">
+                <p className="ready">
+                  Joined as {guest.displayName || 'a guest'}.
+                </p>
+                {party.status === 'ACTIVE' && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setName(guest.displayName ?? '');
+                      setError(undefined);
+                      setEditing(true);
+                    }}
+                  >
+                    Edit Guest Name
                   </button>
-                </fieldset>
-              </form>
-              <section
-                aria-label="Party preferences"
-                className="guest-preferences"
-              >
-                <h2>At this party</h2>
-                <p>
-                  {party.settings.approvalRequired
-                    ? 'The host will approve song requests.'
-                    : 'Song requests won’t need host approval.'}
-                </p>
-                <p>
-                  {party.settings.votingEnabled
-                    ? 'Voting is enabled.'
-                    : 'Voting is turned off.'}
-                </p>
-                {!party.settings.allowExplicitTracks && (
-                  <p>Explicit songs are turned off.</p>
                 )}
-                {party.settings.maxActiveRequestsPerGuest && (
-                  <p>
-                    Up to {party.settings.maxActiveRequestsPerGuest} active
-                    requests per guest.
-                  </p>
-                )}
-                {party.settings.requestCooldownSeconds > 0 && (
-                  <p>
-                    Wait {party.settings.requestCooldownSeconds} seconds between
-                    requests.
-                  </p>
-                )}
-                {!guest && <p className="muted">Join to search Spotify.</p>}
-              </section>
-              {guest &&
-                (!party.settings.requireGuestNames || guest.displayName) && (
-                  <SongSearch
-                    token={token}
-                    allowExplicit={party.settings.allowExplicitTracks}
-                    onExpired={sessionExpired}
-                    onRequested={() => setRequestRefresh((value) => value + 1)}
-                  />
-                )}
+              </div>
+              <div className="dashboard-layout">
+                <DashboardNavigation
+                  label="Guest menus"
+                  selected={menu}
+                  onSelect={setMenu}
+                  items={[
+                    { id: 'search', label: 'Find a song', icon: '⌕' },
+                    { id: 'queue', label: 'Live queue', icon: '≋' },
+                    { id: 'requests', label: 'Song requests', icon: '＋' },
+                    { id: 'leaderboard', label: 'Leaderboard', icon: '↗' },
+                    { id: 'about', label: 'Party details', icon: '◉' },
+                  ]}
+                />
+                <div className="dashboard-content">
+                  <div hidden={menu !== 'search'}>
+                    {party.status === 'ACTIVE' ? (
+                      <SongSearch
+                        token={token}
+                        allowExplicit={party.settings.allowExplicitTracks}
+                        onExpired={sessionExpired}
+                        onRequested={() => setRequestRefresh((v) => v + 1)}
+                      />
+                    ) : (
+                      <p>This party has ended. Thanks for joining.</p>
+                    )}
+                  </div>
+                  <div hidden={menu !== 'requests'}>
+                    <RequestBoard
+                      role="guest"
+                      token={token}
+                      active={party.status === 'ACTIVE'}
+                      refresh={requestRefresh}
+                      votingEnabled={party.settings.votingEnabled}
+                      canVote={ready}
+                      onExpired={sessionExpired}
+                      onChange={() => setRequestRefresh((v) => v + 1)}
+                    />
+                  </div>
+                  <div hidden={menu !== 'queue'}>
+                    <QueueBoard
+                      role="guest"
+                      token={token}
+                      refresh={requestRefresh}
+                      onExpired={sessionExpired}
+                    />
+                  </div>
+                  <div hidden={menu !== 'leaderboard'}>
+                    <LeaderboardPanel
+                      role="guest"
+                      token={token}
+                      refresh={requestRefresh}
+                      onExpired={sessionExpired}
+                    />
+                  </div>
+                  <section
+                    hidden={menu !== 'about'}
+                    aria-label="Party preferences"
+                    className="guest-preferences"
+                  >
+                    <h2>At this party</h2>
+                    <p>
+                      {party.settings.approvalRequired
+                        ? 'The host will approve song requests.'
+                        : 'Song requests won’t need host approval.'}
+                    </p>
+                    <p>
+                      {party.settings.votingEnabled
+                        ? 'Voting is enabled. Vote for someone else’s pick.'
+                        : 'Voting is turned off.'}
+                    </p>
+                    {!party.settings.allowExplicitTracks && (
+                      <p>Explicit songs are turned off.</p>
+                    )}
+                    {party.settings.maxActiveRequestsPerGuest && (
+                      <p>
+                        Up to {party.settings.maxActiveRequestsPerGuest} active
+                        requests per guest.
+                      </p>
+                    )}
+                    {party.settings.requestCooldownSeconds > 0 && (
+                      <p>
+                        Wait {party.settings.requestCooldownSeconds} seconds
+                        between requests.
+                      </p>
+                    )}
+                  </section>
+                </div>
+              </div>
             </>
           )}
-          {guest && (
-            <RequestBoard
-              role="guest"
-              token={token}
-              active={party.status === 'ACTIVE'}
-              refresh={requestRefresh}
-              votingEnabled={party.settings.votingEnabled}
-              canVote={!party.settings.requireGuestNames || !!guest.displayName}
-              onExpired={sessionExpired}
-              onChange={() => setRequestRefresh((value) => value + 1)}
-            />
-          )}
-          {guest && (
-            <QueueBoard
-              role="guest"
-              token={token}
-              refresh={requestRefresh}
-              onExpired={sessionExpired}
-            />
-          )}
-          {guest && (
-            <details className="event-history" open={party.status === 'ENDED'}>
-              <summary>View guest leaderboard</summary>
-              <LeaderboardPanel
-                role="guest"
-                token={token}
-                refresh={requestRefresh}
-                onExpired={sessionExpired}
-              />
-            </details>
+          {editing && (
+            <Modal
+              title="Edit Guest Name"
+              onClose={() => {
+                if (!busy) {
+                  setEditing(false);
+                  setError(undefined);
+                }
+              }}
+            >
+              {nameForm}
+              {error && <p role="alert">{error}</p>}
+            </Modal>
           )}
           {party.status === 'ENDED' && (
             <p className="muted">
@@ -267,18 +347,17 @@ export function GuestInterface({
           {feedback}
         </p>
       )}
-      {error && (
+      {error && !editing && (
         <div role="alert">
           <p>{error}</p>
-          {!busy && (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setAttempt((value) => value + 1)}
-            >
-              Check session again
-            </button>
-          )}
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || loading}
+            onClick={() => setAttempt((v) => v + 1)}
+          >
+            Check session again
+          </button>
         </div>
       )}
     </section>

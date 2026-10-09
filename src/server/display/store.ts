@@ -66,7 +66,7 @@ export class PostgresDisplayStore {
             is_explicit: boolean;
             vote_count: number;
           }>(
-            `SELECT r.*, (SELECT count(*)::int FROM votes v WHERE v.request_id=r.id) AS vote_count FROM song_requests r WHERE r.party_id=$1 AND r.status='APPROVED' ORDER BY ${queueOrder(state.voting_enabled)} LIMIT 7`,
+            `SELECT r.*, (SELECT count(*)::int FROM votes v WHERE v.request_id=r.id AND v.guest_id<>r.requested_by) AS vote_count FROM song_requests r WHERE r.party_id=$1 AND r.status='APPROVED' ORDER BY ${queueOrder(state.voting_enabled)} LIMIT 7`,
             [party.id],
           )
         ).rows;

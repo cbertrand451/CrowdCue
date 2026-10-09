@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'node',
+    maxWorkers: 4,
     include: ['tests/**/*.test.{ts,tsx}'],
     clearMocks: true,
   },

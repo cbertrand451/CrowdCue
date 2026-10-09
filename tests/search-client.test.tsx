@@ -54,7 +54,11 @@ it('debounces query changes and renders Spotify metadata with paged results', as
         nextOffset: null,
       }),
     );
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   render(
     <SongSearch
       token={'g'.repeat(43)}
@@ -101,7 +105,11 @@ it('aborts old searches and discards stale results even when the transport ignor
     .fn()
     .mockReturnValueOnce(pending)
     .mockResolvedValueOnce(reply({ tracks: [], nextOffset: null }));
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   const view = render(
     <SongSearch token={'g'.repeat(43)} allowExplicit onExpired={vi.fn()} />,
   );
@@ -132,7 +140,11 @@ it('shows Retry-After feedback, recovers on retry, and clears expired guest acce
     .mockResolvedValueOnce(reply({}, 429, { 'retry-after': '12' }))
     .mockResolvedValueOnce(reply({ tracks: [track], nextOffset: null }))
     .mockResolvedValueOnce(reply({}, 401));
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   const expired = vi.fn();
   render(
     <SongSearch token={'g'.repeat(43)} allowExplicit onExpired={expired} />,
@@ -187,7 +199,11 @@ it('asks for confirmation before submitting a previously played song again', asy
         201,
       ),
     );
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   render(
     <SongSearch token={'g'.repeat(43)} allowExplicit onExpired={vi.fn()} />,
   );
@@ -197,15 +213,15 @@ it('asks for confirmation before submitting a previously played song again', asy
   await tick();
   fireEvent.click(screen.getByRole('button', { name: 'Request song' }));
   await act(async () => {});
-  expect(screen.getByRole('alertdialog')).toHaveTextContent(
-    'Song already played...proceed?',
+  expect(screen.getByRole('dialog')).toHaveTextContent(
+    'This song has been played in this session already, are you sure?',
   );
   expect(JSON.parse(fetcher.mock.calls[1][1].body as string)).toEqual({
     confirmPlayedRepeat: false,
     trackId: track.id,
   });
   fireEvent.click(screen.getByRole('button', { name: 'No' }));
-  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Request song' }));
   await act(async () => {});
   fireEvent.click(screen.getByRole('button', { name: 'Yes' }));

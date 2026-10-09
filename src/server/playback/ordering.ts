@@ -25,7 +25,7 @@ export async function upcoming(
 ): Promise<Entry[]> {
   const rows = (
     await client.query<Entry>(
-      `SELECT e.*, COALESCE(e.manual_position,r.manual_position) AS manual_position, COALESCE((SELECT count(*)::int FROM votes v WHERE v.request_id=e.request_id),0) AS vote_count,
+      `SELECT e.*, COALESCE(e.manual_position,r.manual_position) AS manual_position, COALESCE((SELECT count(*)::int FROM votes v WHERE v.request_id=e.request_id AND v.guest_id<>r.requested_by),0) AS vote_count,
  EXISTS(SELECT 1 FROM votes v WHERE v.request_id=e.request_id AND v.guest_id=$2) AS has_voted,g.display_name,r.requested_by
  FROM playback_entries e LEFT JOIN song_requests r ON r.id=e.request_id LEFT JOIN guests g ON g.id=r.requested_by
  WHERE e.party_id=$1 AND e.status IN ('WAITING','LOCKED') ORDER BY (e.locked_at IS NOT NULL) DESC,e.locked_at NULLS LAST,e.sequence`,
@@ -40,6 +40,9 @@ export async function upcoming(
         Number(a.source === 'BACKUP') - Number(b.source === 'BACKUP') ||
         (votingEnabled && a.source === 'GUEST' && b.source === 'GUEST'
           ? b.vote_count - a.vote_count
+          : 0) ||
+        (a.source === 'BACKUP' && b.source === 'BACKUP'
+          ? Number(BigInt(a.sequence) - BigInt(b.sequence))
           : 0) ||
         a.created_at.getTime() - b.created_at.getTime() ||
         (a.request_id ?? a.id).localeCompare(b.request_id ?? b.id),

@@ -380,6 +380,7 @@ it('saves admin preferences and requires confirmation before ending a party', as
       onExpired={onExpired}
     />,
   );
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   fireEvent.change(screen.getByLabelText('Party name'), {
     target: { value: 'Saturday party' },
   });
@@ -387,6 +388,7 @@ it('saves admin preferences and requires confirmation before ending a party', as
   fireEvent.change(screen.getByLabelText('Request cooldown in seconds'), {
     target: { value: '30' },
   });
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
   await screen.findByText('Settings saved.');
   expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({
@@ -418,6 +420,7 @@ it('keeps ended dashboards read-only and clears access on an expired session', a
       onExpired={onExpired}
     />,
   );
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
   await waitFor(() => expect(onExpired).toHaveBeenCalledOnce());
   view.rerender(
@@ -451,6 +454,7 @@ it('cancels dashboard mutations on unmount without restoring private details', a
       onExpired={vi.fn()}
     />,
   );
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
   const signal = fetcher.mock.calls[0][1].signal as AbortSignal;
   view.unmount();

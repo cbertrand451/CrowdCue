@@ -230,6 +230,14 @@ export class PlaybackStore {
             [observed.request_id],
           );
       }
+      if (playlistContext && isPlaying && currentId) {
+        await client.query(
+          `UPDATE song_requests SET status='PLAYED' WHERE status='QUEUED' AND id IN (
+          SELECT request_id FROM playback_entries WHERE party_id=$1 AND status='PLAYING' AND track->>'id'=$2
+        )`,
+          [id, currentId],
+        );
+      }
       if (playlistContext)
         await client.query(
           'UPDATE party_playback SET last_track_id=$2,last_progress_ms=$3 WHERE party_id=$1',
@@ -246,7 +254,7 @@ export class PlaybackStore {
           [id],
         );
       if (!s.initialized) {
-        const seed = (await upcoming(client, id, s.voting_enabled)).slice(0, 2);
+        const seed = (await upcoming(client, id, s.voting_enabled)).slice(0, 3);
         for (const e of seed)
           await client.query(
             "UPDATE playback_entries SET status='LOCKED',locked_at=clock_timestamp() WHERE id=$1",
@@ -270,7 +278,7 @@ export class PlaybackStore {
       const locked = rows.filter((e) => e.locked_at !== null).length;
       for (const e of rows
         .filter((e) => e.locked_at === null)
-        .slice(0, Math.max(0, (hasPlaying ? 1 : 2) - locked))) {
+        .slice(0, Math.max(0, (hasPlaying ? 2 : 3) - locked))) {
         await client.query(
           "UPDATE playback_entries SET status='LOCKED',locked_at=clock_timestamp() WHERE id=$1",
           [e.id],

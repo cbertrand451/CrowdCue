@@ -37,6 +37,7 @@ export function PlaybackPanel({
 }) {
   const liveRevision = useLiveRevision();
   const [status, setStatus] = useState<PlaybackStatus>();
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
@@ -77,6 +78,7 @@ export function PlaybackPanel({
         if (!c.signal.aborted)
           setError('Unable to load Spotify session status.');
       } finally {
+        if (!c.signal.aborted) setRefreshBusy(false);
         if (!c.signal.aborted) timer = setTimeout(() => void load(), 5000);
       }
     };
@@ -141,11 +143,29 @@ export function PlaybackPanel({
         <button
           type="button"
           className="secondary"
-          onClick={() => setAttempt((x) => x + 1)}
+          disabled={refreshBusy}
+          aria-busy={refreshBusy}
+          onClick={() => {
+            setRefreshBusy(true);
+            setAttempt((v) => v + 1);
+          }}
         >
-          Refresh Spotify status
+          {refreshBusy ? (
+            <>
+              <span className="loading-spinner" aria-hidden="true" />
+              Refreshing…
+            </>
+          ) : (
+            'Refresh Spotify status'
+          )}
         </button>
       </div>
+      {busy && (
+        <p role="status">
+          <span className="loading-spinner" aria-hidden="true" />
+          Updating Spotify session…
+        </p>
+      )}
       {(actionError || error) && <p role="alert">{actionError ?? error}</p>}
       {!status && !error && <p role="status">Loading Spotify session…</p>}
       {status && (
@@ -157,8 +177,8 @@ export function PlaybackPanel({
           </p>
           <p className="muted">
             Open the session playlist in Spotify and press Play. Turn off
-            Shuffle, Smart Shuffle and Repeat. Current and next songs are locked
-            for everyone in CrowdCue; use Spotify itself to skip.
+            Shuffle, Smart Shuffle and Repeat. Current and the next two songs
+            are locked for everyone in CrowdCue; use Spotify itself to skip.
           </p>
           {status.backupSourceUrl && (
             <div className="backup-source">
@@ -188,15 +208,16 @@ export function PlaybackPanel({
               )}
               <p className="muted">
                 Refresh uses updated playlist contents for future refills.
-                Current and next songs stay locked. Unlocked backup songs can
-                give way to guest requests.
+                Current and the next two songs stay locked. Unlocked backup
+                songs can give way to guest requests.
               </p>
             </div>
           )}
           {status.playlistUrl && (
-            <p>
+            <p className="playlist-launch">
               <a href={status.playlistUrl} target="_blank" rel="noreferrer">
-                Open session playlist in Spotify
+                <span aria-hidden="true">↗</span> Open session playlist in
+                Spotify
               </a>
             </p>
           )}
@@ -250,8 +271,8 @@ export function PlaybackPanel({
               )}
               {status.enabled && (
                 <p className="ready">
-                  Session playlist enabled — current and next songs are locked;
-                  at least two songs stay ahead.
+                  Session playlist enabled — current and the next two songs are
+                  locked; at least two songs stay ahead.
                 </p>
               )}
               {status.error && (

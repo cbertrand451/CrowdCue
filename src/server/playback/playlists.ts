@@ -82,21 +82,8 @@ export class NightlyPlaylists {
     const digest = createHash('sha256')
       .update(JSON.stringify(committed))
       .digest('hex');
-    const saved = (
-      await client.query<{
-        playlist_digest: string | null;
-        playlist_synced_at: Date | null;
-      }>(
-        'SELECT playlist_digest,playlist_synced_at FROM party_playback WHERE party_id=$1',
-        [s.party_id],
-      )
-    ).rows[0];
-    if (
-      saved.playlist_digest === digest &&
-      saved.playlist_synced_at &&
-      saved.playlist_synced_at.getTime() > Date.now() - 60000
-    )
-      return true;
+    // Verify provider contents on every pass: a cached digest cannot prove
+    // Spotify still has the two songs after the current occurrence.
     const actual = await this.spotify.playlistUris(s.host_account_id, id);
     // Reconcile by occurrence, preserving the already matching history/current/next
     // prefix. Never replace the whole playlist while it is being played.

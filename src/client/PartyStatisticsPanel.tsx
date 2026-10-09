@@ -14,6 +14,7 @@ export function PartyStatisticsPanel({
 }) {
   const revision = useLiveRevision();
   const [statistics, setStatistics] = useState<PartyStatistics>();
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string>();
   useEffect(() => {
@@ -44,6 +45,7 @@ export function PartyStatisticsPanel({
         if (!controller.signal.aborted)
           setError('Unable to load party statistics. Try refreshing it.');
       } finally {
+        if (!controller.signal.aborted) setRefreshBusy(false);
         if (!controller.signal.aborted)
           timer = setTimeout(() => void load(), 5000);
       }
@@ -61,9 +63,21 @@ export function PartyStatisticsPanel({
         <button
           type="button"
           className="secondary"
-          onClick={() => setAttempt((x) => x + 1)}
+          disabled={refreshBusy}
+          aria-busy={refreshBusy}
+          onClick={() => {
+            setRefreshBusy(true);
+            setAttempt((v) => v + 1);
+          }}
         >
-          Refresh statistics
+          {refreshBusy ? (
+            <>
+              <span className="loading-spinner" aria-hidden="true" />
+              Refreshing…
+            </>
+          ) : (
+            'Refresh statistics'
+          )}
         </button>
       </div>
       {error && <p role="alert">{error}</p>}

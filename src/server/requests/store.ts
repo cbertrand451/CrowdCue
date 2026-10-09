@@ -42,7 +42,7 @@ interface Row {
   has_voted?: boolean;
   is_locked?: boolean;
 }
-const voteColumns = `(SELECT count(*)::int FROM votes v WHERE v.request_id = r.id) AS vote_count,
+const voteColumns = `(SELECT count(*)::int FROM votes v WHERE v.request_id = r.id AND v.guest_id <> r.requested_by) AS vote_count,
   EXISTS(SELECT 1 FROM votes v WHERE v.request_id = r.id AND v.guest_id = $3) AS has_voted,
   EXISTS(SELECT 1 FROM playback_entries pe WHERE pe.request_id=r.id AND pe.locked_at IS NOT NULL) AS is_locked`;
 const active = "('REQUESTED', 'APPROVED', 'QUEUED')";
@@ -126,12 +126,17 @@ export class PostgresRequestStore {
     party: Context,
     id: string,
   ) {
-    const result = await client.query<Row>(
-      `SELECT r.*, g.display_name, ${voteColumns} FROM song_requests r JOIN guests g ON g.id = r.requested_by WHERE r.party_id = $1 AND r.spotify_track_id = $2 AND r.status = 'PLAYED' ORDER BY r.created_at DESC, r.id DESC LIMIT 1`,
-      [party.id, id, party.guest_id],
+    return (
+      (
+        await client.query(
+          `SELECT 1 FROM song_requests WHERE party_id=$1 AND spotify_track_id=$2 AND status='PLAYED'
+      UNION ALL SELECT 1 FROM playback_entries WHERE party_id=$1 AND track->>'id'=$2 AND (status='PLAYED' OR (status='PLAYING' AND observed_at IS NOT NULL)) LIMIT 1`,
+          [party.id, id],
+        )
+      ).rowCount !== 0
     );
-    return result.rows[0];
   }
+
   private async remember(
     client: PoolClient,
     party: Context,
@@ -332,6 +337,31 @@ export class PostgresRequestStore {
       return details(changed);
     });
   }
+  async trackStates(token: string, session: string | undefined, ids: string[]) {
+    return inTransaction(this.pool, async (client) => {
+      const party = await this.context(client, token, session, 'share', false);
+      const result = await client.query<{
+        track_id: string;
+        requested: boolean;
+        played: boolean;
+      }>(
+        `SELECT track_id,
+          EXISTS(SELECT 1 FROM song_requests r WHERE r.party_id=$1 AND r.spotify_track_id=track_id AND r.status IN ('REQUESTED','APPROVED','QUEUED'))
+          OR EXISTS(SELECT 1 FROM playback_entries e WHERE e.party_id=$1 AND e.track->>'id'=track_id AND e.status IN ('WAITING','LOCKED')) AS requested,
+          EXISTS(SELECT 1 FROM song_requests r WHERE r.party_id=$1 AND r.spotify_track_id=track_id AND r.status='PLAYED')
+          OR EXISTS(SELECT 1 FROM playback_entries e WHERE e.party_id=$1 AND e.track->>'id'=track_id AND (e.status='PLAYED' OR (e.status='PLAYING' AND e.observed_at IS NOT NULL))) AS played
+         FROM unnest($2::text[]) AS track_id`,
+        [party.id, ids],
+      );
+      return {
+        tracks: result.rows.map((r) => ({
+          id: r.track_id,
+          requested: r.requested,
+          played: r.played,
+        })),
+      };
+    });
+  }
   async vote(
     token: string,
     session: string | undefined,
@@ -349,6 +379,8 @@ export class PostgresRequestStore {
         )
       ).rows[0];
       if (!row) throw new RequestError(404, 'Request not found.');
+      if (voted && row.requested_by === party.guest_id)
+        throw new RequestError(409, 'You cannot vote for your own song.');
       if (!['REQUESTED', 'APPROVED'].includes(row.status))
         throw new RequestError(409, 'Voting is closed for this request.');
       if (voted)

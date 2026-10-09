@@ -77,6 +77,39 @@ export async function requestRoutes(
       throw new RequestError(400, 'Invalid request list page.');
     return parsed.data.offset;
   };
+  app.get<{ Params: { token: string } }>(
+    '/api/party-links/guest/:token/track-states',
+    limited(600),
+    async (request, reply) => {
+      if (!options.store || !options.auth)
+        return reply
+          .code(503)
+          .send({ error: 'Song requests are not available yet.' });
+      const value = token(request.params.token, 'guest');
+      const query = z
+        .object({
+          ids: z
+            .string()
+            .max(2300)
+            .transform((s) => s.split(','))
+            .pipe(
+              z
+                .array(z.string().regex(/^[A-Za-z0-9]{22}$/))
+                .min(1)
+                .max(100),
+            ),
+        })
+        .strict()
+        .safeParse(request.query);
+      if (!query.success)
+        throw new RequestError(400, 'Invalid song selection.');
+      return options.store.trackStates(
+        value,
+        session(request.cookies, value),
+        query.data.ids,
+      );
+    },
+  );
   for (const role of ['guest', 'admin'] as const) {
     for (const view of ['requests', 'queue', 'leaderboard'] as const) {
       app.get<{ Params: { token: string } }>(

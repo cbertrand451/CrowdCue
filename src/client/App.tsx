@@ -1,3 +1,4 @@
+import { DashboardNavigation } from './DashboardNavigation';
 import { useCallback, useEffect, useState } from 'react';
 import { SpotifyConnection } from './SpotifyConnection';
 import { PartyCreation } from './PartyCreation';
@@ -17,6 +18,7 @@ export function App() {
   return <HostHome />;
 }
 function HostHome() {
+  const [menu, setMenu] = useState('create');
   const [authenticated, setAuthenticated] = useState(false);
   const authenticationChanged = useCallback(
     (value: boolean) => setAuthenticated(value),
@@ -50,7 +52,7 @@ function HostHome() {
     return () => controller.abort();
   }, []);
   return (
-    <main>
+    <main className="host-home">
       <p className="wordmark">CrowdCue</p>
       <h1>
         Good music.
@@ -66,7 +68,25 @@ function HostHome() {
             : 'Unable to reach CrowdCue. Please refresh to try again.'}
       </p>
       <SpotifyConnection onAuthenticationChange={authenticationChanged} />
-      {authenticated && <PartyCreation />}
+      {authenticated && (
+        <div className="dashboard-layout">
+          <DashboardNavigation
+            label="Your workspace"
+            selected={menu}
+            onSelect={setMenu}
+            items={[
+              { id: 'create', label: 'New party', icon: '＋' },
+              { id: 'parties', label: 'Your parties', icon: '≋' },
+            ]}
+          />
+          <div className="dashboard-content">
+            <PartyCreation
+              view={menu === 'parties' ? 'parties' : 'create'}
+              onCreated={() => setMenu('parties')}
+            />
+          </div>
+        </div>
+      )}
     </main>
   );
 }

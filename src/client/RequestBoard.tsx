@@ -39,6 +39,7 @@ export function RequestBoard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string>();
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const mutation = useRef<AbortController | null>(null);
   const pending = useRef(false);
@@ -74,6 +75,7 @@ export function RequestBoard({
         if (!controller.signal.aborted)
           setError('Unable to load requests. Try refreshing the list.');
       } finally {
+        if (!controller.signal.aborted) setRefreshBusy(false);
         if (!controller.signal.aborted) {
           setLoading(false);
           timer = setTimeout(() => void load(), 5000);
@@ -149,9 +151,21 @@ export function RequestBoard({
         <button
           type="button"
           className="secondary"
-          onClick={() => setAttempt((value) => value + 1)}
+          disabled={refreshBusy}
+          aria-busy={refreshBusy}
+          onClick={() => {
+            setRefreshBusy(true);
+            setAttempt((v) => v + 1);
+          }}
         >
-          Refresh requests
+          {refreshBusy ? (
+            <>
+              <span className="loading-spinner" aria-hidden="true" />
+              Refreshing…
+            </>
+          ) : (
+            'Refresh requests'
+          )}
         </button>
       </div>
       {loading && <p role="status">Loading requests…</p>}
@@ -172,6 +186,21 @@ export function RequestBoard({
       <ul className="search-results">
         {requests.map((request) => (
           <li key={request.id}>
+            {request.track.artworkUrl ? (
+              <img
+                className="queue-artwork"
+                src={request.track.artworkUrl}
+                alt={`${request.track.album} artwork`}
+                width={64}
+                height={64}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <span className="artwork-placeholder" aria-hidden="true">
+                ♪
+              </span>
+            )}
             <div className="track-details">
               <a
                 href={request.track.spotifyUrl}
@@ -200,6 +229,8 @@ export function RequestBoard({
               </p>
               {role === 'guest' &&
                 active &&
+                !request.isOwn &&
+                !request.locked &&
                 ['REQUESTED', 'APPROVED'].includes(request.status) && (
                   <button
                     type="button"
@@ -217,6 +248,7 @@ export function RequestBoard({
                 )}
               {role === 'admin' &&
                 active &&
+                !request.locked &&
                 ['REQUESTED', 'APPROVED'].includes(request.status) && (
                   <div className="party-actions">
                     {request.status === 'REQUESTED' && (
@@ -271,8 +303,8 @@ export function RequestBoard({
         )}
       </div>
       <p className="muted">
-        Approved requests join the party queue. Once locked at #1, a song can no
-        longer be voted on or removed.
+        Approved requests join the party queue. Once locked in the next two
+        positions, a song can no longer be voted on or removed.
       </p>
     </section>
   );

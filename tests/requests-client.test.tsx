@@ -52,7 +52,11 @@ it('submits only track IDs, blocks double submission, and reuses the request key
         : Promise.resolve(reply({ request, created: true }, 201))
       : Promise.resolve(reply({ tracks: [track], nextOffset: null })),
   );
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   const onRequested = vi.fn();
   render(
     <SongSearch
@@ -85,10 +89,7 @@ it('submits only track IDs, blocks double submission, and reuses the request key
   });
   expect(submissions[0][1]!.headers).toEqual(submissions[1][1]!.headers);
   expect(onRequested).toHaveBeenCalledOnce();
-  expect(screen.getByRole('link', { name: 'View requests' })).toHaveAttribute(
-    'href',
-    '#song-requests',
-  );
+  expect(screen.getByRole('button', { name: 'Song Requested' })).toBeDisabled();
 });
 it('shows request status and lets the host approve, reject, or remove supported requests', async () => {
   let status = 'REQUESTED';
@@ -105,7 +106,11 @@ it('shows request status and lets the host approve, reject, or remove supported 
       nextOffset: null,
     });
   });
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   const view = render(
     <RequestBoard role="admin" token={'a'.repeat(43)} active />,
   );
@@ -136,7 +141,11 @@ it('keeps guest boards read-only and handles expired sessions', async () => {
     .fn()
     .mockResolvedValueOnce(reply({ requests: [request], nextOffset: null }))
     .mockResolvedValueOnce(reply({}, 401));
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   const expired = vi.fn();
   render(
     <RequestBoard
@@ -163,14 +172,23 @@ it('adds and removes votes using idempotent desired states and respects the voti
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
     if (options?.method === 'POST')
       voted = JSON.parse(options.body as string).voted;
-    const row = { ...request, voteCount: voted ? 1 : 0, hasVoted: voted };
+    const row = {
+      ...request,
+      isOwn: false,
+      voteCount: voted ? 1 : 0,
+      hasVoted: voted,
+    };
     return reply(
       options?.method === 'POST'
         ? { request: row }
         : { requests: [row], nextOffset: null },
     );
   });
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   const view = render(
     <RequestBoard role="guest" token={'g'.repeat(43)} active votingEnabled />,
   );
@@ -224,12 +242,18 @@ it('blocks double voting and aborts pending vote mutations when leaving a party'
       ? pending
       : Promise.resolve(
           reply({
-            requests: [{ ...request, voteCount: 0, hasVoted: false }],
+            requests: [
+              { ...request, isOwn: false, voteCount: 0, hasVoted: false },
+            ],
             nextOffset: null,
           }),
         ),
   );
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) =>
+    url.includes('/track-states?')
+      ? Promise.resolve(reply({ tracks: [] }))
+      : fetcher(url, options),
+  );
   const view = render(
     <RequestBoard role="guest" token={'g'.repeat(43)} active />,
   );
@@ -245,7 +269,11 @@ it('blocks double voting and aborts pending vote mutations when leaving a party'
   view.unmount();
   expect(signal.aborted).toBe(true);
   await act(async () => {
-    resolve(reply({ request: { ...request, voteCount: 1, hasVoted: true } }));
+    resolve(
+      reply({
+        request: { ...request, isOwn: false, voteCount: 1, hasVoted: true },
+      }),
+    );
     await pending;
   });
   expect(screen.queryByText('1 vote')).not.toBeInTheDocument();

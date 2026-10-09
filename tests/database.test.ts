@@ -70,10 +70,10 @@ describe.skipIf(!url)('PostgreSQL persistence', () => {
 
   it('serializes concurrent migrations and supports repeat runs', async () => {
     const results = await Promise.all([migrate(pool), migrate(pool)]);
-    expect(results.flat()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(results.flat()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(await migrate(pool)).toEqual([]);
     expect((await pool.query('SELECT * FROM schema_migrations')).rowCount).toBe(
-      9,
+      10,
     );
   });
 
@@ -117,7 +117,7 @@ describe.skipIf(!url)('PostgreSQL persistence', () => {
           [account, hash(), hash(), hash()],
         )
       ).rows[0].id;
-      expect(await migrate(oldPool)).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(await migrate(oldPool)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10]);
       expect(
         (
           await oldPool.query(
@@ -173,7 +173,9 @@ describe.skipIf(!url)('PostgreSQL persistence', () => {
       );
       expect(tables.rows.map((row) => row.tablename)).toEqual(['parties']);
       await failingPool.query('DROP TABLE parties');
-      expect(await migrate(failingPool)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(await migrate(failingPool)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+      ]);
     } finally {
       await failingPool.end();
       await admin.query(`DROP SCHEMA "${isolated}" CASCADE`);
@@ -338,7 +340,7 @@ describe.skipIf(!url)('PostgreSQL persistence', () => {
     );
     await expect(migrate(pool)).rejects.toThrow('migration history');
     expect((await pool.query('SELECT * FROM schema_migrations')).rowCount).toBe(
-      9,
+      10,
     );
   });
 });

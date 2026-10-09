@@ -15,6 +15,7 @@ export function SongHistory({
   const revision = useLiveRevision();
   const [history, setHistory] = useState<EventHistory>();
   const [offset, setOffset] = useState(0);
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string>();
   useEffect(() => {
@@ -45,6 +46,7 @@ export function SongHistory({
         if (!controller.signal.aborted)
           setError('Unable to load song history. Try refreshing it.');
       } finally {
+        if (!controller.signal.aborted) setRefreshBusy(false);
         if (!controller.signal.aborted)
           timer = setTimeout(() => void load(), 5000);
       }
@@ -62,9 +64,21 @@ export function SongHistory({
         <button
           className="secondary"
           type="button"
-          onClick={() => setAttempt((x) => x + 1)}
+          disabled={refreshBusy}
+          aria-busy={refreshBusy}
+          onClick={() => {
+            setRefreshBusy(true);
+            setAttempt((v) => v + 1);
+          }}
         >
-          Refresh song history
+          {refreshBusy ? (
+            <>
+              <span className="loading-spinner" aria-hidden="true" />
+              Refreshing…
+            </>
+          ) : (
+            'Refresh song history'
+          )}
         </button>
       </div>
       <p className="muted">

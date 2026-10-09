@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { useLiveRevision } from './realtime';
+import { Modal } from './Modal';
 import { useEffect, useRef, useState } from 'react';
 import { requestResponseSchema } from '../server/requests/contracts.js';
 import {
@@ -5,6 +8,11 @@ import {
   searchResultSchema,
   type SearchResult,
 } from '../server/search/contracts.js';
+const trackStatesSchema = z.object({
+  tracks: z.array(
+    z.object({ id: z.string(), requested: z.boolean(), played: z.boolean() }),
+  ),
+});
 export function SongSearch({
   token,
   allowExplicit,
@@ -16,6 +24,11 @@ export function SongSearch({
   onExpired: () => void;
   onRequested?: () => void;
 }) {
+  const liveRevision = useLiveRevision();
+  const [states, setStates] = useState<
+    Record<string, { requested: boolean; played: boolean }>
+  >({});
+  const [stateRevision, setStateRevision] = useState(0);
   const [query, setQuery] = useState('');
   const [offset, setOffset] = useState(0);
   const [tracks, setTracks] = useState<SearchResult['tracks']>([]);
@@ -37,8 +50,50 @@ export function SongSearch({
     requestController.current = controller;
     return () => controller.abort();
   }, [token]);
+  const stateIds = tracks.map((track) => track.id).join(',');
+  useEffect(() => {
+    if (!stateIds) return;
+    const c = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function load() {
+      try {
+        const ids = stateIds.split(',');
+        const all: z.infer<typeof trackStatesSchema>['tracks'] = [];
+        for (let i = 0; i < ids.length; i += 100) {
+          const response = await fetch(
+            `/api/party-links/guest/${encodeURIComponent(token)}/track-states?ids=${ids.slice(i, i + 100).join(',')}`,
+            { credentials: 'same-origin', signal: c.signal },
+          );
+          if (response.status === 401) {
+            onExpired();
+            return;
+          }
+          if (!response.ok) throw new Error();
+          all.push(...trackStatesSchema.parse(await response.json()).tracks);
+        }
+        if (!c.signal.aborted)
+          setStates((old) => ({
+            ...old,
+            ...Object.fromEntries(all.map((track) => [track.id, track])),
+          }));
+      } catch {
+        /* Keep the last confirmed state; request mutations remain server-validated. */
+      } finally {
+        if (!c.signal.aborted) timer = setTimeout(() => void load(), 5000);
+      }
+    }
+    void load();
+    return () => {
+      c.abort();
+      clearTimeout(timer);
+    };
+  }, [stateIds, token, liveRevision, stateRevision, onExpired]);
   async function requestSong(trackId: string, confirmPlayedRepeat = false) {
-    if (requestPending.current) return;
+    if (requestPending.current || states[trackId]?.requested) return;
+    if (states[trackId]?.played && !confirmPlayedRepeat) {
+      setPlayedRepeatTrack(tracks.find((t) => t.id === trackId));
+      return;
+    }
     const key = requestKeys.current.get(trackId) ?? crypto.randomUUID();
     requestKeys.current.set(trackId, key);
     const controller = requestController.current;
@@ -85,6 +140,11 @@ export function SongSearch({
           return;
         }
         requestKeys.current.delete(trackId);
+        setStates((old) => ({
+          ...old,
+          [trackId]: { requested: true, played: old[trackId]?.played ?? false },
+        }));
+        setStateRevision((v) => v + 1);
         setPlayedRepeatTrack(undefined);
         setRequestFeedback(
           !result.created
@@ -266,11 +326,19 @@ export function SongSearch({
                 </div>
                 <button
                   type="button"
-                  className="secondary"
-                  disabled={!!requestBusy}
+                  className={
+                    states[track.id]?.requested
+                      ? 'requested-button'
+                      : 'secondary'
+                  }
+                  disabled={!!requestBusy || !!states[track.id]?.requested}
                   onClick={() => void requestSong(track.id)}
                 >
-                  {requestBusy === track.id ? 'Requesting…' : 'Request song'}
+                  {requestBusy === track.id
+                    ? 'Requesting…'
+                    : states[track.id]?.requested
+                      ? 'Song Requested'
+                      : 'Request song'}
                 </button>
               </li>
             ))}
@@ -289,12 +357,17 @@ export function SongSearch({
       )}
       {requestFeedback && (
         <p role="status" className="ready">
-          {requestFeedback} <a href="#song-requests">View requests</a>
+          {requestFeedback}
         </p>
       )}
       {playedRepeatTrack && (
-        <div role="alertdialog" aria-labelledby="played-repeat-title">
-          <p id="played-repeat-title">Song already played...proceed?</p>
+        <Modal
+          title="This song has been played in this session already, are you sure?"
+          onClose={() => {
+            if (!requestBusy) cancelPlayedRepeat();
+          }}
+        >
+          <p>{playedRepeatTrack.title}</p>
           <button
             type="button"
             disabled={!!requestBusy}
@@ -310,7 +383,7 @@ export function SongSearch({
           >
             No
           </button>
-        </div>
+        </Modal>
       )}
       {requestError && <p role="alert">{requestError}</p>}
       <p className="muted">Vote for songs in the request list.</p>

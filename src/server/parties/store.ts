@@ -66,6 +66,7 @@ export interface PartyStore {
     hostId: string,
     offset: number,
   ): Promise<{ parties: PartyDetails[]; nextOffset: number | null }>;
+  close(hostId: string, partyId: string): Promise<{ closed: boolean }>;
   owned(hostId: string, partyId: string): Promise<PartyDetails>;
   admin(hostId: string, token: string): Promise<PartyDetails>;
   update(
@@ -228,13 +229,31 @@ export class PostgresPartyStore implements PartyStore {
       `SELECT ${columns}, l.tokens_ciphertext, l.encryption_key_id
        FROM parties p JOIN party_settings s ON s.party_id = p.id
        LEFT JOIN party_link_secrets l ON l.party_id = p.id
-       WHERE p.host_account_id = $1 ORDER BY p.created_at DESC, p.id DESC LIMIT 21 OFFSET $2`,
+       WHERE p.host_account_id = $1 AND p.closed_at IS NULL ORDER BY p.created_at DESC, p.id DESC LIMIT 21 OFFSET $2`,
       [hostId, offset],
     );
     return {
       parties: result.rows.slice(0, 20).map((row) => this.details(row)),
       nextOffset: result.rows.length > 20 ? offset + 20 : null,
     };
+  }
+  async close(hostId: string, partyId: string) {
+    return inTransaction(this.pool, async (client) => {
+      const party = (
+        await client.query<{ status: string }>(
+          'SELECT status FROM parties WHERE id=$1 AND host_account_id=$2 FOR UPDATE',
+          [partyId, hostId],
+        )
+      ).rows[0];
+      if (!party) throw new PartyError(404, 'Party not found.');
+      if (party.status !== 'ENDED')
+        throw new PartyError(409, 'End the party before closing it.');
+      await client.query(
+        'UPDATE parties SET closed_at=COALESCE(closed_at,now()) WHERE id=$1',
+        [partyId],
+      );
+      return { closed: true };
+    });
   }
   owned(hostId: string, partyId: string) {
     return this.readOwned(this.pool, hostId, 'p.id', partyId);

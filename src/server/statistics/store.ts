@@ -37,8 +37,8 @@ export async function readPartyStatistics(
       await client.query(
         `SELECT
       (SELECT count(*)::int FROM guests WHERE party_id=$1) AS guests,
-      count(*)::int AS votes, count(DISTINCT guest_id)::int AS voters
-      FROM votes WHERE party_id=$1`,
+      count(*)::int AS votes, count(DISTINCT v.guest_id)::int AS voters
+      FROM votes v JOIN song_requests r ON r.id=v.request_id WHERE v.party_id=$1 AND v.guest_id<>r.requested_by`,
         [party.id],
       )
     ).rows[0];
@@ -57,7 +57,7 @@ export async function readPartyStatistics(
         `SELECT r.spotify_track_id AS "spotifyTrackId",
       min(r.track_name) AS title,min(r.artist_name) AS artist,count(*)::int AS votes
       FROM song_requests r JOIN votes v ON v.request_id=r.id AND v.party_id=r.party_id
-      WHERE r.party_id=$1 GROUP BY r.spotify_track_id
+      WHERE r.party_id=$1 AND v.guest_id<>r.requested_by GROUP BY r.spotify_track_id
       ORDER BY votes DESC,min(r.created_at),r.spotify_track_id LIMIT 5`,
         [party.id],
       )

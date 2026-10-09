@@ -1215,7 +1215,8 @@ describe.skipIf(!url)('party creation and authorization', () => {
     const guestStore = new PostgresGuestStore(pool),
       requests = new PostgresRequestStore(pool);
     const alex = await guestStore.join(join, undefined, 'Alex'),
-      bea = await guestStore.join(join, undefined, 'Bea');
+      bea = await guestStore.join(join, undefined, 'Bea'),
+      requester = await guestStore.join(join, undefined, 'Requester');
     const track = {
       id: 'v'.repeat(22),
       title: 'Vote song',
@@ -1227,7 +1228,8 @@ describe.skipIf(!url)('party creation and authorization', () => {
       spotifyUrl: `https://open.spotify.com/track/${'v'.repeat(22)}`,
     };
     const song = requireSavedRequest(
-      (await requests.create(join, alex.token, track, randomUUID())).request,
+      (await requests.create(join, requester.token, track, randomUUID()))
+        .request,
     );
     const path = `/api/party-links/guest/${join}/requests/${song.id}/vote`;
     const vote = (
@@ -1244,6 +1246,7 @@ describe.skipIf(!url)('party creation and authorization', () => {
         cookies: { [guestCookieName(url.split('/')[4], true)]: guest.token },
         payload: JSON.stringify(body),
       });
+    expect((await vote(true, requester)).statusCode).toBe(409);
     const concurrent = await Promise.all(
       Array.from({ length: 8 }, () => vote(true)),
     );
@@ -1252,7 +1255,7 @@ describe.skipIf(!url)('party creation and authorization', () => {
       expect(response.json().request).toMatchObject({
         voteCount: 1,
         hasVoted: true,
-        isOwn: true,
+        isOwn: false,
       });
     }
     expect(
@@ -1349,7 +1352,14 @@ describe.skipIf(!url)('party creation and authorization', () => {
       spotifyUrl: `https://open.spotify.com/track/${'w'.repeat(22)}`,
     };
     const song = requireSavedRequest(
-      (await requests.create(join, guest.token, track, randomUUID())).request,
+      (
+        await requests.create(
+          join,
+          (await guests.join(join, undefined, 'Requester')).token,
+          track,
+          randomUUID(),
+        )
+      ).request,
     );
     const vote = (voted: boolean) =>
       app.inject({
@@ -1387,11 +1397,18 @@ describe.skipIf(!url)('party creation and authorization', () => {
     await requests.moderate(host.id, adminLink, song.id, 'remove');
     expect((await vote(false)).statusCode).toBe(409);
     const replacement = requireSavedRequest(
-      (await requests.create(join, guest.token, track, randomUUID())).request,
+      (
+        await requests.create(
+          join,
+          (await guests.join(join, undefined, 'Requester')).token,
+          track,
+          randomUUID(),
+        )
+      ).request,
     );
     expect(replacement).toMatchObject({ voteCount: 0, hasVoted: false });
     expect(
-      (await requests.guestList(join, guest.token, 0)).requests.find(
+      (await requests.adminList(host.id, adminLink, 0)).requests.find(
         (row) => row.id === song.id,
       )?.voteCount,
     ).toBe(1);
@@ -1426,6 +1443,7 @@ describe.skipIf(!url)('party creation and authorization', () => {
     const guests = new PostgresGuestStore(pool),
       requests = new PostgresRequestStore(pool);
     const guest = await guests.join(join, undefined, 'Alex');
+    const voter = await guests.join(join, undefined, 'Voter');
     const song = async (letter: string) =>
       requireSavedRequest(
         (
@@ -1457,11 +1475,11 @@ describe.skipIf(!url)('party creation and authorization', () => {
         (x) => x.request.id,
       );
     expect(await ids()).toEqual([first.id, second.id]);
-    await requests.vote(join, guest.token, second.id, true);
+    await requests.vote(join, voter.token, second.id, true);
     expect(await ids()).toEqual([second.id, first.id]);
-    await requests.vote(join, guest.token, first.id, true);
+    await requests.vote(join, voter.token, first.id, true);
     expect(await ids()).toEqual([first.id, second.id]);
-    await requests.vote(join, guest.token, first.id, false);
+    await requests.vote(join, voter.token, first.id, false);
     await store.update(
       host.id,
       adminLink,
@@ -1489,7 +1507,7 @@ describe.skipIf(!url)('party creation and authorization', () => {
         },
       }),
     );
-    await requests.vote(join, guest.token, pending.id, true);
+    await requests.vote(join, voter.token, pending.id, true);
     expect(await ids()).toEqual([second.id, first.id]);
     await requests.moderate(host.id, adminLink, pending.id, 'approve');
     expect(await ids()).toEqual([second.id, pending.id, first.id]);
@@ -1580,5 +1598,110 @@ describe.skipIf(!url)('party creation and authorization', () => {
       (await get('guest', join, { [guestCookieName(join, true)]: guest.token }))
         .statusCode,
     ).toBe(401);
+  });
+  it('closes ended parties idempotently for their owner while preserving history and private access', async () => {
+    const party = await created();
+    const close = (
+      cookie = host.token,
+      origin = config.appOrigin,
+      body: unknown = {},
+    ) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/parties/${party.id}/close`,
+        cookies: { '__Host-crowdcue_host': cookie },
+        headers: { origin, 'content-type': 'application/json' },
+        payload: JSON.stringify(body),
+      });
+    expect((await close(other.token)).statusCode).toBe(404);
+    expect(
+      (await close(host.token, 'https://foreign.example')).statusCode,
+    ).toBe(403);
+    expect(
+      (await close(host.token, config.appOrigin, { unexpected: true }))
+        .statusCode,
+    ).toBe(400);
+    expect((await close()).statusCode).toBe(409);
+    await store.end(host.id, tokenFrom(party.links.admin!));
+    expect((await close()).statusCode).toBe(200);
+    expect((await close()).statusCode).toBe(200);
+    expect(
+      (
+        await new PostgresPartyStore(pool, cipher, config.appOrigin).list(
+          host.id,
+          0,
+        )
+      ).parties,
+    ).toEqual([]);
+    expect((await store.owned(host.id, party.id)).status).toBe('ENDED');
+    expect(
+      (
+        await pool.query('SELECT closed_at FROM parties WHERE id=$1', [
+          party.id,
+        ])
+      ).rows[0].closed_at,
+    ).not.toBeNull();
+  });
+  it('shares catalog request states, validates guest access and preserves but ignores historical self-votes', async () => {
+    const party = await created(),
+      join = tokenFrom(party.links.guest);
+    const guests = new PostgresGuestStore(pool),
+      requests = new PostgresRequestStore(pool);
+    const owner = await guests.join(join, undefined, 'Owner'),
+      viewer = await guests.join(join, undefined, 'Viewer');
+    const track = {
+      id: 'x'.repeat(22),
+      title: 'Shared song',
+      artists: ['Artist'],
+      album: 'Album',
+      artworkUrl: null,
+      durationMs: 120000,
+      explicit: false,
+      spotifyUrl: `https://open.spotify.com/track/${'x'.repeat(22)}`,
+    };
+    const song = requireSavedRequest(
+      (await requests.create(join, owner.token, track, randomUUID())).request,
+    );
+    await expect(
+      requests.vote(join, owner.token, song.id, true),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await pool.query(
+      'INSERT INTO votes(party_id,request_id,guest_id) VALUES($1,$2,$3)',
+      [party.id, song.id, owner.guest.id],
+    );
+    expect(
+      (await requests.guestList(join, viewer.token, 0)).requests[0].voteCount,
+    ).toBe(0);
+    expect(
+      (await pool.query('SELECT 1 FROM votes WHERE request_id=$1', [song.id]))
+        .rowCount,
+    ).toBe(1);
+    await requests.vote(join, viewer.token, song.id, true);
+    expect(
+      (await requests.guestList(join, viewer.token, 0)).requests[0].voteCount,
+    ).toBe(1);
+    const states = (ids = track.id, cookie = viewer.token) =>
+      app.inject({
+        method: 'GET',
+        url: `/api/party-links/guest/${join}/track-states?ids=${ids}`,
+        cookies: { [guestCookieName(join, true)]: cookie },
+      });
+    expect((await states()).json()).toEqual({
+      tracks: [{ id: track.id, requested: true, played: false }],
+    });
+    expect((await states('bad')).statusCode).toBe(400);
+    expect((await states(Array(101).fill(track.id).join(','))).statusCode).toBe(
+      400,
+    );
+    expect((await states(track.id, newToken())).statusCode).toBe(401);
+    await pool.query("UPDATE song_requests SET status='PLAYED' WHERE id=$1", [
+      song.id,
+    ]);
+    expect((await states()).json()).toEqual({
+      tracks: [{ id: track.id, requested: false, played: true }],
+    });
+    expect(
+      await requests.prepare(join, viewer.token, track.id, randomUUID()),
+    ).toMatchObject({ result: { confirmationRequired: true } });
   });
 });

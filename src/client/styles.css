@@ -756,3 +756,379 @@ a {
   border-left: 3px solid #a8e0ae;
   padding-left: 0.75rem !important;
 }
+
+/* Party workspace: a compact music console, with a mobile menu strip. */
+[hidden] {
+  display: none !important;
+}
+.party-page {
+  width: min(100%, 92rem);
+  padding: clamp(1rem, 3vw, 2.5rem);
+}
+.party-page > .wordmark {
+  margin-bottom: 1.25rem;
+}
+.party-page > h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  margin-bottom: 0.75rem;
+}
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+  margin-top: 1.5rem;
+}
+.dashboard-nav {
+  position: sticky;
+  top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid #34483f;
+  background: #101612;
+  border-radius: 0.8rem;
+}
+.nav-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 1.5rem;
+  color: #b6c8bd;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cue-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid #8beaac;
+  border-radius: 0.6rem;
+  font-size: 2rem;
+  color: #8beaac;
+}
+.dashboard-nav button {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #b6c8bd;
+  padding: 0.75rem;
+  font-size: 0.9rem;
+}
+.dashboard-nav button:hover {
+  background: #23372b;
+  color: #fff;
+}
+.dashboard-nav button[aria-current='page'] {
+  background: #a9ebba;
+  color: #101612;
+  border-color: #a9ebba;
+}
+.nav-icon {
+  width: 1.2rem;
+  font-size: 1.2rem;
+}
+.dashboard-content {
+  min-width: 0;
+}
+.dashboard-content > div > section:first-child {
+  margin-top: 0;
+}
+.dashboard-content section {
+  border-color: #34483f;
+}
+.guest-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.guest-toolbar p {
+  margin: 0;
+}
+.guest-toolbar button {
+  padding: 0.55rem 0.85rem;
+  font-size: 0.85rem;
+}
+.guest-welcome {
+  max-width: 32rem;
+  margin: 2rem auto;
+  padding: clamp(1rem, 4vw, 2rem);
+  border: 1px solid #425b4c;
+  border-radius: 1rem;
+  background: #1a241d;
+}
+.guest-welcome .cue-mark {
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1rem;
+}
+.guest-welcome h2 {
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+  margin: 0.5rem 0 1rem;
+  padding: 0.85rem 1rem;
+  font: inherit;
+  line-height: 1.5;
+  color: #f5f6f2;
+  background: #101612;
+  border: 1px solid #718078;
+  border-radius: 0.4rem;
+}
+input:focus,
+textarea:focus {
+  outline: 2px solid #a9ebba;
+  outline-offset: 2px;
+}
+button {
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+button.secondary:not(:disabled):hover {
+  background: #2a3d30;
+  border-color: #a9ebba;
+}
+button.requested-button,
+button.requested-button:disabled {
+  background: #245d38;
+  border-color: #70d996;
+  color: #bbf5ca;
+  opacity: 1;
+}
+.search-results > li {
+  transition: background-color 0.15s ease;
+  border-radius: 0.45rem;
+  padding: 1rem;
+}
+.search-results > li:hover {
+  background: #1f2e24;
+}
+.queue-artwork {
+  border-radius: 0.4rem;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.now-playing {
+  border-left: 3px solid #a9ebba;
+  padding: 0.5rem 1rem;
+  background: #22382a;
+  border-radius: 0.3rem;
+}
+.playlist-launch a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #a9ebba;
+  color: #141917;
+  background: #a9ebba;
+  border-radius: 0.5rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.cue-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(32rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid #718078;
+  border-radius: 0.8rem;
+  color: #f5f6f2;
+  background: #1a241d;
+  box-shadow: 0 1rem 4rem #0007;
+}
+.cue-dialog::backdrop {
+  background: #050b08c9;
+}
+.cue-dialog h2 {
+  font-size: 1.4rem;
+  line-height: 1.3;
+}
+.cue-dialog > button {
+  margin-right: 0.5rem;
+}
+.loading-spinner {
+  display: inline-block;
+  vertical-align: middle;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.5rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: cue-spin 0.7s linear infinite;
+}
+@keyframes cue-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 760px) {
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  .dashboard-nav {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0.5rem;
+    gap: 0.25rem;
+  }
+  .nav-heading {
+    display: none;
+  }
+  .dashboard-nav button {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 0.65rem 0.5rem;
+    font-size: 0.8rem;
+  }
+  .dashboard-content .section-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .guest-toolbar {
+    flex-wrap: wrap;
+  }
+  .search-results > li {
+    padding: 0.75rem 0.25rem;
+  }
+  .queue-artwork {
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .search-results > li {
+    transition: none;
+  }
+  .loading-spinner {
+    animation: none;
+    border-style: dotted;
+  }
+}
+
+.host-home {
+  width: min(100%, 92rem);
+  padding: clamp(1rem, 3vw, 2.5rem);
+}
+.host-home .wordmark {
+  margin-bottom: 1.5rem;
+}
+.host-home h1 {
+  font-size: clamp(2.2rem, 5vw, 3.8rem);
+}
+.host-home .status {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+}
+.queue-results li {
+  grid-template-columns: 2rem 64px minmax(0, 1fr);
+  gap: 0.85rem;
+}
+.queue-results .track-details {
+  grid-column: 3;
+}
+.queue-results .queue-controls {
+  grid-column: 3;
+}
+.request-board .track-details {
+  flex: 1;
+}
+@media (min-width: 1100px) {
+  .queue-results li {
+    grid-template-columns: 2rem 64px minmax(0, 1fr) auto;
+  }
+  .queue-results .queue-controls {
+    grid-column: 4;
+  }
+}
+@media (max-width: 760px) {
+  .queue-results li {
+    grid-template-columns: 1.6rem 44px minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+  .queue-results .queue-controls {
+    grid-column: 3;
+  }
+  .queue-results .queue-position {
+    min-width: 0;
+  }
+  .queue-results img,
+  .queue-results .artwork-placeholder {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+.nav-short-label {
+  display: none;
+}
+.track-details > a {
+  text-decoration: none;
+  font-size: 1.05rem;
+}
+.track-details > a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 760px) {
+  .dashboard-nav {
+    flex-wrap: nowrap;
+    gap: 0.2rem;
+  }
+  .dashboard-nav button {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.6rem 0.15rem;
+    font-size: 0.7rem;
+  }
+  .dashboard-nav .nav-label {
+    display: none;
+  }
+  .nav-short-label {
+    display: inline;
+  }
+  .party-page > .wordmark {
+    margin-bottom: 0.75rem;
+  }
+  .party-page > h1 {
+    margin-bottom: 0.5rem;
+    font-size: 1.85rem;
+  }
+  .guest-interface {
+    margin-top: 1rem;
+    padding-top: 1rem;
+  }
+  .dashboard-layout {
+    margin-top: 1rem;
+  }
+}

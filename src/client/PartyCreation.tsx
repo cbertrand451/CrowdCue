@@ -13,7 +13,13 @@ const listSchema = z.object({
   nextOffset: z.number().int().nullable(),
 });
 const creationSchema = z.object({ party: partyDetailsSchema });
-export function PartyCreation() {
+export function PartyCreation({
+  view = 'all',
+  onCreated,
+}: { view?: 'all' | 'create' | 'parties'; onCreated?: () => void } = {}) {
+  const [closing, setClosing] = useState<string>();
+  const closePending = useRef(false);
+  const [closeError, setCloseError] = useState<string>();
   const [parties, setParties] = useState<PartyDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState(false);
@@ -89,6 +95,30 @@ export function PartyCreation() {
       setLoadingMore(false);
     }
   }
+  async function closeParty(id: string) {
+    if (closePending.current) return;
+    closePending.current = true;
+    setClosing(id);
+    setCloseError(undefined);
+    try {
+      const response = await fetch(`/api/parties/${id}/close`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      if (!response.ok) throw new Error();
+      setParties((items) => items.filter((p) => p.id !== id));
+      setListAttempt((v) => v + 1);
+    } catch {
+      setCloseError(
+        'Could not close the party. Refresh your parties and try again.',
+      );
+    } finally {
+      closePending.current = false;
+      setClosing(undefined);
+    }
+  }
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (inFlight.current) return;
@@ -149,6 +179,7 @@ export function PartyCreation() {
         ...current.filter((party) => party.id !== result.party.id),
       ]);
       setCreatedId(result.party.id);
+      onCreated?.();
       setName('');
       intent.current = null;
     } catch {
@@ -162,100 +193,117 @@ export function PartyCreation() {
   }
   return (
     <section className="party-creation" aria-label="Party creation">
-      <h2>Create a party</h2>
-      <p className="muted">Give it a name, then share the guest link.</p>
-      <form onSubmit={(event) => void create(event)}>
-        <fieldset disabled={creating}>
-          <label htmlFor="party-name">Party name</label>
-          <input
-            id="party-name"
-            name="name"
-            value={name}
-            maxLength={120}
-            required
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Friday at Sam’s"
-            aria-describedby={creationError ? 'creation-error' : undefined}
-          />
-          <label>
-            Backup Spotify playlist
+      <div hidden={view === 'parties'}>
+        <h2>Create a party</h2>
+        <p className="muted">Give it a name, then share the guest link.</p>
+        <form onSubmit={(event) => void create(event)}>
+          <fieldset disabled={creating}>
+            <label htmlFor="party-name">Party name</label>
             <input
-              value={backupSource}
-              onChange={(event) => setBackupSource(event.target.value)}
-              placeholder="https://open.spotify.com/playlist/…"
+              id="party-name"
+              name="name"
+              value={name}
+              maxLength={120}
+              required
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Friday at Sam’s"
+              aria-describedby={creationError ? 'creation-error' : undefined}
             />
-          </label>
-          <p className="muted">
-            Use any Spotify playlist your account can read. It supplies songs
-            when guests have none waiting. You can add it later.
+            <label>
+              Backup Spotify playlist
+              <input
+                value={backupSource}
+                onChange={(event) => setBackupSource(event.target.value)}
+                placeholder="https://open.spotify.com/playlist/…"
+              />
+            </label>
+            <p className="muted">
+              Use any Spotify playlist your account can read. It supplies songs
+              when guests have none waiting. You can add it later.
+            </p>
+            <p className="muted">
+              Your private session playlist stays in Spotify after the party.
+              You can remove it manually.
+            </p>
+            <div className="party-preferences">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={approvalRequired}
+                  onChange={(event) =>
+                    setApprovalRequired(event.target.checked)
+                  }
+                />
+                Approve song requests
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={votingEnabled}
+                  onChange={(event) => setVotingEnabled(event.target.checked)}
+                />
+                Allow voting
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={requireGuestNames}
+                  onChange={(event) =>
+                    setRequireGuestNames(event.target.checked)
+                  }
+                />
+                Require guest names
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allowExplicitTracks}
+                  onChange={(event) =>
+                    setAllowExplicitTracks(event.target.checked)
+                  }
+                />
+                Allow explicit songs
+              </label>
+            </div>
+            <button type="submit">
+              {creating ? 'Creating party…' : 'Create party'}
+            </button>
+          </fieldset>
+        </form>
+        {creationError && (
+          <p id="creation-error" role="alert">
+            {creationError}
           </p>
-          <p className="muted">
-            Your private session playlist stays in Spotify after the party. You
-            can remove it manually.
+        )}
+        {createdId && (
+          <p aria-live="polite" className="ready">
+            Your party is ready. Share the guest link below.
           </p>
-          <div className="party-preferences">
-            <label>
-              <input
-                type="checkbox"
-                checked={approvalRequired}
-                onChange={(event) => setApprovalRequired(event.target.checked)}
-              />
-              Approve song requests
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={votingEnabled}
-                onChange={(event) => setVotingEnabled(event.target.checked)}
-              />
-              Allow voting
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={requireGuestNames}
-                onChange={(event) => setRequireGuestNames(event.target.checked)}
-              />
-              Require guest names
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={allowExplicitTracks}
-                onChange={(event) =>
-                  setAllowExplicitTracks(event.target.checked)
-                }
-              />
-              Allow explicit songs
-            </label>
-          </div>
-          <button type="submit">
-            {creating ? 'Creating party…' : 'Create party'}
-          </button>
-        </fieldset>
-      </form>
-      {creationError && (
-        <p id="creation-error" role="alert">
-          {creationError}
-        </p>
-      )}
-      {createdId && (
-        <p aria-live="polite" className="ready">
-          Your party is ready. Share the guest link below.
-        </p>
-      )}
-      <div className="party-list">
+        )}
+      </div>
+      <div className="party-list" hidden={view === 'create'}>
         <div className="section-heading">
           <h2>Your parties</h2>
           <button
             type="button"
             className="secondary"
             disabled={loading}
-            onClick={() => setListAttempt((value) => value + 1)}
+            onClick={() => {
+              setLoading(true);
+              setListAttempt((value) => value + 1);
+            }}
           >
-            Refresh parties
+            {loading ? (
+              <>
+                <span className="loading-spinner" aria-hidden="true" />
+                Refreshing…
+              </>
+            ) : (
+              'Refresh parties'
+            )}
           </button>
         </div>
+        {closeError && <p role="alert">{closeError}</p>}
         {loading && <p aria-live="polite">Loading your parties…</p>}
         {listError && (
           <p role="alert">
@@ -273,6 +321,17 @@ export function PartyCreation() {
                 {party.status === 'ACTIVE' ? 'Active' : 'Ended'}
               </span>
             </div>
+            {party.status === 'ENDED' && (
+              <button
+                type="button"
+                className="secondary"
+                disabled={!!closing}
+                aria-label={`Close ${party.name}`}
+                onClick={() => void closeParty(party.id)}
+              >
+                {closing === party.id ? 'Closing…' : 'Close party'}
+              </button>
+            )}
             <PartyLinks
               links={party.links}
               active={party.status === 'ACTIVE'}
