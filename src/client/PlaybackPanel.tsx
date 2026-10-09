@@ -170,16 +170,56 @@ export function PlaybackPanel({
       {!status && !error && <p role="status">Loading Spotify session…</p>}
       {status && (
         <>
+          {active && status.enabled && (
+            <p
+              role="status"
+              className={
+                status.playlistUrl && status.syncedAt && !status.error
+                  ? 'ready'
+                  : undefined
+              }
+            >
+              {status.playlistUrl
+                ? status.error
+                  ? 'Session playlist created. Spotify synchronization needs attention; you can open the playlist below.'
+                  : status.syncedAt
+                    ? 'Session playlist ready — open it below and press Play in Spotify.'
+                    : 'Session playlist created. CrowdCue is preparing its songs.'
+                : status.creation === 'UNKNOWN' ||
+                    status.creation === 'CREATING'
+                  ? 'Checking whether Spotify created your session playlist. The link will appear here automatically once confirmed.'
+                  : status.error
+                    ? 'Session playlist creation has not been confirmed. Retry Spotify sync to try again.'
+                    : 'Waiting for Spotify to create your session playlist. The link will appear here automatically once confirmed.'}
+            </p>
+          )}
+          {status.playlistUrl && (
+            <p className="playlist-launch">
+              <a href={status.playlistUrl} target="_blank" rel="noreferrer">
+                <span aria-hidden="true">↗</span> Open session playlist in
+                Spotify
+              </a>
+            </p>
+          )}
           {status.error && <p role="status">{errors[status.error]}</p>}
+          {active && status.enabled && !status.playlistUrl && (
+            <p className="muted">
+              No session playlist link is available yet. Status updates
+              automatically every five seconds. The backup source below is a
+              separate playlist.
+            </p>
+          )}
           <p>
             {status.lockedCount} songs committed · {status.guestCount} guest
             songs · {status.backupCount} backup songs
           </p>
-          <p className="muted">
-            Open the session playlist in Spotify and press Play. Turn off
-            Shuffle, Smart Shuffle and Repeat. Current and the next two songs
-            are locked for everyone in CrowdCue; use Spotify itself to skip.
-          </p>
+          {status.playlistUrl && (
+            <p className="muted">
+              Open the session playlist in Spotify and press Play. Turn off
+              Shuffle, Smart Shuffle and Repeat. Current and the next two songs
+              are locked for everyone in CrowdCue; use Spotify itself to skip.
+            </p>
+          )}
           {status.backupSourceUrl && (
             <div className="backup-source">
               <p>
@@ -212,14 +252,6 @@ export function PlaybackPanel({
                 songs can give way to guest requests.
               </p>
             </div>
-          )}
-          {status.playlistUrl && (
-            <p className="playlist-launch">
-              <a href={status.playlistUrl} target="_blank" rel="noreferrer">
-                <span aria-hidden="true">↗</span> Open session playlist in
-                Spotify
-              </a>
-            </p>
           )}
           {status.syncedAt && (
             <p className="muted">
@@ -269,12 +301,6 @@ export function PlaybackPanel({
                   </button>
                 </>
               )}
-              {status.enabled && (
-                <p className="ready">
-                  Session playlist enabled — current and the next two songs are
-                  locked; at least two songs stay ahead.
-                </p>
-              )}
               {status.error && (
                 <button
                   type="button"
@@ -284,6 +310,13 @@ export function PlaybackPanel({
                 >
                   Retry Spotify sync
                 </button>
+              )}
+              {status.error && (
+                <p className="muted">
+                  Retry asks the background worker to resume synchronization.
+                  Refresh Spotify status only checks progress; refreshing the
+                  backup source only reloads its songs.
+                </p>
               )}
               {status.creation === 'UNKNOWN' && (
                 <>
@@ -312,7 +345,7 @@ export function PlaybackPanel({
               )}
             </>
           )}
-          {!active && (
+          {!active && status.playlistUrl && (
             <>
               <p className="ready">Your session playlist stays in Spotify.</p>
               <p>

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { PlaybackPanel } from '../src/client/PlaybackPanel';
 const status = {
@@ -28,6 +34,7 @@ const reply = (data: unknown, code = 200) => ({
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 it('customizes the session playlist and instructs manual Spotify playback', async () => {
   const fetcher = vi
@@ -131,5 +138,111 @@ it('shows the backup source/count and checks it without starting playback', asyn
   );
   expect(
     screen.queryByRole('button', { name: 'Check / refresh backup playlist' }),
+  ).not.toBeInTheDocument();
+});
+
+it('does not claim readiness or offer playback instructions when creation failed', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      reply({
+        ...status,
+        creation: 'NEW',
+        playlistUrl: null,
+        error: 'unavailable',
+        lockedCount: 0,
+        guestCount: 0,
+        backupCount: 0,
+        backupSourceUrl: `https://open.spotify.com/playlist/${'s'.repeat(22)}`,
+        backupTrackCount: 76,
+      }),
+    ),
+  );
+  render(<PlaybackPanel token={'a'.repeat(43)} active onExpired={vi.fn()} />);
+  expect(
+    await screen.findByText(/Session playlist creation has not been confirmed/),
+  ).toBeVisible();
+  expect(
+    screen.getByRole('button', { name: 'Retry Spotify sync' }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole('link', { name: 'Open backup source in Spotify' }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole('link', { name: 'Open session playlist in Spotify' }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/Session playlist enabled/),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/Open the session playlist in Spotify and press Play/),
+  ).not.toBeInTheDocument();
+});
+it('automatically reveals the confirmed playlist link on the next status poll', async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      reply({ ...status, creation: 'CREATING', playlistUrl: null }),
+    )
+    .mockResolvedValue(
+      reply({ ...status, syncedAt: new Date().toISOString() }),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  vi.useFakeTimers();
+  await act(async () => {
+    render(<PlaybackPanel token={'a'.repeat(43)} active onExpired={vi.fn()} />);
+  });
+  expect(
+    screen.getByText(/Checking whether Spotify created your session playlist/),
+  ).toBeVisible();
+  expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(
+    screen.getByRole('link', { name: 'Open session playlist in Spotify' }),
+  ).toHaveAttribute('href', status.playlistUrl);
+  expect(screen.getByText(/Session playlist ready/)).toBeVisible();
+  expect(fetcher.mock.calls.every((call) => call[1]?.method !== 'POST')).toBe(
+    true,
+  );
+});
+it('keeps the confirmed playlist link visible when filling the playlist fails', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(reply({ ...status, error: 'unavailable' })),
+  );
+  render(<PlaybackPanel token={'a'.repeat(43)} active onExpired={vi.fn()} />);
+  expect(
+    await screen.findByRole('link', {
+      name: 'Open session playlist in Spotify',
+    }),
+  ).toHaveAttribute('href', status.playlistUrl);
+  expect(
+    screen.getByText(
+      /Session playlist created. Spotify synchronization needs attention/,
+    ),
+  ).toBeVisible();
+  expect(screen.queryByText(/Session playlist ready/)).not.toBeInTheDocument();
+});
+it('does not claim an ended party left a playlist when no creation was confirmed', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      reply({
+        ...status,
+        enabled: false,
+        ended: true,
+        playlistUrl: null,
+        creation: 'NEW',
+      }),
+    ),
+  );
+  render(
+    <PlaybackPanel token={'a'.repeat(43)} active={false} onExpired={vi.fn()} />,
+  );
+  await screen.findByText(/songs committed/);
+  expect(
+    screen.queryByText('Your session playlist stays in Spotify.'),
   ).not.toBeInTheDocument();
 });
