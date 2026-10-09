@@ -1,3 +1,4 @@
+import { InlineOverflow } from './InlineOverflow';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useLiveRevision } from './realtime';
 import { useEffect, useRef, useState } from 'react';
@@ -250,38 +251,61 @@ export function RequestBoard({
                 active &&
                 !request.locked &&
                 ['REQUESTED', 'APPROVED'].includes(request.status) && (
-                  <div className="party-actions">
-                    {request.status === 'REQUESTED' && (
+                  <InlineOverflow
+                    label={`More actions for ${request.track.title}`}
+                    disabled={!!busy}
+                    visibleActions={
                       <LoadingButton
                         loading={
-                          busy === request.id && busyAction === 'approve'
+                          busy === request.id &&
+                          busyAction ===
+                            (request.status === 'REQUESTED'
+                              ? 'approve'
+                              : 'remove')
                         }
-                        type="button"
                         disabled={!!busy}
-                        onClick={() => void moderate(request.id, 'approve')}
+                        className={
+                          request.status === 'REQUESTED' ? '' : 'secondary'
+                        }
+                        onClick={() =>
+                          void moderate(
+                            request.id,
+                            request.status === 'REQUESTED'
+                              ? 'approve'
+                              : 'remove',
+                          )
+                        }
                       >
-                        Approve
+                        {request.status === 'REQUESTED' ? 'Approve' : 'Remove'}
                       </LoadingButton>
-                    )}
-                    <LoadingButton
-                      loading={busy === request.id && busyAction === 'reject'}
-                      type="button"
-                      className="secondary"
-                      disabled={!!busy}
-                      onClick={() => void moderate(request.id, 'reject')}
-                    >
-                      Reject
-                    </LoadingButton>
-                    <LoadingButton
-                      loading={busy === request.id && busyAction === 'remove'}
-                      type="button"
-                      className="secondary"
-                      disabled={!!busy}
-                      onClick={() => void moderate(request.id, 'remove')}
-                    >
-                      Remove
-                    </LoadingButton>
-                  </div>
+                    }
+                    hiddenActions={
+                      <>
+                        <LoadingButton
+                          loading={
+                            busy === request.id && busyAction === 'reject'
+                          }
+                          disabled={!!busy}
+                          className="secondary"
+                          onClick={() => void moderate(request.id, 'reject')}
+                        >
+                          Reject
+                        </LoadingButton>
+                        {request.status === 'REQUESTED' && (
+                          <LoadingButton
+                            loading={
+                              busy === request.id && busyAction === 'remove'
+                            }
+                            disabled={!!busy}
+                            className="secondary"
+                            onClick={() => void moderate(request.id, 'remove')}
+                          >
+                            Remove
+                          </LoadingButton>
+                        )}
+                      </>
+                    }
+                  />
                 )}
             </div>
           </li>

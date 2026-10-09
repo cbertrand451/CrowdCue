@@ -1,3 +1,4 @@
+import { WigglingCards } from './WigglingCards';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useEffect, useState } from 'react';
 import {
@@ -88,23 +89,30 @@ export function PartyStatisticsPanel({
             · Duration: {Math.floor(statistics.durationSeconds / 3600)}h{' '}
             {Math.floor(statistics.durationSeconds / 60) % 60}m
           </p>
-          <dl className="party-statistics">
-            {[
-              ['Guest sessions joined', statistics.guestSessions],
-              ['Song requests', statistics.requests.total],
-              ['Current votes', statistics.votes],
-              ['Guests with current votes', statistics.voters],
-              ['Songs committed', statistics.committed.total],
-              ['Guest songs committed', statistics.committed.guest],
-              ['Backup songs committed', statistics.committed.backup],
-              ['Songs observed playing', statistics.committed.observed],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
+          <WigglingCards
+            cards={[
+              {
+                label: 'Guest sessions joined',
+                value: statistics.guestSessions,
+              },
+              { label: 'Song requests', value: statistics.requests.total },
+              { label: 'Current votes', value: statistics.votes },
+              { label: 'Guests with current votes', value: statistics.voters },
+              { label: 'Songs committed', value: statistics.committed.total },
+              {
+                label: 'Guest songs committed',
+                value: statistics.committed.guest,
+              },
+              {
+                label: 'Backup songs committed',
+                value: statistics.committed.backup,
+              },
+              {
+                label: 'Songs observed playing',
+                value: statistics.committed.observed,
+              },
+            ]}
+          />
           <h3>Request breakdown</h3>
           <dl className="party-statistics">
             {(

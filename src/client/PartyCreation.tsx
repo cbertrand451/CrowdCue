@@ -1,3 +1,4 @@
+import { PartyPickerDialog } from './PartyPickerDialog';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { z } from 'zod';
@@ -298,6 +299,7 @@ export function PartyCreation({
             {loading ? <>Refreshing…</> : 'Refresh parties'}
           </LoadingButton>
         </div>
+        {parties.length > 1 && <PartyPickerDialog parties={parties} />}
         {closeError && <p role="alert">{closeError}</p>}
         {loading && <LoadingStatus>Loading your parties…</LoadingStatus>}
         {listError && (

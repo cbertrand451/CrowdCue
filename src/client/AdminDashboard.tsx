@@ -138,6 +138,7 @@ export function AdminDashboard({
             active={party.status === 'ACTIVE'}
             refresh={queueRefresh}
             onExpired={onExpired}
+            onConfigureBackup={() => setMenu('settings')}
           />
         </div>
         <div hidden={menu !== 'live'}>

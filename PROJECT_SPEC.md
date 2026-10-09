@@ -623,6 +623,36 @@ Interactions should feel intentional.
 
 Mobile interactions should be easy to use one-handed.
 
+## Supplied component patterns
+
+Apply user-supplied component designs only where they support an existing
+CrowdCue workflow. Use the shared dark-green, pale-green, text, surface and
+border CSS variables for all states. Preserve real operation results,
+role authorization, keyboard controls and reduced-motion preferences.
+
+Current placements:
+
+- Inline Action: copy the guest invite link, with real clipboard confirmation
+  and failure recovery; retain the shared animated loading button.
+- Expandable Profile Card: the joined guest's identity, profile explanation
+  and existing name-editing flow. Use their name/initial, not demo portraits.
+- Onboarding Checklist: the host session's confirmed backup availability,
+  enabled session and created playlist. Clicks do not mark steps complete.
+- Wiggling Cards: real party statistics, with a desktop grid and a bounded
+  mobile scroll-snap strip with previous/next controls. Keep totals readable.
+- UniSwap dialogue pattern: search the host parties already loaded in Your
+  parties and open their existing role links. Show the search's loaded-data
+  scope and an empty state; do not introduce region or cryptocurrency features.
+- Create New Disclosure: host shortcuts to create a party, browse parties and
+  view the Spotify connection. Every shortcut performs an existing action.
+- Inline Overflow: keep the main moderation action visible and disclose
+  secondary actions for unlocked requests. Respect pending and ended states.
+
+The uploaded examples are retained under `docs/ui/*.reference.txt`; adapted
+components live in `src/client`. Native dialogs retain modal focus, Escape
+handling and focus restoration. No new icon, theme or CSS-framework dependency
+is required for these patterns.
+
 ---
 
 # 24. Responsive Design

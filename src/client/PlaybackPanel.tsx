@@ -1,3 +1,4 @@
+import { OnboardingChecklist } from './OnboardingChecklist';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useLiveRevision } from './realtime';
 import { useEffect, useRef, useState } from 'react';
@@ -30,11 +31,13 @@ export function PlaybackPanel({
   active,
   refresh = 0,
   onExpired,
+  onConfigureBackup,
 }: {
   token: string;
   active: boolean;
   refresh?: number;
   onExpired: () => void;
+  onConfigureBackup?: () => void;
 }) {
   const liveRevision = useLiveRevision();
   const [status, setStatus] = useState<PlaybackStatus>();
@@ -167,6 +170,33 @@ export function PlaybackPanel({
       )}
       {status && (
         <>
+          {active && (
+            <OnboardingChecklist
+              steps={[
+                {
+                  id: 'backup',
+                  title: 'Load a backup playlist',
+                  isCompleted: status.backupTrackCount > 0,
+                  onAction: onConfigureBackup,
+                },
+                {
+                  id: 'session',
+                  title: 'Start the session',
+                  isCompleted: status.enabled,
+                  onAction: () =>
+                    document
+                      .querySelector<HTMLElement>('.session-start')
+                      ?.focus(),
+                },
+                {
+                  id: 'playlist',
+                  title: 'Create the session playlist',
+                  isCompleted: !!status.playlistUrl,
+                },
+              ]}
+            />
+          )}
+
           {active && status.enabled && (
             <p
               role="status"
@@ -283,6 +313,7 @@ export function PlaybackPanel({
                     />
                   </label>
                   <LoadingButton
+                    className="session-start"
                     loading={busy === 'start'}
                     type="button"
                     disabled={!!busy}

@@ -1201,3 +1201,389 @@ button.requested-button:disabled {
     margin-top: 1rem;
   }
 }
+
+/* Supplied component patterns, using CrowdCue's existing palette. */
+:root {
+  --cue-surface: #1a241d;
+  --cue-surface-hover: #2a3d30;
+  --cue-muted: #b8c3bc;
+  --cue-divider: #425148;
+}
+.inline-action-wrap {
+  width: min(100%, 34rem);
+  margin: 1rem 0;
+}
+.inline-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--cue-divider);
+  border-radius: 2rem;
+  background: var(--cue-surface);
+}
+.inline-action-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 650;
+  min-width: 0;
+}
+.component-symbol {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: var(--cue-surface-hover);
+  border-radius: 50%;
+  color: var(--cue-accent);
+}
+.inline-action .loading-button-slot {
+  flex-shrink: 0;
+}
+.guest-profile {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  width: 100%;
+}
+.profile-card.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  text-align: left;
+  width: min(100%, 28rem);
+  background: var(--cue-surface);
+  border-color: var(--cue-divider);
+  border-radius: 0.8rem;
+  padding: 1rem;
+}
+.profile-card > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.profile-eyebrow {
+  display: block;
+  color: var(--cue-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+.profile-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  background: var(--cue-surface-hover);
+  color: var(--cue-accent);
+  font-weight: 750;
+  font-size: 1.5rem;
+  border-radius: 50%;
+}
+.profile-expanded {
+  padding: 0.5rem 0;
+}
+.profile-expanded h3 {
+  margin-top: 1rem;
+}
+.dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+}
+.dialog-heading h2 {
+  flex: 1;
+  min-width: 0;
+}
+.dialog-heading button {
+  border-radius: 50%;
+  padding: 0;
+  width: 44px;
+  min-width: 44px;
+  font-size: 1.5rem;
+}
+.cue-dialog > div > .loading-button-slot,
+.cue-dialog > div > button {
+  margin-right: 0.5rem;
+}
+.onboarding-checklist {
+  margin: 1rem 0 1.5rem;
+  border: 1px solid var(--cue-divider);
+  border-radius: 0.8rem;
+  overflow: hidden;
+  background: var(--cue-surface);
+}
+.checklist-header.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 1rem;
+  text-align: left;
+}
+.checklist-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  color: var(--cue-muted);
+}
+.checklist-bars {
+  display: flex;
+  gap: 3px;
+}
+.checklist-bars i {
+  width: 3px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--cue-divider);
+}
+.checklist-bars i[data-complete='true'] {
+  background: var(--cue-accent);
+}
+.checklist-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+}
+.checklist-steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--cue-divider);
+}
+.checklist-steps li > span:nth-child(2),
+.checklist-steps li > button {
+  flex: 1;
+  min-width: 0;
+}
+.checklist-steps button.secondary {
+  border: 0;
+  border-radius: 0.3rem;
+  padding: 0.25rem;
+  text-align: left;
+}
+.step-marker {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  font-size: 0.8rem;
+  border: 1px solid var(--cue-border);
+  border-radius: 50%;
+}
+.checklist-steps li[data-complete='true'] .step-marker {
+  background: var(--cue-accent);
+  border-color: var(--cue-accent);
+  color: var(--cue-background);
+}
+.step-status {
+  font-size: 0.75rem;
+  color: var(--cue-muted);
+}
+.statistics-card-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 1rem;
+  margin: 1rem 0 1.5rem;
+  padding: 0.25rem;
+}
+.statistics-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 9rem;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--cue-surface);
+  border: 1px solid var(--cue-divider);
+  border-radius: 0.8rem;
+}
+.statistics-card dt {
+  color: var(--cue-muted);
+  font-size: 0.9rem;
+}
+.statistics-card dd {
+  margin: 0;
+  font-size: 2.25rem;
+  color: var(--cue-accent);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.statistics-card-controls {
+  display: none;
+}
+.party-picker {
+  margin: 1rem 0;
+}
+.picker-results {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  max-height: 55dvh;
+  overflow-y: auto;
+}
+.picker-results a {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: var(--cue-foreground);
+  padding: 0.85rem 0.5rem;
+  border-bottom: 1px solid var(--cue-divider);
+  border-radius: 0.3rem;
+}
+.picker-results a:hover {
+  background: var(--cue-surface-hover);
+}
+.picker-results a > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.picker-results small {
+  display: block;
+  color: var(--cue-muted);
+  margin-top: 0.25rem;
+}
+.picker-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--cue-surface-hover);
+  color: var(--cue-accent);
+}
+.create-disclosure {
+  margin: 1.5rem 0;
+  max-width: 26rem;
+}
+.create-disclosure > button {
+  border-radius: 2rem;
+}
+.disclosure-panel {
+  padding: 1rem;
+  background: var(--cue-surface);
+  border: 1px solid var(--cue-divider);
+  border-radius: 1rem;
+  margin-top: 0.5rem;
+}
+.disclosure-panel .label {
+  margin: 0 0 1rem;
+}
+.disclosure-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.disclosure-grid button.secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  border-color: transparent;
+  padding: 0.75rem 0.25rem;
+  font-size: 0.8rem;
+}
+.disclosure-grid button > span {
+  font-size: 1.5rem;
+  color: var(--cue-accent);
+}
+.inline-overflow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.4rem;
+  background: var(--cue-surface);
+  border: 1px solid var(--cue-divider);
+  border-radius: 1.5rem;
+}
+.overflow-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.overflow-toggle.secondary {
+  border-radius: 50%;
+  min-width: 44px;
+  padding: 0;
+  font-size: 1.5rem;
+}
+@media (max-width: 600px) {
+  .inline-action {
+    flex-wrap: wrap;
+    border-radius: 1rem;
+  }
+  .checklist-header.secondary {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .checklist-steps li {
+    flex-wrap: wrap;
+  }
+  .step-status {
+    width: 100%;
+    padding-left: 2.25rem;
+  }
+  .statistics-card-track {
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    scrollbar-color: var(--cue-border) transparent;
+  }
+  .statistics-card {
+    flex: 0 0 min(82%, 20rem);
+    scroll-snap-align: start;
+  }
+  .statistics-card-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .statistics-card-controls button {
+    min-width: 44px;
+    padding: 0.5rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .statistics-card-track {
+    scroll-behavior: auto;
+  }
+}
+.component-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.create-disclosure > button,
+.checklist-header > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.statistics-card-controls button {
+  display: grid;
+  place-items: center;
+}

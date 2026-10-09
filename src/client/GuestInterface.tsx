@@ -1,3 +1,4 @@
+import { ExpandableProfileCard } from './ExpandableProfileCard';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
 import { Modal } from './Modal';
@@ -215,22 +216,15 @@ export function GuestInterface({
           {guest && (ready || party.status === 'ENDED') && (
             <>
               <div className="guest-toolbar">
-                <p className="ready">
-                  Joined as {guest.displayName || 'a guest'}.
-                </p>
-                {party.status === 'ACTIVE' && (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => {
-                      setName(guest.displayName ?? '');
-                      setError(undefined);
-                      setEditing(true);
-                    }}
-                  >
-                    Edit Guest Name
-                  </button>
-                )}
+                <ExpandableProfileCard
+                  name={guest.displayName}
+                  active={party.status === 'ACTIVE'}
+                  onEdit={() => {
+                    setName(guest.displayName ?? '');
+                    setError(undefined);
+                    setEditing(true);
+                  }}
+                />
               </div>
               <div className="dashboard-layout">
                 <DashboardNavigation

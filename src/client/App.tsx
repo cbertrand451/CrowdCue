@@ -1,3 +1,4 @@
+import { CreateNewDisclosure } from './CreateNewDisclosure';
 import { LoadingStatus } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -71,6 +72,37 @@ function HostHome() {
         </p>
       )}
       <SpotifyConnection onAuthenticationChange={authenticationChanged} />
+      {authenticated && (
+        <CreateNewDisclosure
+          items={[
+            {
+              id: 'create',
+              icon: '+',
+              label: 'Create a party',
+              onAction: () => setMenu('create'),
+            },
+            {
+              id: 'parties',
+              icon: '≋',
+              label: 'Browse parties',
+              onAction: () => setMenu('parties'),
+            },
+            {
+              id: 'spotify',
+              icon: '◉',
+              label: 'Spotify connection',
+              onAction: () => {
+                const connection = document.querySelector<HTMLElement>(
+                  '.spotify-connection',
+                );
+                connection?.setAttribute('tabindex', '-1');
+                connection?.focus({ preventScroll: true });
+                connection?.scrollIntoView?.({ block: 'start' });
+              },
+            },
+          ]}
+        />
+      )}
       {authenticated && (
         <div className="dashboard-layout">
           <DashboardNavigation

@@ -47,3 +47,21 @@ pending clicks, explicit success, form semantics and passive status feedback.
 The production build reports a JavaScript chunk-size advisory. Browser visual
 acceptance of this animation remains pending; earlier Chromium results above
 describe the previous UI milestone.
+
+## Supplied component integration
+
+Integrated all seven requested patterns where they fit existing functionality:
+invite-link Inline Action, expandable guest identity, confirmed session setup
+checklist, party-statistic Wiggling Cards, searchable host-party dialogue,
+Create New host shortcuts, and secondary moderation Inline Overflow.
+Uploaded references are preserved in `docs/ui`; theme colors come from shared
+CSS variables and icons use SVG. No additional runtime dependencies were added.
+
+Validation: the existing 132 tests and seven new interaction tests cover
+clipboard failure/retry, overflow actions/Escape, shortcut dispatch, profile
+editing, confirmed checklist progress, party filtering/role links and statistic
+navigation. Chromium checks at 390, 768 and 1440 pixels use mocked API responses
+and cover the same screen flows, native dialog focus restoration, moderation
+failure recovery, mobile statistic scrolling and no page-level horizontal
+overflow. Browser validation makes no live Spotify writes. Database tests
+require a configured test database and remain outside this UI-only change.
