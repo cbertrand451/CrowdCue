@@ -1,5 +1,5 @@
 :root {
-  --cue-background: #353535;
+  --cue-background: #111111;
   --cue-foreground: #ffffff;
   --cue-accent: #65b32e;
   --cue-accent-foreground: #000000;
@@ -1919,7 +1919,7 @@ fieldset > .loading-button-slot {
   margin-inline-end: 0.75rem;
 }
 
-/* Reference palette: grey page, black cards, green accents, black control text. */
+/* Reference palette: almost-black grey page, black cards, green accents, black control text. */
 .copy-confirm .loading-button.secondary,
 .copy-confirm .loading-button.secondary:not(:disabled):hover,
 .loading-button.secondary[data-state='loading'],

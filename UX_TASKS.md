@@ -105,7 +105,7 @@ checks perform no live Spotify mutations.
 ## Reference palette and invitation card
 
 Replaced the previous green-tinted background/pale accent with the supplied
-reference scheme: #353535 page, black cards, #65b32e accents, white card text,
+reference scheme: #111111 page, black cards, #65b32e accents, white card text,
 black accent-button text, and #bfbfbf secondary controls/muted text. Removed
 remaining hard-coded old colors from shared CSS. Corrected the copy-confirm
 selector specificity that allowed white text on its green background, including
@@ -119,3 +119,6 @@ values, black copy-button text in normal/hover states, setup vertical alignment,
 card backgrounds and no horizontal overflow alongside existing interaction
 flows. Standard formatting/lint/type/test/build checks pass. No backend or
 migration changes are needed for this visual update.
+
+The page background was subsequently darkened to #111111 following visual
+feedback. Cards remain #000000 and the accent remains #65b32e.

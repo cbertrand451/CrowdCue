@@ -1045,7 +1045,7 @@ creation recovery metadata in the database instead of the public description.
 
 ### Reference palette and invitation layout
 
-The shared UI uses #353535 page backgrounds, #000000 card surfaces, #ffffff
+The shared UI uses #111111 page backgrounds, #000000 card surfaces, #ffffff
 card text, #65b32e green accents with #000000 foregrounds, and #bfbfbf secondary
 controls/muted text. The CSS theme tokens apply across host, guest and Display
 screens; QR codes retain black/white encoding. Green buttons, selected menus and
