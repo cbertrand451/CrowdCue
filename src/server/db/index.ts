@@ -1,16 +1,26 @@
 import pg from 'pg';
 import type { PoolClient } from 'pg';
 import { X509Certificate } from 'node:crypto';
+import { rootCertificates } from 'node:tls';
+import { DatabaseConfigurationError } from './diagnostics.js';
 
 export function databaseOptions(
   connectionString: string,
   env: NodeJS.ProcessEnv = process.env,
 ): pg.PoolConfig {
   if (env.DATABASE_SSL && !['true', 'false'].includes(env.DATABASE_SSL))
-    throw new Error('Invalid environment configuration: DATABASE_SSL');
+    throw new DatabaseConfigurationError('DATABASE_SSL');
   const tls = env.DATABASE_SSL === 'true' || !!env.DATABASE_SSL_CA;
   let ssl: pg.PoolConfig['ssl'];
   if (tls) {
+    const ca = env.DATABASE_SSL_CA?.replaceAll('\\n', '\n').trim();
+    if (ca) {
+      try {
+        new X509Certificate(ca);
+      } catch {
+        throw new DatabaseConfigurationError('DATABASE_SSL_CA');
+      }
+    }
     try {
       const url = new URL(connectionString);
       if (!['postgres:', 'postgresql:'].includes(url.protocol))
@@ -23,16 +33,14 @@ export function databaseOptions(
       // and verification settings below. Cloud TLS always verifies the server.
       for (const key of ['sslmode', 'ssl', 'sslrootcert', 'sslcert', 'sslkey'])
         url.searchParams.delete(key);
-      if (env.DATABASE_SSL_CA) new X509Certificate(env.DATABASE_SSL_CA);
       connectionString = url.toString();
       ssl = {
         rejectUnauthorized: true,
-        ...(env.DATABASE_SSL_CA ? { ca: env.DATABASE_SSL_CA } : {}),
+        // Keep public roots for shared poolers alongside a provider-specific CA.
+        ...(ca ? { ca: [...rootCertificates, ca] } : {}),
       };
     } catch {
-      throw new Error(
-        'Invalid database TLS configuration; check DATABASE_URL and DATABASE_SSL_CA',
-      );
+      throw new DatabaseConfigurationError('DATABASE_URL');
     }
   }
   return {

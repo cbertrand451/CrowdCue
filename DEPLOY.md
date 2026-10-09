@@ -101,6 +101,18 @@ and QR codes. Avoid switching domains during an active party.
 
 ## Free-plan limits and troubleshooting
 
+Startup failures now include a safe category in the Render log, such as
+`[authentication]`, `[certificate_format]`, `[tls]`, `[dns]`, or
+`[migration_history]`. These messages never include connection URLs,
+passwords, provider error details, or SQL. Share this category when asking for help.
+If you already selected the Session pooler on port 5432, use the category to
+identify the next setting to check rather than changing connection types.
+
+`DATABASE_SSL_CA` accepts PEM text with actual line breaks or literal `\n`
+separators. Node's standard public certificate roots remain trusted alongside
+the supplied provider root, so publicly signed shared-pooler certificates work
+without disabling certificate verification. Keep `DATABASE_SSL=true`.
+
 Render's free web service sleeps after 15 minutes without inbound traffic;
 the next request can take about a minute to wake it. Spotify synchronization
 stops while the server sleeps. Keep the host or Display interface open during

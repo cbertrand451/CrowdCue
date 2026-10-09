@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { MigrationHistoryError } from './diagnostics.js';
 import type pg from 'pg';
 import { inTransaction } from './index.js';
 import { initialSchema } from './migrations/001-initial.js';
@@ -52,7 +53,7 @@ export async function migrate(pool: pg.Pool) {
         createHash('sha256').update(migration.sql).digest('hex') !==
           row.checksum
       ) {
-        throw new Error('Database migration history does not match this build');
+        throw new MigrationHistoryError();
       }
     }
     const completed: number[] = [];

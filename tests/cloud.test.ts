@@ -87,7 +87,7 @@ describe('public cloud deployment', () => {
     ).toThrow();
     expect(() =>
       databaseOptions(url, { DATABASE_SSL_CA: 'private-invalid-certificate' }),
-    ).toThrow('Invalid database TLS configuration');
+    ).toThrow('DATABASE_SSL_CA');
     expect(() => databaseOptions(url, { DATABASE_SSL: 'invalid' })).toThrow(
       'DATABASE_SSL',
     );
