@@ -1056,3 +1056,12 @@ its title, chevron, progress bars and completion count align vertically in the
 same row. Guest invitations group the QR code, instructions, share URL, copy
 confirmation, role links and host reminder inside a black card. Desktop uses
 QR/details columns; smaller screens stack them, with long links wrapping.
+
+### Display playback motion
+
+The Display shows circular album artwork with a clockwise vinyl-record animation
+and a decorative waveform beside the now-playing status. Animate only when a
+track is present, the party is active and the Spotify observation is PLAYING and
+fresh. Pause motion when paused, unavailable or stale; ended parties show the
+existing completion view. Honor reduced-motion preferences. The waveform is a
+visual playback indicator, not measured audio data; Spotify retains playback.

@@ -411,3 +411,11 @@ Apply migration **010-party-close** with `npm run db:migrate` (the cloud/local l
 Desktop sidebars and compact mobile menus split host/guest screens into focused views. New guests explicitly join from a welcome screen, then edit names through a popup. Guests vote only for other guests’ songs. Search results retain shared green Song Requested states until playback; played repeats require Yes/No confirmation.
 
 The current song plus the next two are locked. The worker checks actual playlist contents on every pass to repair missing buffered songs without waiting for the final track. Provider failures retain existing recovery behavior. No automated validation uses live Spotify writes; test client playback caching with the host’s Spotify app.
+
+### Animated now-playing display
+
+The TV Display presents circular album artwork inside a clockwise spinning vinyl
+record, with animated equalizer bars beside the now-playing label. Motion follows
+fresh Spotify PLAYING observations and stops for paused, unavailable, stale or
+ended playback. Reduced-motion preferences disable both animations. The bars
+are a decorative playback indicator; CrowdCue does not analyze or stream audio.

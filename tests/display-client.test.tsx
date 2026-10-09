@@ -115,6 +115,37 @@ it('freezes paused progress and marks observations stale instead of advancing th
   expect(screen.getByText(/Playback updates delayed/)).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Song a' })).toBeInTheDocument();
 });
+it('animates only fresh playing music and stops for paused, stale, unavailable and ended snapshots', async () => {
+  const data = state();
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(data)));
+  render(<TVDisplay token={'d'.repeat(43)} />);
+  await advance(0);
+  const region = screen.getByRole('region', { name: 'Now playing' });
+  expect(region).toHaveAttribute('data-playing', 'true');
+  expect(region.querySelector('.tv-record .tv-cover')).toBeInTheDocument();
+  expect(region.querySelector('.tv-waveform')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  );
+  await advance(21000);
+  expect(region).toHaveAttribute('data-playing', 'false');
+  expect(screen.getByText('Last seen on Spotify')).toBeInTheDocument();
+  data.nowPlaying.observedAt = new Date().toISOString();
+  await advance(4000);
+  expect(region).toHaveAttribute('data-playing', 'true');
+  data.nowPlaying.state = 'PAUSED';
+  await advance(5000);
+  expect(region).toHaveAttribute('data-playing', 'false');
+  data.nowPlaying.state = 'UNAVAILABLE';
+  await advance(5000);
+  expect(region).toHaveAttribute('data-playing', 'false');
+  data.nowPlaying.state = 'PLAYING';
+  data.party.status = 'ENDED';
+  await advance(5000);
+  expect(region).toHaveAttribute('data-playing', 'false');
+  expect(region.querySelector('.tv-record')).toBeNull();
+  expect(region.querySelector('.tv-waveform')).toBeNull();
+});
 it('retains the last snapshot on a connection failure and clears it when the display token stops resolving', async () => {
   const fetcher = vi
     .fn()

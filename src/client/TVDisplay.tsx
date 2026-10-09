@@ -133,6 +133,7 @@ export function TVDisplay({ token }: { token: string }) {
     : 0;
   const stale = !!now?.observedAt && elapsed > 20000;
   const unavailable = now?.state === 'UNAVAILABLE' || stale;
+  const playing = !!track && now?.state === 'PLAYING' && !ended && !unavailable;
   const progress =
     track && now?.progressMs != null
       ? Math.min(
@@ -174,10 +175,23 @@ export function TVDisplay({ token }: { token: string }) {
       )}
       {snapshot && (
         <div className="tv-content">
-          <section className="tv-now" aria-label="Now playing">
+          <section
+            className="tv-now"
+            aria-label="Now playing"
+            data-playing={playing}
+          >
             <p className="tv-eyebrow">
-              {label}
-              {now?.locked && !ended ? ' · Locked in CrowdCue' : ''}
+              {track && !ended && (
+                <span className="tv-waveform" aria-hidden="true">
+                  {Array.from({ length: 9 }, (_, index) => (
+                    <span key={index} />
+                  ))}
+                </span>
+              )}
+              <span>
+                {label}
+                {now?.locked && !ended ? ' · Locked in CrowdCue' : ''}
+              </span>
             </p>
             {ended ? (
               <div className="tv-empty">
@@ -188,12 +202,16 @@ export function TVDisplay({ token }: { token: string }) {
             ) : track ? (
               <>
                 <div className="tv-current-track">
-                  <Artwork
-                    key={`${track.id}:${track.artworkUrl}`}
-                    className="tv-cover"
-                    url={track.artworkUrl}
-                    album={track.album}
-                  />
+                  <div className="tv-record">
+                    <div className="tv-record-disc">
+                      <Artwork
+                        key={`${track.id}:${track.artworkUrl}`}
+                        className="tv-cover"
+                        url={track.artworkUrl}
+                        album={track.album}
+                      />
+                    </div>
+                  </div>
                   <div className="tv-current-details">
                     <h2>{track.title}</h2>
                     <p className="tv-artists">{track.artists.join(', ')}</p>

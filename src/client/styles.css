@@ -408,6 +408,9 @@ a {
   min-width: 0;
 }
 .tv-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
   color: var(--cue-accent);
   margin: 0 0 clamp(1rem, 2vw, 4rem);
   font-size: clamp(1rem, 1.4vw, 3rem);
@@ -418,12 +421,95 @@ a {
   align-items: center;
   gap: clamp(1rem, 2vw, 4rem);
 }
-.tv-cover {
+.tv-record {
   width: clamp(180px, 22vw, 900px);
   max-width: 48%;
   aspect-ratio: 1;
-  object-fit: cover;
   flex-shrink: 0;
+  position: relative;
+}
+.tv-record-disc {
+  width: 100%;
+  height: 100%;
+  padding: 9%;
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    circle,
+    #171717 0 2px,
+    #303030 3px,
+    #171717 4px 6px
+  );
+  border: 1px solid #444;
+  box-shadow: 0 12px 28px #0006;
+  animation: tv-record-spin 16s linear infinite;
+  animation-play-state: paused;
+}
+.tv-record::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: #111;
+  border: 2px solid #bfbfbf;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.tv-cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.tv-waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 1.5em;
+  flex-shrink: 0;
+}
+.tv-waveform span {
+  width: 3px;
+  height: 100%;
+  border-radius: 999px;
+  background: currentColor;
+  transform: scaleY(0.25);
+  animation: tv-waveform-bounce 950ms ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.tv-waveform span:nth-child(3n + 1) {
+  animation-delay: -650ms;
+  animation-duration: 780ms;
+}
+.tv-waveform span:nth-child(3n + 2) {
+  animation-delay: -300ms;
+  animation-duration: 1100ms;
+}
+.tv-now[data-playing='true'] .tv-record-disc,
+.tv-now[data-playing='true'] .tv-waveform span {
+  animation-play-state: running;
+}
+@keyframes tv-record-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes tv-waveform-bounce {
+  from {
+    transform: scaleY(0.2);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-record-disc,
+  .tv-waveform span {
+    animation: none;
+  }
 }
 .tv-artwork-placeholder {
   display: grid;
@@ -659,7 +745,7 @@ a {
   .tv-current-details h2 {
     font-size: clamp(1.8rem, 5vw, 3rem);
   }
-  .tv-cover {
+  .tv-record {
     width: 35%;
     max-width: 300px;
   }
