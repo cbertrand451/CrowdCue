@@ -1,3 +1,4 @@
+import { motion, MotionConfig } from 'motion/react';
 const shortLabels: Record<string, string> = {
   'Find a song': 'Search',
   'Live queue': 'Queue',
@@ -30,41 +31,45 @@ export function DashboardNavigation({
   label: string;
 }) {
   return (
-    <nav className="dashboard-nav" aria-label={label}>
-      <div className="nav-heading">
-        <span className="cue-mark" aria-hidden="true">
-          ≋
-        </span>
-        <span>{label}</span>
-      </div>
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          aria-label={item.label}
-          aria-current={selected === item.id ? 'page' : undefined}
-          onClick={() => onSelect(item.id)}
-        >
-          <span className="nav-icon" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d={iconPaths[item.icon] ?? iconPaths['≋']} />
-            </svg>
+    <MotionConfig reducedMotion="user">
+      <nav className="dashboard-nav dock" aria-label={label}>
+        <div className="nav-heading">
+          <span className="cue-mark" aria-hidden="true">
+            ≋
           </span>
-          <span className="nav-label">{item.label}</span>
-          <span className="nav-short-label" aria-hidden="true">
-            {shortLabels[item.label] ?? item.label}
-          </span>
-        </button>
-      ))}
-    </nav>
+          <span>{label}</span>
+        </div>
+        {items.map((item) => (
+          <motion.button
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.96 }}
+            key={item.id}
+            type="button"
+            aria-label={item.label}
+            aria-current={selected === item.id ? 'page' : undefined}
+            onClick={() => onSelect(item.id)}
+          >
+            <span className="nav-icon" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d={iconPaths[item.icon] ?? iconPaths['≋']} />
+              </svg>
+            </span>
+            <span className="nav-label">{item.label}</span>
+            <span className="nav-short-label" aria-hidden="true">
+              {shortLabels[item.label] ?? item.label}
+            </span>
+          </motion.button>
+        ))}
+      </nav>
+    </MotionConfig>
   );
 }

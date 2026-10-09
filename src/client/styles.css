@@ -1587,3 +1587,214 @@ button.requested-button:disabled {
   display: grid;
   place-items: center;
 }
+
+/* Supplied disclosure patterns, using CrowdCue's shared theme. */
+.floating-input {
+  position: relative;
+  margin: 1.2rem 0;
+}
+.floating-input input {
+  width: 100%;
+  padding: 1rem;
+}
+.floating-input label {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  margin: 0;
+  color: var(--cue-muted);
+  pointer-events: none;
+  transition:
+    top 160ms,
+    font-size 160ms;
+}
+.floating-input input:focus + label,
+.floating-input input:not(:placeholder-shown) + label {
+  top: -0.6rem;
+  left: 0.75rem;
+  padding: 0 0.3rem;
+  font-size: 0.75rem;
+  background: var(--cue-background);
+  color: var(--cue-accent);
+}
+.floating-input small {
+  display: block;
+  margin-top: 0.35rem;
+  overflow-wrap: anywhere;
+}
+.switch-disclosure {
+  flex: 1 1 240px;
+}
+.switch-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 48px;
+  cursor: pointer;
+}
+.switch-row input {
+  position: absolute;
+  right: 0;
+  width: 44px;
+  height: 32px;
+  opacity: 0;
+}
+.switch-track {
+  width: 44px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 1px solid var(--cue-border);
+  border-radius: 999px;
+  background: var(--cue-surface);
+  padding: 3px;
+}
+.switch-track span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cue-muted);
+  transition: transform 160ms;
+}
+.switch-row input:checked + .switch-track {
+  background: var(--cue-accent);
+}
+.switch-row input:checked + .switch-track span {
+  transform: translateX(18px);
+  background: var(--cue-background);
+}
+.switch-row input:focus-visible + .switch-track {
+  outline: 2px solid var(--cue-accent);
+  outline-offset: 4px;
+}
+.switch-row input:disabled + .switch-track {
+  opacity: 0.45;
+}
+.switch-disclosure p {
+  margin-top: 0;
+  font-size: 0.85rem;
+}
+.dropdown-disclosure {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0.75rem 0;
+}
+.dropdown-disclosure > button {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.disclosure-options {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.5rem);
+  width: min(280px, calc(100vw - 3rem));
+  padding: 0.5rem;
+  display: grid;
+  gap: 0.35rem;
+  background: var(--cue-surface);
+  border: 1px solid var(--cue-border);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px #0005;
+}
+.disclosure-options button {
+  text-align: left;
+}
+.disclosure-options button[aria-pressed='true'] {
+  background: var(--cue-accent);
+  color: var(--cue-background);
+}
+.disclosure-options small {
+  display: block;
+}
+.quick-feedback,
+.feedback-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+.quick-feedback[data-voted='true'] button {
+  border-color: var(--cue-accent);
+  color: var(--cue-accent);
+}
+.copy-confirm button {
+  background: var(--cue-accent);
+  color: var(--cue-background);
+}
+.expand-details {
+  margin-top: 1rem;
+  border-top: 1px solid var(--cue-divider);
+  padding-top: 1rem;
+}
+.expand-details summary {
+  cursor: pointer;
+  padding: 0.65rem 0;
+}
+.carousel-dots {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+  gap: 0;
+}
+.carousel-dots .carousel-dot {
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.carousel-dot span {
+  display: block;
+  margin: auto;
+  width: 7px;
+  height: 7px;
+  background: var(--cue-muted);
+  border-radius: 999px;
+}
+.carousel-dot[aria-current='true'] span {
+  width: 14px;
+  background: var(--cue-accent);
+}
+@media (max-width: 760px) {
+  .dashboard-nav.dock {
+    border-radius: 20px;
+    gap: 0.25rem;
+  }
+  .dashboard-nav.dock button {
+    position: relative;
+    border-radius: 12px;
+  }
+  .dashboard-nav.dock button[aria-current='page']::after {
+    content: '';
+    position: absolute;
+    bottom: 3px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .dock .nav-short-label {
+    white-space: nowrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .floating-input label,
+  .switch-track span {
+    transition: none;
+  }
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -1,3 +1,5 @@
+import { SwitchDisclosure } from './SwitchDisclosure';
+import { FloatingInput } from './FloatingInput';
 import { LoadingButton } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
 import { LeaderboardPanel } from './LeaderboardPanel';
@@ -192,8 +194,8 @@ export function AdminDashboard({
             <h2>Party settings</h2>
             <form onSubmit={save}>
               <fieldset disabled={busy || party.status === 'ENDED'}>
-                <label htmlFor="admin-party-name">Party name</label>
-                <input
+                <FloatingInput
+                  label="Party name"
                   id="admin-party-name"
                   value={name}
                   required
@@ -202,19 +204,29 @@ export function AdminDashboard({
                 />
                 <div className="party-preferences">
                   {booleans.map(([key, label]) => (
-                    <label key={key}>
-                      <input
-                        type="checkbox"
-                        checked={settings[key]}
-                        onChange={(event) =>
-                          setSettings({
-                            ...settings,
-                            [key]: event.target.checked,
-                          })
-                        }
-                      />
-                      {label}
-                    </label>
+                    <SwitchDisclosure
+                      key={key}
+                      label={label}
+                      description={
+                        {
+                          approvalRequired:
+                            'New requests wait for your approval.',
+                          votingEnabled:
+                            'Guests can vote for other guests’ songs.',
+                          requireGuestNames:
+                            'Guests enter a name before requesting songs.',
+                          allowExplicitTracks:
+                            'Spotify songs marked explicit are allowed.',
+                        }[key]
+                      }
+                      checked={settings[key]}
+                      onChange={(event) =>
+                        setSettings({
+                          ...settings,
+                          [key]: event.target.checked,
+                        })
+                      }
+                    />
                   ))}
                 </div>
                 <label htmlFor="request-limit">
@@ -253,14 +265,12 @@ export function AdminDashboard({
                     })
                   }
                 />
-                <label>
-                  Backup Spotify playlist
-                  <input
-                    value={backupSource}
-                    onChange={(event) => setBackupSource(event.target.value)}
-                    placeholder="https://open.spotify.com/playlist/…"
-                  />
-                </label>
+                <FloatingInput
+                  label="Backup Spotify playlist"
+                  value={backupSource}
+                  onChange={(event) => setBackupSource(event.target.value)}
+                  placeholder="https://open.spotify.com/playlist/…"
+                />
                 <p className="muted">
                   The session playlist is the queue. Current and the next two
                   songs are locked for everyone; all later guest songs can be

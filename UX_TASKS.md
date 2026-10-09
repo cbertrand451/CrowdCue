@@ -65,3 +65,20 @@ and cover the same screen flows, native dialog focus restoration, moderation
 failure recovery, mobile statistic scrolling and no page-level horizontal
 overflow. Browser validation makes no live Spotify writes. Database tests
 require a configured test database and remain outside this UI-only change.
+
+## Second supplied component batch
+
+Integrated twelve suitable patterns, including combined Filter/Dropdown
+Disclosure, with placements and deferred examples documented in
+`docs/ui/batch-2/README.md`. Invite copying and moderation overflow replace the
+earlier presentations; shared loading controls remain. Existing settings and
+identity save flows keep their validation and atomic persistence. Quick Feedback
+supports upvote/undo through the existing API. Request filtering is explicitly
+limited to the currently loaded page. No demo timers fabricate success.
+
+Validation: `npm run check`; six additional interaction tests cover input
+handlers, inherited disabled controls, filter focus/Escape, confirmed voting,
+clipboard recovery and optional tour dismissal. Chromium at 390, 768 and 1440
+pixels exercises the existing flows plus vote/undo, empty filter results, party
+rules and tour navigation/focus. Browser responses are mocked; no live Spotify
+writes. Database tests require a configured database and are skipped here.

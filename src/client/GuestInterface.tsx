@@ -1,3 +1,6 @@
+import { FeatureTour } from './FeatureTour';
+import { ExpandDetails } from './ExpandDetails';
+import { FloatingInput } from './FloatingInput';
 import { ExpandableProfileCard } from './ExpandableProfileCard';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
@@ -149,10 +152,8 @@ export function GuestInterface({
   const nameForm = (
     <form onSubmit={(event) => void join(event)}>
       <fieldset disabled={busy}>
-        <label htmlFor="guest-name">
-          Your name{party.settings.requireGuestNames ? '' : ' (optional)'}
-        </label>
-        <input
+        <FloatingInput
+          label={`Your name${party.settings.requireGuestNames ? '' : ' (optional)'}`}
           id="guest-name"
           autoFocus
           autoComplete="nickname"
@@ -286,31 +287,34 @@ export function GuestInterface({
                     className="guest-preferences"
                   >
                     <h2>At this party</h2>
-                    <p>
-                      {party.settings.approvalRequired
-                        ? 'The host will approve song requests.'
-                        : 'Song requests won’t need host approval.'}
-                    </p>
-                    <p>
-                      {party.settings.votingEnabled
-                        ? 'Voting is enabled. Vote for someone else’s pick.'
-                        : 'Voting is turned off.'}
-                    </p>
-                    {!party.settings.allowExplicitTracks && (
-                      <p>Explicit songs are turned off.</p>
-                    )}
-                    {party.settings.maxActiveRequestsPerGuest && (
+                    <FeatureTour />
+                    <ExpandDetails title="Request limits and party rules">
                       <p>
-                        Up to {party.settings.maxActiveRequestsPerGuest} active
-                        requests per guest.
+                        {party.settings.approvalRequired
+                          ? 'The host will approve song requests.'
+                          : 'Song requests won’t need host approval.'}
                       </p>
-                    )}
-                    {party.settings.requestCooldownSeconds > 0 && (
                       <p>
-                        Wait {party.settings.requestCooldownSeconds} seconds
-                        between requests.
+                        {party.settings.votingEnabled
+                          ? 'Voting is enabled. Vote for someone else’s pick.'
+                          : 'Voting is turned off.'}
                       </p>
-                    )}
+                      {!party.settings.allowExplicitTracks && (
+                        <p>Explicit songs are turned off.</p>
+                      )}
+                      {party.settings.maxActiveRequestsPerGuest && (
+                        <p>
+                          Up to {party.settings.maxActiveRequestsPerGuest}{' '}
+                          active requests per guest.
+                        </p>
+                      )}
+                      {party.settings.requestCooldownSeconds > 0 && (
+                        <p>
+                          Wait {party.settings.requestCooldownSeconds} seconds
+                          between requests.
+                        </p>
+                      )}
+                    </ExpandDetails>
                   </section>
                 </div>
               </div>

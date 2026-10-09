@@ -1,4 +1,7 @@
-import { InlineOverflow } from './InlineOverflow';
+import { FilterDisclosure, type RequestFilter } from './FilterDisclosure';
+import { QuickFeedback } from './QuickFeedback';
+import { FeedbackAction } from './FeedbackAction';
+import { InlineDisclosureMenu } from './InlineDisclosureMenu';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useLiveRevision } from './realtime';
 import { useEffect, useRef, useState } from 'react';
@@ -35,6 +38,7 @@ export function RequestBoard({
   onExpired?: () => void;
 }) {
   const liveRevision = useLiveRevision();
+  const [filter, setFilter] = useState<RequestFilter>('all');
   const [requests, setRequests] = useState<SongRequest[]>([]);
   const [offset, setOffset] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -144,6 +148,15 @@ export function RequestBoard({
       if (!controller?.signal.aborted) setBusy(undefined);
     }
   }
+  const filtered = requests.filter(
+    (request) =>
+      filter === 'all' ||
+      (filter === 'waiting'
+        ? request.status === 'REQUESTED'
+        : filter === 'approved'
+          ? ['APPROVED', 'QUEUED'].includes(request.status)
+          : ['PLAYED', 'REJECTED', 'REMOVED'].includes(request.status)),
+  );
   return (
     <section
       id="song-requests"
@@ -167,7 +180,23 @@ export function RequestBoard({
         </LoadingButton>
       </div>
       {loading && <LoadingStatus>Loading requests…</LoadingStatus>}
-      {error && <p role="alert">{error}</p>}
+      <FilterDisclosure value={filter} onChange={setFilter} />
+      {filter !== 'all' && (
+        <p className="muted">
+          Filtering requests on this page.
+          {filtered.length === 0 ? ' No matching requests.' : ''}
+        </p>
+      )}
+      {error && (
+        <FeedbackAction
+          message={error}
+          loading={refreshBusy}
+          onRetry={() => {
+            setRefreshBusy(true);
+            setAttempt((v) => v + 1);
+          }}
+        />
+      )}
       {!loading && !error && requests.length === 0 && (
         <p>
           No requests yet.{' '}
@@ -182,7 +211,7 @@ export function RequestBoard({
         </p>
       )}
       <ul className="search-results">
-        {requests.map((request) => (
+        {filtered.map((request) => (
           <li key={request.id}>
             {request.track.artworkUrl ? (
               <img
@@ -230,28 +259,20 @@ export function RequestBoard({
                 !request.isOwn &&
                 !request.locked &&
                 ['REQUESTED', 'APPROVED'].includes(request.status) && (
-                  <LoadingButton
+                  <QuickFeedback
+                    voted={request.hasVoted}
                     loading={
                       busy === request.id && typeof busyAction === 'boolean'
                     }
-                    type="button"
-                    className="secondary"
-                    aria-pressed={request.hasVoted}
                     disabled={!!busy || !votingEnabled || !canVote}
-                    onClick={() => void moderate(request.id, !request.hasVoted)}
-                  >
-                    {busy === request.id
-                      ? 'Saving vote…'
-                      : request.hasVoted
-                        ? 'Remove vote'
-                        : 'Vote'}
-                  </LoadingButton>
+                    onChange={(voted) => void moderate(request.id, voted)}
+                  />
                 )}
               {role === 'admin' &&
                 active &&
                 !request.locked &&
                 ['REQUESTED', 'APPROVED'].includes(request.status) && (
-                  <InlineOverflow
+                  <InlineDisclosureMenu
                     label={`More actions for ${request.track.title}`}
                     disabled={!!busy}
                     visibleActions={

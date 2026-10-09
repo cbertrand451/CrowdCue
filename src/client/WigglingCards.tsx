@@ -1,4 +1,4 @@
-import { ComponentIcon } from './ComponentIcon';
+import { CarouselNavigator } from './CarouselNavigator';
 import { useRef, useState } from 'react';
 import { motion, MotionConfig, useReducedMotion } from 'motion/react';
 
@@ -52,29 +52,11 @@ export function WigglingCards({ cards }: { cards: StatisticCard[] }) {
             </motion.div>
           ))}
         </dl>
-        <div className="statistics-card-controls">
-          <button
-            type="button"
-            className="secondary"
-            aria-label="Previous statistic"
-            disabled={index === 0}
-            onClick={() => select(index - 1)}
-          >
-            <ComponentIcon symbol="←" />
-          </button>
-          <span aria-live="polite">
-            {index + 1} / {cards.length}
-          </span>
-          <button
-            type="button"
-            className="secondary"
-            aria-label="Next statistic"
-            disabled={index === cards.length - 1}
-            onClick={() => select(index + 1)}
-          >
-            <ComponentIcon symbol="→" />
-          </button>
-        </div>
+        <CarouselNavigator
+          totalSlides={cards.length}
+          currentIndex={index}
+          onIndexChange={select}
+        />
       </div>
     </MotionConfig>
   );

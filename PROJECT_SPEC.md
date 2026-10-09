@@ -1014,3 +1014,16 @@ Implemented playlist-only sessions, custom name/description at start, random bac
 - Playlist descriptions use dark form styling. A prominent external link appears as soon as a session playlist is created. All manual refresh actions display loading feedback and block repeated clicks until completion; provider actions show working feedback.
 
 Migration 010 adds party dismissal without deleting history. Tests use isolated PostgreSQL schemas and mocked Spotify writes. Live Spotify clients may cache playback order and require host acceptance testing.
+
+### Additional supplied UI patterns
+
+Party setup and settings use controlled switch disclosures and floating-label
+fields. Guest voting uses a confirmation/undo presentation tied to persisted
+positive votes. Request status filters apply to the current loaded page and are
+labeled accordingly. Invite links use clipboard confirmation and failure
+recovery. Guests can open an optional feature guide from party details and
+expand the actual party rules. Mobile navigation uses the supplied dock
+interaction; statistics use manual carousel indicators without autoplay.
+Deferred reference components and integration decisions are documented in
+`docs/ui/batch-2/README.md`. These visual adaptations preserve existing API
+contracts, authorization, save behavior and queue locks.

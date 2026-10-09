@@ -1,3 +1,5 @@
+import { SwitchDisclosure } from './SwitchDisclosure';
+import { FloatingInput } from './FloatingInput';
 import { PartyPickerDialog } from './PartyPickerDialog';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -200,8 +202,8 @@ export function PartyCreation({
         <p className="muted">Give it a name, then share the guest link.</p>
         <form onSubmit={(event) => void create(event)}>
           <fieldset disabled={creating}>
-            <label htmlFor="party-name">Party name</label>
-            <input
+            <FloatingInput
+              label="Party name"
               id="party-name"
               name="name"
               value={name}
@@ -211,14 +213,12 @@ export function PartyCreation({
               placeholder="Friday at Sam’s"
               aria-describedby={creationError ? 'creation-error' : undefined}
             />
-            <label>
-              Backup Spotify playlist
-              <input
-                value={backupSource}
-                onChange={(event) => setBackupSource(event.target.value)}
-                placeholder="https://open.spotify.com/playlist/…"
-              />
-            </label>
+            <FloatingInput
+              label="Backup Spotify playlist"
+              value={backupSource}
+              onChange={(event) => setBackupSource(event.target.value)}
+              placeholder="https://open.spotify.com/playlist/…"
+            />
             <p className="muted">
               Use any Spotify playlist your account can read. It supplies songs
               when guests have none waiting. You can add it later.
@@ -228,44 +228,28 @@ export function PartyCreation({
               You can remove it manually.
             </p>
             <div className="party-preferences">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={approvalRequired}
-                  onChange={(event) =>
-                    setApprovalRequired(event.target.checked)
-                  }
-                />
-                Approve song requests
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={votingEnabled}
-                  onChange={(event) => setVotingEnabled(event.target.checked)}
-                />
-                Allow voting
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={requireGuestNames}
-                  onChange={(event) =>
-                    setRequireGuestNames(event.target.checked)
-                  }
-                />
-                Require guest names
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={allowExplicitTracks}
-                  onChange={(event) =>
-                    setAllowExplicitTracks(event.target.checked)
-                  }
-                />
-                Allow explicit songs
-              </label>
+              <SwitchDisclosure
+                label="Approve song requests"
+                checked={approvalRequired}
+                onChange={(event) => setApprovalRequired(event.target.checked)}
+              />
+              <SwitchDisclosure
+                label="Allow voting"
+                checked={votingEnabled}
+                onChange={(event) => setVotingEnabled(event.target.checked)}
+              />
+              <SwitchDisclosure
+                label="Require guest names"
+                checked={requireGuestNames}
+                onChange={(event) => setRequireGuestNames(event.target.checked)}
+              />
+              <SwitchDisclosure
+                label="Allow explicit songs"
+                checked={allowExplicitTracks}
+                onChange={(event) =>
+                  setAllowExplicitTracks(event.target.checked)
+                }
+              />
             </div>
             <LoadingButton loading={creating} type="submit">
               {creating ? 'Creating party…' : 'Create party'}

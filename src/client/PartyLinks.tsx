@@ -1,5 +1,5 @@
 import { GuestQRCode } from './GuestQRCode';
-import { InlineAction } from './InlineAction';
+import { CopyConfirm } from './CopyConfirm';
 import type { PartyDetails } from '../server/parties/contracts.js';
 
 export function PartyLinks({
@@ -18,7 +18,7 @@ export function PartyLinks({
       <a href={links.guest} rel="noreferrer">
         {links.guest}
       </a>
-      <InlineAction
+      <CopyConfirm
         label="Invite your crowd"
         actionText="Copy guest link"
         onAction={() => navigator.clipboard.writeText(links.guest)}
