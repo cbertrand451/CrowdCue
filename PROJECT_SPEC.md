@@ -108,7 +108,7 @@ It should be visually useful from several feet away.
 
 The Display interface is read-only.
 
-The implemented TV interface shows the observed Spotify song, artwork, artist/album, paused/idle states, a bounded progress estimate, and six upcoming songs with locked/backup labels and guest vote totals. Pending requests expose only an approval count. A shared backend observation cache prevents extra Spotify calls per screen; it also observes music before the CrowdCue queue starts. Stale/provider-failed playback is labeled last-seen and never replaced with the locked next song. Ended parties show a finished-session message and saved queue, with no active joining prompt. Display snapshots contain no private links, credentials, host/guest identifiers, request authors, personal vote selections, or admin controls. WebSockets and five-second fallback reads keep the page current. Browser full screen is a presentation-only option. Active displays render a locally generated QR code for the guest joining URL.
+The implemented TV interface shows the observed Spotify song, artwork, artist/album, paused/idle states, a bounded progress estimate, and six upcoming songs with locked/backup labels, requester display names (or “a guest”), and guest vote totals. Current-song attribution appears only when it matches a tracked playing occurrence; externally played songs do not inherit a requester. Pending requests expose only an approval count. A shared backend observation cache prevents extra Spotify calls per screen; it also observes music before the CrowdCue queue starts. Stale/provider-failed playback is labeled last-seen and never replaced with the locked next song. Ended parties show a finished-session message and saved queue, with no active joining prompt. Display snapshots contain no private links, credentials, host/guest identifiers, personal vote selections, or admin controls. WebSockets and five-second fallback reads keep the page current. Browser full screen is a presentation-only option. Active displays render a locally generated QR code for the guest joining URL.
 
 
 ---
@@ -411,7 +411,7 @@ Keep at least two upcoming songs after the current song (three total before play
 
 Spotify controls playback and may cache its active playback order. Updating the playlist through the API does not guarantee immediate changes to an already loaded playback sequence; this needs live acceptance testing with the host's Spotify client. CrowdCue does not compensate by issuing playback commands.
 
-Only the application-created session playlist is written. The backup source is read-only. Creation uses a durable session marker and searches the host's private playlists after an uncertain acknowledgement before issuing another create request. Writes read actual contents before reconciliation and insert/reorder/remove individual occurrences while preserving the matching history/current/next-two prefix. Inserts/removals use batches of at most 100 songs and sessions support 10,000 playlist entries. A PostgreSQL host advisory lock serializes workers/start actions; party locks serialize scheduling and playlist synchronization with votes/moderation/reordering. Known failures respect Spotify cooldowns. Only one session per host actively synchronizes. Credentials remain encrypted and server-only.
+Only the application-created session playlist is written. The backup source is read-only. Descriptions include the host’s optional text followed by “Playlist created using CrowdCue by Colin Bertrand”; session IDs are not included. Migration 011 stores a baseline of matching owned private playlist IDs before creation. Uncertain creation recovery excludes those older IDs, matches the name and description, and requires a single result; ambiguous results remain unconfirmed for host recovery. Legacy uncertain sessions can still be found by their old marker, and known managed playlists receive the new credit on the worker’s next successful pass, including completed recaps. Writes read actual contents before reconciliation and insert/reorder/remove individual occurrences while preserving the matching history/current/next-two prefix. Inserts/removals use batches of at most 100 songs and sessions support 10,000 playlist entries. A PostgreSQL host advisory lock serializes workers/start actions; party locks serialize scheduling and playlist synchronization with votes/moderation/reordering. Known failures respect Spotify cooldowns. Only one session per host actively synchronizes. Credentials remain encrypted and server-only.
 
 Ending stops playlist synchronization. The entire playlist stays in Spotify by default, including its remaining songs. CrowdCue never clears, deletes, or removes a session playlist from the library. The ended-session screen explains how the host can remove it manually using Spotify's three-dot menu. Host history/statistics/leaderboard remain available locally; history includes locked/observed songs, not every waiting playlist entry.
 
@@ -1027,3 +1027,17 @@ interaction; statistics use manual carousel indicators without autoplay.
 Deferred reference components and integration decisions are documented in
 `docs/ui/batch-2/README.md`. These visual adaptations preserve existing API
 contracts, authorization, save behavior and queue locks.
+
+
+### Layout and attribution corrections
+
+CrowdCue branding displays the name without a motto. Decorative wave marks are
+removed from menu and welcome headings. Functional icons are centered within
+controls; shared actions, navigation and disclosures keep visible spacing.
+Ended-party Close party actions sit at the right edge of the summary header.
+Guest and host queues show requester display names for current and upcoming
+songs, use “a guest” when unnamed, and label backup entries “Backup playlist”.
+Display exposes requester display names, never guest identifiers or session
+credentials. The optional playlist description retains host text and ends with
+“Playlist created using CrowdCue by Colin Bertrand”. Migration 011 keeps
+creation recovery metadata in the database instead of the public description.

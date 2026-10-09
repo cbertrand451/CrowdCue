@@ -12,6 +12,8 @@ export type PlaybackProvider = Pick<
   AuthService,
   | 'createPlaylist'
   | 'findPlaylist'
+  | 'matchingPlaylistIds'
+  | 'updatePlaylistDescription'
   | 'backupTracks'
   | 'playlistUris'
   | 'writeItems'
@@ -54,7 +56,7 @@ export class PlaybackService {
   async tick() {
     const parties = (
       await this.store.pool.query<{ party_id: string }>(
-        `SELECT b.party_id FROM party_playback b JOIN parties p ON p.id=b.party_id WHERE NOT b.playlist_removed AND NOT b.completed AND (b.retry_at IS NULL OR b.retry_at<=now()) ORDER BY b.updated_at,b.party_id LIMIT 100`,
+        `SELECT b.party_id FROM party_playback b JOIN parties p ON p.id=b.party_id WHERE NOT b.playlist_removed AND (NOT b.completed OR (b.playlist_id IS NOT NULL AND NOT b.playlist_credit_updated)) AND (b.retry_at IS NULL OR b.retry_at<=now()) ORDER BY b.updated_at,b.party_id LIMIT 100`,
       )
     ).rows;
     for (const p of parties) {
@@ -132,6 +134,11 @@ export class PlaybackService {
     return tracks;
   }
   private async process(client: PoolClient, s: Session) {
+    // Upgrade only the description of known app-created playlists, including recaps.
+    if (s.playlist_id && !s.playlist_credit_updated) {
+      await this.playlists.ensure(client, s);
+      s.playlist_credit_updated = true;
+    }
     let player: Awaited<ReturnType<PlaybackProvider['player']>> = null;
     let observationError: unknown;
     if (s.status === 'ACTIVE') {

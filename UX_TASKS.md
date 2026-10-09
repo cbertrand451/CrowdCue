@@ -82,3 +82,22 @@ clipboard recovery and optional tour dismissal. Chromium at 390, 768 and 1440
 pixels exercises the existing flows plus vote/undo, empty filter results, party
 rules and tour navigation/focus. Browser responses are mocked; no live Spotify
 writes. Database tests require a configured database and are skipped here.
+
+## Layout, attribution and branding corrections
+
+- Move ended-party Close party actions into the right-hand header group.
+- Increase shared control/disclosure spacing and center functional SVG icons.
+- Remove decorative menu/welcome wave marks and the “Good music. Together.” motto.
+- Show requester names on current/upcoming host and guest queues and Display;
+  anonymous guests use “a guest”, backups keep their source label, and unmatched
+  external Spotify songs receive no invented requester.
+- Preserve host playlist description text and add Colin Bertrand’s credit.
+  Migration 011 stores pre-creation playlist matches so shared credit does not
+  cause recovery to adopt an older session. Legacy recovery and description
+  upgrades support already managed playlists, including completed recaps.
+
+Validation includes the full bundled PostgreSQL suite, provider recovery tests,
+queue/Display attribution tests, all standard checks, and Chromium layout checks
+at 390, 768, 1440 and 1920 pixels, plus 1280×720 and 1920×1080 TV checks
+that keep the queue and join QR visible without vertical scrolling. Browser/provider responses are mocked; these
+checks perform no live Spotify mutations.

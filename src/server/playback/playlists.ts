@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { SpotifyMutationError } from '../spotify/playback.js';
-import { recapMarker } from './contracts.js';
+import { recapMarker, sessionPlaylistDescription } from './contracts.js';
 import type { Session } from './store.js';
 import type { PlaybackProvider } from './service.js';
 import { upcoming } from './ordering.js';
@@ -9,13 +9,36 @@ import { upcoming } from './ordering.js';
 export class NightlyPlaylists {
   constructor(private readonly spotify: PlaybackProvider) {}
   async ensure(client: PoolClient, s: Session) {
-    if (s.playlist_id) return s.playlist_id;
-    const marker = `${s.playlist_description ? s.playlist_description + '\n' : ''}${recapMarker(s.party_id)}`;
+    const description = sessionPlaylistDescription(s.playlist_description);
+    const name = (s.playlist_name ?? s.name).slice(0, 100);
+    if (s.playlist_id) {
+      if (!s.playlist_credit_updated) {
+        await this.spotify.updatePlaylistDescription(
+          s.host_account_id,
+          s.playlist_id,
+          description,
+        );
+        await client.query(
+          'UPDATE party_playback SET playlist_credit_updated=true WHERE party_id=$1',
+          [s.party_id],
+        );
+      }
+      return s.playlist_id;
+    }
     if (
       s.playlist_creation === 'CREATING' ||
       s.playlist_creation === 'UNKNOWN'
     ) {
-      const id = await this.spotify.findPlaylist(s.host_account_id, marker);
+      const legacy = s.playlist_creation_baseline === null;
+      const legacyDescription = `${s.playlist_description ? s.playlist_description + '\n' : ''}${recapMarker(s.party_id)}`;
+      const id = legacy
+        ? await this.spotify.findPlaylist(s.host_account_id, legacyDescription)
+        : await this.spotify.findPlaylist(
+            s.host_account_id,
+            description,
+            name,
+            s.playlist_creation_baseline!,
+          );
       if (!id) {
         await client.query(
           "UPDATE party_playback SET playlist_creation='UNKNOWN',error_code='creation_unknown',retry_at=now()+interval '30 seconds' WHERE party_id=$1",
@@ -24,26 +47,32 @@ export class NightlyPlaylists {
         return null;
       }
       await client.query(
-        "UPDATE party_playback SET playlist_id=$2,playlist_creation='READY',error_code=null WHERE party_id=$1",
-        [s.party_id, id],
+        "UPDATE party_playback SET playlist_id=$2,playlist_creation='READY',playlist_credit_updated=$3,error_code=null WHERE party_id=$1",
+        [s.party_id, id, !legacy],
       );
       return id;
     }
-    // Commit the creation marker before issuing the non-idempotent provider request.
+    // Persist matching existing IDs before the non-idempotent create call.
+    // This distinguishes a new session from older playlists with the same credit.
+    const baseline = await this.spotify.matchingPlaylistIds(
+      s.host_account_id,
+      description,
+      name,
+    );
     await client.query(
-      "UPDATE party_playback SET playlist_creation='CREATING' WHERE party_id=$1",
-      [s.party_id],
+      "UPDATE party_playback SET playlist_creation='CREATING',playlist_creation_baseline=$2 WHERE party_id=$1",
+      [s.party_id, baseline],
     );
     let created = false;
     try {
       const id = await this.spotify.createPlaylist(
         s.host_account_id,
-        s.playlist_name ?? s.name,
-        marker,
+        name,
+        description,
       );
       created = true;
       await client.query(
-        "UPDATE party_playback SET playlist_id=$2,playlist_creation='READY' WHERE party_id=$1",
+        "UPDATE party_playback SET playlist_id=$2,playlist_creation='READY',playlist_credit_updated=true WHERE party_id=$1",
         [s.party_id, id],
       );
       return id;

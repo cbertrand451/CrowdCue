@@ -55,12 +55,7 @@ function HostHome() {
   }, []);
   return (
     <main className="host-home">
-      <p className="wordmark">CrowdCue</p>
-      <h1>
-        Good music.
-        <br />
-        Together.
-      </h1>
+      <h1>CrowdCue</h1>
       <p className="intro">Create a party and share it with your guests.</p>
       {status === 'checking' ? (
         <LoadingStatus className="status">Checking connection…</LoadingStatus>

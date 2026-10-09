@@ -120,16 +120,38 @@ export class SpotifyPlayback {
     if (!parsed.success) throw new SpotifyMutationError(true);
     return parsed.data.id;
   }
-  async findPlaylist(token: string, description: string) {
+  async updatePlaylistDescription(
+    token: string,
+    id: string,
+    description: string,
+  ) {
+    idSchema.parse(id);
+    await this.call(`playlists/${id}`, token, 'PUT', { description });
+  }
+  async findPlaylist(
+    token: string,
+    description: string,
+    name?: string,
+    excludedIds: string[] = [],
+  ) {
+    const matches = (
+      await this.matchingPlaylistIds(token, description, name)
+    ).filter((id) => !excludedIds.includes(id));
+    // A shared credit line is not a unique identity. Never adopt an ambiguous result.
+    return matches.length === 1 ? matches[0] : null;
+  }
+  async matchingPlaylistIds(token: string, description: string, name?: string) {
     const owner = z
       .object({ id: z.string() })
       .parse(await this.call('me', token)).id;
+    const matches: string[] = [];
     for (let offset = 0; offset <= 100000; offset += 50) {
       const page = z
         .object({
           items: z.array(
             z.object({
               id: idSchema,
+              name: z.string().optional(),
               owner: z.object({ id: z.string() }),
               description: z.string().nullable(),
               public: z.boolean().nullable(),
@@ -141,14 +163,19 @@ export class SpotifyPlayback {
           await this.call(`me/playlists?limit=50&offset=${offset}`, token),
         );
       if (!page.success) throw new SpotifyError('unavailable');
-      const found = page.data.items.find(
-        (x) =>
-          x.owner.id === owner &&
-          x.public === false &&
-          x.description === description,
+      matches.push(
+        ...page.data.items
+          .filter(
+            (x) =>
+              x.owner.id === owner &&
+              x.public === false &&
+              x.description === description &&
+              (name === undefined || x.name === name),
+          )
+          .map((x) => x.id),
       );
-      if (found) return found.id;
-      if (!page.data.next || !page.data.items.length) return null;
+      if (!page.data.next) return [...new Set(matches)];
+      if (!page.data.items.length) throw new SpotifyError('unavailable');
     }
     throw new SpotifyError('unavailable');
   }

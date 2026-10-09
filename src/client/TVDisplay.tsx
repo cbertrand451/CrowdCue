@@ -153,9 +153,7 @@ export function TVDisplay({ token }: { token: string }) {
   return (
     <main className="tv-display">
       <header className="tv-header">
-        <p className="tv-brand">
-          CrowdCue<span>Good music. Together.</span>
-        </p>
+        <p className="tv-brand">CrowdCue</p>
         <h1>{snapshot?.party.name ?? 'Your party, on screen'}</h1>
         {typeof document.documentElement.requestFullscreen === 'function' && (
           <LoadingButton
@@ -199,6 +197,13 @@ export function TVDisplay({ token }: { token: string }) {
                   <div className="tv-current-details">
                     <h2>{track.title}</h2>
                     <p className="tv-artists">{track.artists.join(', ')}</p>
+                    {now?.source && (
+                      <p className="tv-requester">
+                        {now.source === 'BACKUP'
+                          ? 'Backup playlist'
+                          : `Requested by ${now.requestedBy || 'a guest'}`}
+                      </p>
+                    )}
                     <p className="tv-album">
                       {track.album}
                       {track.explicit ? ' · Explicit' : ''}
@@ -283,6 +288,11 @@ export function TVDisplay({ token }: { token: string }) {
                               : 'Guest request'}
                         </span>
                       </div>
+                      {item.source === 'GUEST' && (
+                        <p className="tv-requester">
+                          Requested by {item.requestedBy || 'a guest'}
+                        </p>
+                      )}
                     </div>
                   </li>
                 ))}

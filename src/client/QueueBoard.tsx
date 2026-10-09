@@ -178,6 +178,11 @@ export function QueueBoard({
                 {snapshot.current.track.title} ·{' '}
                 {snapshot.current.track.artists.join(', ')}
               </p>
+              <p className="muted queue-requester">
+                {snapshot.currentSource === 'BACKUP'
+                  ? 'Backup playlist'
+                  : `Requested by ${snapshot.current.requestedBy || 'a guest'}`}
+              </p>
             </div>
           )}
           <ol
@@ -234,9 +239,11 @@ export function QueueBoard({
                           Math.floor(request.track.durationMs / 1000) % 60,
                         ).padStart(2, '0')}
                       </p>
-                      {source === 'BACKUP' && (
-                        <p className="muted">Backup playlist</p>
-                      )}
+                      <p className="muted queue-requester">
+                        {source === 'BACKUP'
+                          ? 'Backup playlist'
+                          : `Requested by ${request.requestedBy || 'a guest'}`}
+                      </p>
                       {locked && (
                         <p className="ready">
                           Locked ·{' '}

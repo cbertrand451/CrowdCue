@@ -100,7 +100,7 @@ describe.skipIf(!database)('read-only TV display snapshots', () => {
       )
     ).rows[0].id;
   }
-  it('accepts only the display token and exposes no identities, personalized flags, private links, or mutations', async () => {
+  it('accepts only the display token and exposes no identifiers, personalized flags, private links, or mutations', async () => {
     const url = `/api/party-links/display/${token(party.links.display!)}/snapshot`;
     const response = await app.inject({ url });
     expect(response.statusCode).toBe(200);
@@ -128,7 +128,6 @@ describe.skipIf(!database)('read-only TV display snapshots', () => {
       guest,
       token(party.links.admin!),
       token(party.links.display!),
-      'Private guest name',
       'playlistUrl',
       'backupSourceId',
       'hasVoted',
@@ -162,6 +161,7 @@ describe.skipIf(!database)('read-only TV display snapshots', () => {
       track: { title: 'Song g' },
       voteCount: 1,
       source: 'GUEST',
+      requestedBy: 'Private guest name',
       locked: false,
     });
     expect(result.pendingCount).toBe(1);
@@ -234,6 +234,8 @@ describe.skipIf(!database)('read-only TV display snapshots', () => {
     await parties.end(host, token(party.links.admin!));
     expect((await snapshot()).nowPlaying).toEqual({
       state: 'UNKNOWN',
+      source: null,
+      requestedBy: null,
       track: null,
       progressMs: null,
       observedAt: null,
@@ -247,5 +249,56 @@ describe.skipIf(!database)('read-only TV display snapshots', () => {
     });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: 'Party not found.' });
+  });
+  it('includes requester names for queued and matched playing songs without exposing guest IDs', async () => {
+    const playing = await request('a');
+    const next = await request('b');
+    await pool.query(
+      'UPDATE party_playback SET initialized=true WHERE party_id=$1',
+      [party.id],
+    );
+    await pool.query(
+      "INSERT INTO playback_entries(party_id,request_id,source,track,status,locked_at,delivery) VALUES($1,$2,'GUEST',$3,'PLAYING',now(),'SENT'),($1,$4,'GUEST',$5,'LOCKED',now(),'SENT')",
+      [
+        party.id,
+        playing,
+        JSON.stringify(track('a')),
+        next,
+        JSON.stringify(track('b')),
+      ],
+    );
+    await playback.observe(party.id, {
+      is_playing: true,
+      progress_ms: 1000,
+      item: { id: track('a').id, uri: `spotify:track:${track('a').id}` },
+      track: track('a'),
+    });
+    let result = await snapshot();
+    expect(result.nowPlaying).toMatchObject({
+      source: 'GUEST',
+      requestedBy: 'Private guest name',
+    });
+    expect(result.queue[0]).toMatchObject({
+      source: 'GUEST',
+      requestedBy: 'Private guest name',
+    });
+    expect(JSON.stringify(result)).not.toContain(guest);
+    await pool.query('UPDATE guests SET display_name=null WHERE id=$1', [
+      guest,
+    ]);
+    result = await snapshot();
+    expect(result.queue[0].requestedBy).toBeNull();
+    expect(result.nowPlaying.requestedBy).toBeNull();
+    await playback.observe(party.id, {
+      is_playing: true,
+      progress_ms: 1000,
+      item: { id: track('z').id, uri: `spotify:track:${track('z').id}` },
+      track: track('z'),
+    });
+    expect((await snapshot()).nowPlaying).toMatchObject({
+      source: null,
+      requestedBy: null,
+      locked: false,
+    });
   });
 });

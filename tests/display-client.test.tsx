@@ -28,6 +28,8 @@ const state = (): DisplaySnapshot => ({
   },
   nowPlaying: {
     state: 'PLAYING',
+    source: 'GUEST',
+    requestedBy: 'Sam',
     track: track('a'),
     progressMs: 10000,
     observedAt: new Date().toISOString(),
@@ -37,6 +39,7 @@ const state = (): DisplaySnapshot => ({
       position: 1,
       track: track('b'),
       source: 'BACKUP',
+      requestedBy: null,
       locked: true,
       voteCount: 0,
     },
@@ -44,6 +47,7 @@ const state = (): DisplaySnapshot => ({
       position: 2,
       track: track('c'),
       source: 'GUEST',
+      requestedBy: 'Alex',
       locked: false,
       voteCount: 3,
     },
@@ -80,6 +84,9 @@ it('shows observed music separately from locked upcoming songs and exposes only 
   expect(screen.getByRole('heading', { name: 'Song b' })).toBeInTheDocument();
   expect(screen.getByText('Locked')).toBeInTheDocument();
   expect(screen.getByText('3 votes')).toBeInTheDocument();
+  expect(screen.getByText('Requested by Sam')).toBeInTheDocument();
+  expect(screen.getByText('Requested by Alex')).toBeInTheDocument();
+  expect(screen.queryByText('Good music. Together.')).not.toBeInTheDocument();
   expect(
     screen.getByText('1 request awaits host approval.'),
   ).toBeInTheDocument();
@@ -142,6 +149,8 @@ it('handles missing artwork, idle playback, and an ended party without a mislead
   expect(screen.getByText('Last seen on Spotify')).toBeInTheDocument();
   data.nowPlaying = {
     state: 'IDLE',
+    source: null,
+    requestedBy: null,
     track: null,
     observedAt: null,
     progressMs: null,

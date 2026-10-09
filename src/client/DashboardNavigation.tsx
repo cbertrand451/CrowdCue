@@ -34,9 +34,6 @@ export function DashboardNavigation({
     <MotionConfig reducedMotion="user">
       <nav className="dashboard-nav dock" aria-label={label}>
         <div className="nav-heading">
-          <span className="cue-mark" aria-hidden="true">
-            ≋
-          </span>
           <span>{label}</span>
         </div>
         {items.map((item) => (

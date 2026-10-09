@@ -164,9 +164,24 @@ export class AuthService {
       this.spotify.playback.createPlaylist(t, name, marker),
     );
   }
-  findPlaylist(hostId: string, marker: string) {
+  findPlaylist(
+    hostId: string,
+    description: string,
+    name?: string,
+    excludedIds?: string[],
+  ) {
     return this.playbackCall(hostId, (t) =>
-      this.spotify.playback.findPlaylist(t, marker),
+      this.spotify.playback.findPlaylist(t, description, name, excludedIds),
+    );
+  }
+  matchingPlaylistIds(hostId: string, description: string, name: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.matchingPlaylistIds(t, description, name),
+    );
+  }
+  updatePlaylistDescription(hostId: string, id: string, description: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.updatePlaylistDescription(t, id, description),
     );
   }
   backupTracks(hostId: string, id: string, allowExplicit: boolean) {

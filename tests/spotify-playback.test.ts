@@ -294,3 +294,80 @@ it('moves and removes individual occurrences without replacing playlist contents
     ),
   ).toBe(true);
 });
+it('recovers only a unique new owned private playlist, excluding previous matching sessions', async () => {
+  const credit = 'Playlist created using CrowdCue by Colin Bertrand';
+  const older = 'o'.repeat(22),
+    newer = 'n'.repeat(22);
+  const item = (id: string, extra: object = {}) => ({
+    id,
+    name: 'Tonight',
+    description: credit,
+    owner: { id: 'host' },
+    public: false,
+    ...extra,
+  });
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(response({ id: 'host' }))
+    .mockResolvedValueOnce(
+      response({
+        items: [
+          item(older),
+          item(newer),
+          item('x'.repeat(22), { owner: { id: 'someone-else' } }),
+          item('u'.repeat(22), { public: true }),
+          item('w'.repeat(22), { name: 'Other party' }),
+        ],
+        next: null,
+      }),
+    );
+  const api = new SpotifyPlayback(fetcher);
+  expect(
+    await api.findPlaylist('fixture-access', credit, 'Tonight', [older]),
+  ).toBe(newer);
+});
+it('does not pick the first match when playlist recovery is ambiguous across pages', async () => {
+  const credit = 'Credit';
+  const item = (id: string) => ({
+    id,
+    name: 'Tonight',
+    description: credit,
+    owner: { id: 'host' },
+    public: false,
+  });
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(response({ id: 'host' }))
+    .mockResolvedValueOnce(
+      response({ items: [item('a'.repeat(22))], next: 'provider-next' }),
+    )
+    .mockResolvedValueOnce(
+      response({ items: [item('b'.repeat(22))], next: null }),
+    );
+  expect(
+    await new SpotifyPlayback(fetcher).findPlaylist(
+      'fixture-access',
+      credit,
+      'Tonight',
+    ),
+  ).toBeNull();
+  expect(fetcher.mock.calls[2][0]).toBe(
+    'https://api.spotify.com/v1/me/playlists?limit=50&offset=50',
+  );
+});
+it('updates only the description of a known playlist without changing its tracks', async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(null, 204));
+  await new SpotifyPlayback(fetcher).updatePlaylistDescription(
+    'fixture-access',
+    playlist,
+    'Credit',
+  );
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(fetcher.mock.calls[0][0]).toBe(
+    `https://api.spotify.com/v1/playlists/${playlist}`,
+  );
+  expect(fetcher.mock.calls[0][1]?.method).toBe('PUT');
+  expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({
+    description: 'Credit',
+  });
+});

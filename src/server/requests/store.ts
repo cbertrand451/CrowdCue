@@ -443,6 +443,7 @@ export class PostgresRequestStore {
       ).rows[0];
       return {
         current: current ? entryRequest(current, guestId) : null,
+        currentSource: current?.source ?? null,
         items: entries.slice(offset, offset + 50).map((e, i) => ({
           position: offset + i + 1,
           source: e.source,
@@ -467,6 +468,7 @@ export class PostgresRequestStore {
     );
     return {
       current: null,
+      currentSource: null,
       items: result.rows.slice(0, 50).map((row) => ({
         position: row.position,
         source: 'GUEST' as const,

@@ -201,9 +201,6 @@ export function GuestInterface({
         <>
           {party.status === 'ACTIVE' && !ready && (
             <div className="guest-welcome">
-              <span className="cue-mark" aria-hidden="true">
-                ≋
-              </span>
               <p className="label">Your crowd. Your soundtrack.</p>
               <h2>Welcome to {party.name}</h2>
               <p className="muted">

@@ -32,6 +32,14 @@ export const playbackStatusSchema = z.object({
   ended: z.boolean(),
 });
 export type PlaybackStatus = z.infer<typeof playbackStatusSchema>;
+export const playlistCredit =
+  'Playlist created using CrowdCue by Colin Bertrand';
+export function sessionPlaylistDescription(description: string) {
+  return description.trim()
+    ? `${description.trim()}\n\n${playlistCredit}`
+    : playlistCredit;
+}
+// Only used to recover uncertain creations made before the credit migration.
 export const recapMarker = (id: string) =>
   `CrowdCue session ${id}. Managed party playlist.`;
 export const playbackActionSchema = z.discriminatedUnion('action', [

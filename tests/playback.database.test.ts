@@ -154,6 +154,8 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     provider = {
       createPlaylist: vi.fn(async () => createdId),
       findPlaylist: vi.fn(async () => createdId),
+      matchingPlaylistIds: vi.fn(async () => []),
+      updatePlaylistDescription: vi.fn(async () => {}),
       backupTracks: vi.fn(async () => [track('a'), track('b'), track('c')]),
       playlistUris: vi.fn(async () => [...actual]),
       writeItems: vi.fn(async (_host, _id, uris, replace, position) => {
@@ -249,7 +251,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     expect(provider.createPlaylist).toHaveBeenCalledWith(
       host.id,
       'Dance floor',
-      expect.stringContaining('Birthday songs'),
+      'Birthday songs\n\nPlaylist created using CrowdCue by Colin Bertrand',
     );
     expect(actual).toHaveLength(3);
     const q = await requests.adminQueue(host.id, t, 0);
@@ -395,7 +397,12 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     await expect(start(p)).rejects.toBeInstanceOf(SpotifyMutationError);
     await service.tick();
     expect(provider.createPlaylist).toHaveBeenCalledTimes(1);
-    expect(provider.findPlaylist).toHaveBeenCalled();
+    expect(provider.findPlaylist).toHaveBeenCalledWith(
+      host.id,
+      'Playlist created using CrowdCue by Colin Bertrand',
+      expect.any(String),
+      [],
+    );
     expect(actual).toHaveLength(3);
     await addGuests(p, ['g']);
     vi.mocked(provider.writeItems).mockImplementationOnce(
@@ -672,5 +679,71 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     expect(
       (await requests.trackStates(join, guest.token, [first])).tracks[0].played,
     ).toBe(false);
+  });
+  it('persists previous matching playlist IDs before creating and keeps uncertain recovery separate from older sessions', async () => {
+    const p = await create();
+    const old = 'o'.repeat(22);
+    vi.mocked(provider.matchingPlaylistIds).mockResolvedValue([old]);
+    vi.mocked(provider.createPlaylist).mockImplementationOnce(async () => {
+      const state = await store.session(pool, p.id);
+      expect(state.playlist_creation).toBe('CREATING');
+      expect(state.playlist_creation_baseline).toEqual([old]);
+      throw new SpotifyMutationError(true);
+    });
+    await expect(start(p)).rejects.toBeInstanceOf(SpotifyMutationError);
+    vi.mocked(provider.findPlaylist).mockResolvedValueOnce(null);
+    await service.tick();
+    expect(provider.findPlaylist).toHaveBeenCalledWith(
+      host.id,
+      'Playlist created using CrowdCue by Colin Bertrand',
+      expect.any(String),
+      [old],
+    );
+    expect(provider.createPlaylist).toHaveBeenCalledTimes(1);
+    expect((await store.status(host.id, token(p.links.admin!))).creation).toBe(
+      'UNKNOWN',
+    );
+  });
+  it('replaces the legacy credit on completed managed playlists without changing tracks', async () => {
+    const p = await create();
+    await start(p);
+    await parties.end(host.id, token(p.links.admin!));
+    await service.tick();
+    await pool.query(
+      'UPDATE party_playback SET playlist_credit_updated=false WHERE party_id=$1',
+      [p.id],
+    );
+    const before = [...actual];
+    const writes = vi.mocked(provider.writeItems).mock.calls.length;
+    await service.tick();
+    expect(provider.updatePlaylistDescription).toHaveBeenCalledWith(
+      host.id,
+      createdId,
+      'Playlist created using CrowdCue by Colin Bertrand',
+    );
+    expect(actual).toEqual(before);
+    expect(provider.writeItems).toHaveBeenCalledTimes(writes);
+    await service.tick();
+    expect(provider.updatePlaylistDescription).toHaveBeenCalledTimes(1);
+  });
+  it('recovers a legacy uncertain creation using its old marker before updating the credit', async () => {
+    const p = await create();
+    await start(p);
+    await pool.query(
+      "UPDATE party_playback SET playlist_id=null,playlist_creation='UNKNOWN',playlist_creation_baseline=null,playlist_credit_updated=false WHERE party_id=$1",
+      [p.id],
+    );
+    await service.tick();
+    expect(provider.findPlaylist).toHaveBeenCalledWith(
+      host.id,
+      `CrowdCue session ${p.id}. Managed party playlist.`,
+    );
+    await service.tick();
+    expect(provider.updatePlaylistDescription).toHaveBeenCalledWith(
+      host.id,
+      createdId,
+      'Playlist created using CrowdCue by Colin Bertrand',
+    );
+    expect(provider.createPlaylist).toHaveBeenCalledTimes(1);
   });
 });

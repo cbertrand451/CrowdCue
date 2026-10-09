@@ -298,22 +298,25 @@ export function PartyCreation({
           <article key={party.id} className="party-summary">
             <div className="section-heading">
               <h3>{party.name}</h3>
-              <span className={party.status === 'ACTIVE' ? 'ready' : 'muted'}>
-                {party.status === 'ACTIVE' ? 'Active' : 'Ended'}
-              </span>
+              <div className="party-summary-actions">
+                <span className={party.status === 'ACTIVE' ? 'ready' : 'muted'}>
+                  {party.status === 'ACTIVE' ? 'Active' : 'Ended'}
+                </span>
+                {party.status === 'ENDED' && (
+                  <LoadingButton
+                    loading={closing === party.id}
+                    type="button"
+                    className="secondary"
+                    disabled={!!closing}
+                    aria-label={`Close ${party.name}`}
+                    onClick={() => void closeParty(party.id)}
+                  >
+                    {closing === party.id ? 'Closing…' : 'Close party'}
+                  </LoadingButton>
+                )}
+              </div>
             </div>
-            {party.status === 'ENDED' && (
-              <LoadingButton
-                loading={closing === party.id}
-                type="button"
-                className="secondary"
-                disabled={!!closing}
-                aria-label={`Close ${party.name}`}
-                onClick={() => void closeParty(party.id)}
-              >
-                {closing === party.id ? 'Closing…' : 'Close party'}
-              </LoadingButton>
-            )}
+
             <PartyLinks
               links={party.links}
               active={party.status === 'ACTIVE'}

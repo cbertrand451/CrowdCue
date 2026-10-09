@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { QueueBoard } from '../src/client/QueueBoard';
@@ -71,6 +72,7 @@ it('renders server ordering and polls new positions, aborting when unmounted', a
     'First song',
   ]);
   expect(screen.getByLabelText('Queue position 1')).toBeVisible();
+  expect(screen.getAllByText('Requested by Alex')).toHaveLength(2);
   unmount();
   expect(fetcher.mock.calls[0][1].signal.aborted).toBe(true);
   await vi.advanceTimersByTimeAsync(10000);
@@ -228,3 +230,26 @@ it('reports stale actions, clears an expired host queue, and aborts pending chan
   unmount();
   expect(signal.aborted).toBe(true);
 });
+
+it.each(['GUEST', 'BACKUP'] as const)(
+  'shows the current song requester or %s source without inventing a name',
+  async (source) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        reply({
+          ...snapshot(),
+          current: { ...song('Playing song'), requestedBy: null },
+          currentSource: source,
+        }),
+      ),
+    );
+    render(<QueueBoard role="guest" token={'g'.repeat(43)} />);
+    await act(async () => {});
+    expect(
+      within(screen.getByLabelText('Current song')).getByText(
+        source === 'BACKUP' ? 'Backup playlist' : 'Requested by a guest',
+      ),
+    ).toBeInTheDocument();
+  },
+);

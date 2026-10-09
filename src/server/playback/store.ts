@@ -36,6 +36,8 @@ export interface Session {
   name: string;
   playlist_name: string | null;
   playlist_description: string;
+  playlist_creation_baseline: string[] | null;
+  playlist_credit_updated: boolean;
   backup_source_id: string | null;
   backup_tracks: SearchResult['tracks'];
   allow_explicit_tracks: boolean;

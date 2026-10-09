@@ -9,6 +9,8 @@ export const displaySnapshotSchema = z.object({
   }),
   nowPlaying: z.object({
     locked: z.boolean().optional(),
+    source: z.enum(['GUEST', 'BACKUP']).nullable().default(null),
+    requestedBy: z.string().nullable().default(null),
     state: z.enum(['UNKNOWN', 'PLAYING', 'PAUSED', 'IDLE', 'UNAVAILABLE']),
     track: trackSchema.nullable(),
     progressMs: z.number().int().nonnegative().nullable(),
@@ -20,6 +22,7 @@ export const displaySnapshotSchema = z.object({
         position: z.number().int().positive(),
         track: trackSchema,
         source: z.enum(['GUEST', 'BACKUP']),
+        requestedBy: z.string().nullable().default(null),
         locked: z.boolean(),
         voteCount: z.number().int().nonnegative(),
       }),

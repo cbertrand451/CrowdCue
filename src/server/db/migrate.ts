@@ -16,6 +16,8 @@ import { sessionPlaylistSchema } from './migrations/009-session-playlist.js';
 
 import { partyCloseSchema } from './migrations/010-party-close.js';
 
+import { playlistCreditSchema } from './migrations/011-playlist-credit.js';
+
 const migrations = [
   { version: 1, name: 'initial', sql: initialSchema },
   { version: 2, name: 'spotify-auth', sql: spotifyAuthSchema },
@@ -27,6 +29,7 @@ const migrations = [
   { version: 8, name: 'event-history', sql: eventHistorySchema },
   { version: 9, name: 'session-playlist', sql: sessionPlaylistSchema },
   { version: 10, name: 'party-close', sql: partyCloseSchema },
+  { version: 11, name: 'playlist-credit', sql: playlistCreditSchema },
 ];
 
 export async function migrate(pool: pg.Pool) {
