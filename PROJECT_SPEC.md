@@ -1041,3 +1041,18 @@ Display exposes requester display names, never guest identifiers or session
 credentials. The optional playlist description retains host text and ends with
 “Playlist created using CrowdCue by Colin Bertrand”. Migration 011 keeps
 creation recovery metadata in the database instead of the public description.
+
+
+### Reference palette and invitation layout
+
+The shared UI uses #353535 page backgrounds, #000000 card surfaces, #ffffff
+card text, #65b32e green accents with #000000 foregrounds, and #bfbfbf secondary
+controls/muted text. The CSS theme tokens apply across host, guest and Display
+screens; QR codes retain black/white encoding. Green buttons, selected menus and
+confirmed votes use black text in normal and hover states.
+
+The Session setup disclosure has no inherited section padding above its header;
+its title, chevron, progress bars and completion count align vertically in the
+same row. Guest invitations group the QR code, instructions, share URL, copy
+confirmation, role links and host reminder inside a black card. Desktop uses
+QR/details columns; smaller screens stack them, with long links wrapping.

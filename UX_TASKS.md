@@ -30,7 +30,7 @@ Live Spotify playback cache behavior requires host acceptance testing; automated
 ## Shared animated loading feedback
 
 Adapted the supplied SaveToggle into `src/client/LoadingButton.tsx`, using
-React, TypeScript, Motion and the existing dark-green/pale-green CSS palette.
+React, TypeScript, Motion and the shared CSS theme tokens (updated to the reference palette below).
 Async buttons morph into a circular spinner while their actual operation is
 pending. Confirmed song requests, settings saves and clipboard copies support
 checkmark feedback. Initial loads and search use the matching passive spinner;
@@ -101,3 +101,21 @@ queue/Display attribution tests, all standard checks, and Chromium layout checks
 at 390, 768, 1440 and 1920 pixels, plus 1280×720 and 1920×1080 TV checks
 that keep the queue and join QR visible without vertical scrolling. Browser/provider responses are mocked; these
 checks perform no live Spotify mutations.
+
+## Reference palette and invitation card
+
+Replaced the previous green-tinted background/pale accent with the supplied
+reference scheme: #353535 page, black cards, #65b32e accents, white card text,
+black accent-button text, and #bfbfbf secondary controls/muted text. Removed
+remaining hard-coded old colors from shared CSS. Corrected the copy-confirm
+selector specificity that allowed white text on its green background, including
+hover/loading states. Setup headers now override general section top padding
+and center the chevron, title, progress and count.
+
+PartyLinks is a responsive invitation card grouping QR, instructions, share
+URL, copy action, role links and reminder. The QR encoding and existing actions
+remain intact. Chromium checks at 390, 768 and 1440 pixels verify actual palette
+values, black copy-button text in normal/hover states, setup vertical alignment,
+card backgrounds and no horizontal overflow alongside existing interaction
+flows. Standard formatting/lint/type/test/build checks pass. No backend or
+migration changes are needed for this visual update.
