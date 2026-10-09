@@ -16,7 +16,10 @@ it('confirms the API is running', async () => {
       .mockResolvedValue({ ok: true, json: async () => ({ status: 'ok' }) }),
   );
   render(<App />);
-  expect(screen.getByRole('status')).toHaveTextContent('Checking connection');
+  expect(screen.getByText('Checking connection…')).toHaveAttribute(
+    'role',
+    'status',
+  );
   expect(await screen.findByText('CrowdCue is running.')).toBeInTheDocument();
 });
 it('shows an actionable connection failure', async () => {

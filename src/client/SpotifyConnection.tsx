@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { authorizationStartSchema } from '../server/auth/contracts.js';
 import { z } from 'zod';
@@ -137,7 +138,7 @@ export function SpotifyConnection({
           </button>
         </>
       ) : !connection ? (
-        <p aria-live="polite">Checking Spotify connection…</p>
+        <LoadingStatus>Checking Spotify connection…</LoadingStatus>
       ) : !connection.enabled ? (
         <>
           <p>Spotify connection is not available yet.</p>
@@ -160,24 +161,29 @@ export function SpotifyConnection({
               action="/api/auth/spotify/login"
               onSubmit={(event) => void connect(event)}
             >
-              <button type="submit" disabled={connecting}>
+              <LoadingButton
+                loading={connecting}
+                type="submit"
+                disabled={connecting}
+              >
                 {connecting
                   ? 'Connecting…'
                   : connection.authenticated
                     ? 'Reconnect Spotify'
                     : 'Connect Spotify'}
-              </button>
+              </LoadingButton>
             </form>
           )}
           {connection.authenticated && (
-            <button
+            <LoadingButton
+              loading={signingOut}
               type="button"
               className="secondary"
               disabled={signingOut}
               onClick={() => void signOut()}
             >
               {signingOut ? 'Signing out…' : 'Sign out'}
-            </button>
+            </LoadingButton>
           )}
         </>
       )}

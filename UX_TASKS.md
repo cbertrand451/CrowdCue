@@ -26,3 +26,24 @@ Passed:
 Migration 010 must be applied before running the updated app; the existing local and cloud launchers apply it automatically. Implementation is committed locally; production has not been deployed from this task.
 
 Live Spotify playback cache behavior requires host acceptance testing; automated tests never write to a live Spotify account.
+
+## Shared animated loading feedback
+
+Adapted the supplied SaveToggle into `src/client/LoadingButton.tsx`, using
+React, TypeScript, Motion and the existing dark-green/pale-green CSS palette.
+Async buttons morph into a circular spinner while their actual operation is
+pending. Confirmed song requests, settings saves and clipboard copies support
+checkmark feedback. Initial loads and search use the matching passive spinner;
+background polling does not repeatedly animate the controls.
+
+The original example is preserved in `docs/ui/loading-button.reference.txt`.
+Its simulated timers and separate theme dependencies are replaced by real
+operation state and shared CSS colors. Keyboard focus, accessible labels,
+disabled controls, failure recovery and reduced motion are preserved.
+
+Validation: `npm run check` passed (129 tests passed; 67 database tests skipped
+without a configured test database). Additional shared-component tests cover
+pending clicks, explicit success, form semantics and passive status feedback.
+The production build reports a JavaScript chunk-size advisory. Browser visual
+acceptance of this animation remains pending; earlier Chromium results above
+describe the previous UI milestone.

@@ -1,3 +1,4 @@
+import { LoadingButton } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
 import { LeaderboardPanel } from './LeaderboardPanel';
 import { PartyStatisticsPanel } from './PartyStatisticsPanel';
@@ -264,9 +265,13 @@ export function AdminDashboard({
                   songs are locked for everyone; all later guest songs can be
                   reordered.
                 </p>
-                <button type="submit">
+                <LoadingButton
+                  loading={busy}
+                  succeeded={feedback === 'Settings saved.'}
+                  type="submit"
+                >
                   {busy ? 'Saving…' : 'Save settings'}
-                </button>
+                </LoadingButton>
               </fieldset>
             </form>
             {feedback && (
@@ -287,13 +292,14 @@ export function AdminDashboard({
                 <div>
                   <p>End this party? You cannot reopen it.</p>
                   <div className="party-actions">
-                    <button
+                    <LoadingButton
+                      loading={busy}
                       disabled={busy}
                       type="button"
                       onClick={() => void mutate('end')}
                     >
                       {busy ? 'Ending…' : 'Confirm end party'}
-                    </button>
+                    </LoadingButton>
                     <button
                       disabled={busy}
                       type="button"

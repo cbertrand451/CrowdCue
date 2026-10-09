@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { z } from 'zod';
 import { useLiveRevision } from './realtime';
 import { Modal } from './Modal';
@@ -269,18 +270,19 @@ export function SongSearch({
       {!allowExplicit && (
         <p className="muted">Explicit songs are hidden for this party.</p>
       )}
-      {loading && <p role="status">Searching Spotify…</p>}
+      {loading && <LoadingStatus>Searching Spotify…</LoadingStatus>}
       {error && (
         <div role="alert">
           <p>{error}</p>
-          <button
+          <LoadingButton
+            loading={loading}
             type="button"
             className="secondary"
             disabled={loading}
             onClick={() => setAttempt((value) => value + 1)}
           >
             Retry search
-          </button>
+          </LoadingButton>
         </div>
       )}
       {searched && !loading && visibleTracks.length === 0 && !error && (
@@ -324,7 +326,9 @@ export function SongSearch({
                     {track.explicit ? ' · Explicit' : ''}
                   </p>
                 </div>
-                <button
+                <LoadingButton
+                  loading={requestBusy === track.id}
+                  succeeded={!!states[track.id]?.requested}
                   type="button"
                   className={
                     states[track.id]?.requested
@@ -339,21 +343,22 @@ export function SongSearch({
                     : states[track.id]?.requested
                       ? 'Song Requested'
                       : 'Request song'}
-                </button>
+                </LoadingButton>
               </li>
             ))}
           </ul>
         </>
       )}
       {nextOffset !== null && (
-        <button
+        <LoadingButton
+          loading={loading}
           type="button"
           className="secondary"
           disabled={loading}
           onClick={() => setOffset(nextOffset)}
         >
           Load more songs
-        </button>
+        </LoadingButton>
       )}
       {requestFeedback && (
         <p role="status" className="ready">
@@ -368,13 +373,14 @@ export function SongSearch({
           }}
         >
           <p>{playedRepeatTrack.title}</p>
-          <button
+          <LoadingButton
+            loading={!!requestBusy}
             type="button"
             disabled={!!requestBusy}
             onClick={() => void requestSong(playedRepeatTrack.id, true)}
           >
             Yes
-          </button>
+          </LoadingButton>
           <button
             type="button"
             className="secondary"

@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useEffect, useState } from 'react';
 import {
   leaderboardSchema,
@@ -64,7 +65,8 @@ export function LeaderboardPanel({
     <section aria-label="Party leaderboard" className="request-board">
       <div className="section-heading">
         <h2>Guest leaderboard</h2>
-        <button
+        <LoadingButton
+          loading={refreshBusy}
           type="button"
           className="secondary"
           disabled={refreshBusy}
@@ -74,15 +76,8 @@ export function LeaderboardPanel({
             setAttempt((v) => v + 1);
           }}
         >
-          {refreshBusy ? (
-            <>
-              <span className="loading-spinner" aria-hidden="true" />
-              Refreshing…
-            </>
-          ) : (
-            'Refresh leaderboard'
-          )}
-        </button>
+          {refreshBusy ? <>Refreshing…</> : 'Refresh leaderboard'}
+        </LoadingButton>
       </div>
       <p className="muted">
         Earn 5 points when your song is observed playing, plus 1 point for each
@@ -91,7 +86,9 @@ export function LeaderboardPanel({
         Removing a vote removes its point.
       </p>
       {error && <p role="alert">{error}</p>}
-      {!leaderboard && !error && <p role="status">Loading leaderboard…</p>}
+      {!leaderboard && !error && (
+        <LoadingStatus>Loading leaderboard…</LoadingStatus>
+      )}
       {leaderboard && (
         <>
           {leaderboard.status === 'ENDED' && (

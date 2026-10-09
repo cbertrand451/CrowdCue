@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useLiveRevision } from './realtime';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -24,7 +25,7 @@ export function QueueBoard({
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const mutation = useRef<AbortController | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<QueueAction>();
   const [actionError, setActionError] = useState<string>();
   useEffect(
     () => () => {
@@ -36,7 +37,7 @@ export function QueueBoard({
     if (mutation.current) return;
     const controller = new AbortController();
     mutation.current = controller;
-    setBusy(true);
+    setBusy(action);
     setActionError(undefined);
     try {
       const response = await fetch(
@@ -73,7 +74,7 @@ export function QueueBoard({
         );
     } finally {
       if (mutation.current === controller) mutation.current = null;
-      if (!controller.signal.aborted) setBusy(false);
+      if (!controller.signal.aborted) setBusy(undefined);
     }
   }
   const [error, setError] = useState<string>();
@@ -117,7 +118,8 @@ export function QueueBoard({
     <section className="request-board" aria-label="CrowdCue queue">
       <div className="section-heading">
         <h2>CrowdCue queue</h2>
-        <button
+        <LoadingButton
+          loading={refreshBusy}
           type="button"
           className="secondary"
           disabled={refreshBusy}
@@ -127,19 +129,12 @@ export function QueueBoard({
             setAttempt((v) => v + 1);
           }}
         >
-          {refreshBusy ? (
-            <>
-              <span className="loading-spinner" aria-hidden="true" />
-              Refreshing…
-            </>
-          ) : (
-            'Refresh queue'
-          )}
-        </button>
+          {refreshBusy ? <>Refreshing…</> : 'Refresh queue'}
+        </LoadingButton>
       </div>
       {actionError && <p role="alert">{actionError}</p>}
       {error && <p role="alert">{error}</p>}
-      {!snapshot && !error && <p role="status">Loading queue…</p>}
+      {!snapshot && !error && <LoadingStatus>Loading queue…</LoadingStatus>}
       {snapshot && (
         <>
           <p className="muted">
@@ -152,16 +147,17 @@ export function QueueBoard({
           {role === 'admin' &&
             snapshot.hostOrdered &&
             snapshot.status === 'ACTIVE' && (
-              <button
+              <LoadingButton
+                loading={busy?.action === 'reset'}
                 type="button"
                 className="secondary"
-                disabled={busy}
+                disabled={!!busy}
                 onClick={() => void control({ action: 'reset' })}
               >
                 {snapshot.votingEnabled
                   ? 'Restore vote order'
                   : 'Restore request order'}
-              </button>
+              </LoadingButton>
             )}
           {snapshot.status === 'ENDED' && (
             <p className="muted">
@@ -261,10 +257,15 @@ export function QueueBoard({
                       snapshot.status === 'ACTIVE' &&
                       !locked && (
                         <div className="queue-controls">
-                          <button
+                          <LoadingButton
+                            loading={
+                              busy?.action === 'move' &&
+                              busy.requestId === request.id &&
+                              busy.direction === 'up'
+                            }
                             type="button"
                             className="secondary"
-                            disabled={busy || !before}
+                            disabled={!!busy || !before}
                             aria-label={`Move ${request.track.title} up`}
                             onClick={() =>
                               before &&
@@ -277,11 +278,16 @@ export function QueueBoard({
                             }
                           >
                             Move up
-                          </button>
-                          <button
+                          </LoadingButton>
+                          <LoadingButton
+                            loading={
+                              busy?.action === 'move' &&
+                              busy.requestId === request.id &&
+                              busy.direction === 'down'
+                            }
                             type="button"
                             className="secondary"
-                            disabled={busy || !after}
+                            disabled={!!busy || !after}
                             aria-label={`Move ${request.track.title} down`}
                             onClick={() =>
                               after &&
@@ -294,7 +300,7 @@ export function QueueBoard({
                             }
                           >
                             Move down
-                          </button>
+                          </LoadingButton>
                         </div>
                       )}
                   </li>
@@ -304,22 +310,32 @@ export function QueueBoard({
           </ol>
           <div className="party-actions">
             {offset > 0 && (
-              <button
+              <LoadingButton
+                loading={refreshBusy}
+                disabled={refreshBusy}
                 type="button"
                 className="secondary"
-                onClick={() => setOffset(Math.max(0, offset - 50))}
+                onClick={() => {
+                  setRefreshBusy(true);
+                  setOffset(Math.max(0, offset - 50));
+                }}
               >
                 Previous queue page
-              </button>
+              </LoadingButton>
             )}
             {snapshot.nextOffset !== null && (
-              <button
+              <LoadingButton
+                loading={refreshBusy}
+                disabled={refreshBusy}
                 type="button"
                 className="secondary"
-                onClick={() => setOffset(snapshot.nextOffset!)}
+                onClick={() => {
+                  setRefreshBusy(true);
+                  setOffset(snapshot.nextOffset!);
+                }}
               >
                 Next queue page
-              </button>
+              </LoadingButton>
             )}
           </div>
         </>

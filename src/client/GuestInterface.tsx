@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
 import { Modal } from './Modal';
 import { LeaderboardPanel } from './LeaderboardPanel';
@@ -160,9 +161,9 @@ export function GuestInterface({
           onChange={(event) => setName(event.target.value)}
         />
         <div className="party-actions">
-          <button type="submit">
+          <LoadingButton loading={busy} type="submit">
             {busy ? 'Saving…' : editing ? 'Update' : 'Join party'}
-          </button>
+          </LoadingButton>
           {editing ? (
             <button
               type="button"
@@ -176,13 +177,14 @@ export function GuestInterface({
             </button>
           ) : (
             !party.settings.requireGuestNames && (
-              <button
+              <LoadingButton
+                loading={busy}
                 type="button"
                 className="secondary"
                 onClick={(event) => void join(event, true)}
               >
                 Continue as guest
-              </button>
+              </LoadingButton>
             )
           )}
         </div>
@@ -192,7 +194,7 @@ export function GuestInterface({
   return (
     <section className="guest-interface" aria-label="Guest access">
       {loading ? (
-        <p role="status">Checking your guest session…</p>
+        <LoadingStatus>Checking your guest session…</LoadingStatus>
       ) : (
         <>
           {party.status === 'ACTIVE' && !ready && (
@@ -350,14 +352,19 @@ export function GuestInterface({
       {error && !editing && (
         <div role="alert">
           <p>{error}</p>
-          <button
+          <LoadingButton
+            loading={loading}
+            loadingLabel="Checking guest session…"
             type="button"
             className="secondary"
             disabled={busy || loading}
-            onClick={() => setAttempt((v) => v + 1)}
+            onClick={() => {
+              setLoading(true);
+              setAttempt((v) => v + 1);
+            }}
           >
             Check session again
-          </button>
+          </LoadingButton>
         </div>
       )}
     </section>

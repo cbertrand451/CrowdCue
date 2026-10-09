@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useLiveRevision } from './realtime';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -41,7 +42,7 @@ export function PlaybackPanel({
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string>();
   const [playlistName, setPlaylistName] = useState('');
   const [description, setDescription] = useState('');
   const [recreate, setRecreate] = useState(false);
@@ -88,10 +89,15 @@ export function PlaybackPanel({
       clearTimeout(timer);
     };
   }, [token, active, refresh, attempt, onExpired, liveRevision]);
-  async function action(body: unknown) {
+  async function action(body: {
+    action: string;
+    name?: string;
+    description?: string;
+    confirm?: boolean;
+  }) {
     if (pending.current) return;
     pending.current = true;
-    setBusy(true);
+    setBusy(body.action);
     setActionError(undefined);
     const c = mutation.current;
     try {
@@ -130,7 +136,7 @@ export function PlaybackPanel({
         );
     } finally {
       pending.current = false;
-      if (!c?.signal.aborted) setBusy(false);
+      if (!c?.signal.aborted) setBusy(undefined);
     }
   }
   return (
@@ -140,7 +146,8 @@ export function PlaybackPanel({
     >
       <div className="section-heading">
         <h2>{active ? 'Spotify session' : 'Session summary'}</h2>
-        <button
+        <LoadingButton
+          loading={refreshBusy}
           type="button"
           className="secondary"
           disabled={refreshBusy}
@@ -150,24 +157,14 @@ export function PlaybackPanel({
             setAttempt((v) => v + 1);
           }}
         >
-          {refreshBusy ? (
-            <>
-              <span className="loading-spinner" aria-hidden="true" />
-              Refreshing…
-            </>
-          ) : (
-            'Refresh Spotify status'
-          )}
-        </button>
+          {refreshBusy ? <>Refreshing…</> : 'Refresh Spotify status'}
+        </LoadingButton>
       </div>
-      {busy && (
-        <p role="status">
-          <span className="loading-spinner" aria-hidden="true" />
-          Updating Spotify session…
-        </p>
-      )}
+      {busy && <LoadingStatus>Updating Spotify session…</LoadingStatus>}
       {(actionError || error) && <p role="alert">{actionError ?? error}</p>}
-      {!status && !error && <p role="status">Loading Spotify session…</p>}
+      {!status && !error && (
+        <LoadingStatus>Loading Spotify session…</LoadingStatus>
+      )}
       {status && (
         <>
           {active && status.enabled && (
@@ -237,14 +234,15 @@ export function PlaybackPanel({
                   : 'No usable backup songs loaded. Check the playlist after saving its link in settings.'}
               </p>
               {active && (
-                <button
+                <LoadingButton
+                  loading={busy === 'refresh-backup'}
                   type="button"
                   className="secondary"
-                  disabled={busy}
+                  disabled={!!busy}
                   onClick={() => void action({ action: 'refresh-backup' })}
                 >
                   Check / refresh backup playlist
-                </button>
+                </LoadingButton>
               )}
               <p className="muted">
                 Refresh uses updated playlist contents for future refills.
@@ -284,9 +282,10 @@ export function PlaybackPanel({
                       onChange={(e) => setDescription(e.target.value)}
                     />
                   </label>
-                  <button
+                  <LoadingButton
+                    loading={busy === 'start'}
                     type="button"
-                    disabled={busy}
+                    disabled={!!busy}
                     onClick={() =>
                       void action({
                         action: 'start',
@@ -298,18 +297,19 @@ export function PlaybackPanel({
                     }
                   >
                     Start session
-                  </button>
+                  </LoadingButton>
                 </>
               )}
               {status.error && (
-                <button
+                <LoadingButton
+                  loading={busy === 'retry'}
                   type="button"
                   className="secondary"
-                  disabled={busy}
+                  disabled={!!busy}
                   onClick={() => void action({ action: 'retry' })}
                 >
                   Retry Spotify sync
-                </button>
+                </LoadingButton>
               )}
               {status.error && (
                 <p className="muted">
@@ -332,15 +332,16 @@ export function PlaybackPanel({
                     />
                     Create a replacement playlist
                   </label>
-                  <button
+                  <LoadingButton
+                    loading={busy === 'recreate'}
                     type="button"
-                    disabled={busy || !recreate}
+                    disabled={!!busy || !recreate}
                     onClick={() =>
                       void action({ action: 'recreate', confirm: true })
                     }
                   >
                     Confirm replacement
-                  </button>
+                  </LoadingButton>
                 </>
               )}
             </>

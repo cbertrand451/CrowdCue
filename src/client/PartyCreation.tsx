@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import {
@@ -265,9 +266,9 @@ export function PartyCreation({
                 Allow explicit songs
               </label>
             </div>
-            <button type="submit">
+            <LoadingButton loading={creating} type="submit">
               {creating ? 'Creating party…' : 'Create party'}
-            </button>
+            </LoadingButton>
           </fieldset>
         </form>
         {creationError && (
@@ -284,7 +285,8 @@ export function PartyCreation({
       <div className="party-list" hidden={view === 'create'}>
         <div className="section-heading">
           <h2>Your parties</h2>
-          <button
+          <LoadingButton
+            loading={loading}
             type="button"
             className="secondary"
             disabled={loading}
@@ -293,18 +295,11 @@ export function PartyCreation({
               setListAttempt((value) => value + 1);
             }}
           >
-            {loading ? (
-              <>
-                <span className="loading-spinner" aria-hidden="true" />
-                Refreshing…
-              </>
-            ) : (
-              'Refresh parties'
-            )}
-          </button>
+            {loading ? <>Refreshing…</> : 'Refresh parties'}
+          </LoadingButton>
         </div>
         {closeError && <p role="alert">{closeError}</p>}
-        {loading && <p aria-live="polite">Loading your parties…</p>}
+        {loading && <LoadingStatus>Loading your parties…</LoadingStatus>}
         {listError && (
           <p role="alert">
             Unable to load your parties. Try refreshing the list.
@@ -322,7 +317,8 @@ export function PartyCreation({
               </span>
             </div>
             {party.status === 'ENDED' && (
-              <button
+              <LoadingButton
+                loading={closing === party.id}
                 type="button"
                 className="secondary"
                 disabled={!!closing}
@@ -330,7 +326,7 @@ export function PartyCreation({
                 onClick={() => void closeParty(party.id)}
               >
                 {closing === party.id ? 'Closing…' : 'Close party'}
-              </button>
+              </LoadingButton>
             )}
             <PartyLinks
               links={party.links}
@@ -339,14 +335,15 @@ export function PartyCreation({
           </article>
         ))}
         {nextOffset !== null && (
-          <button
+          <LoadingButton
+            loading={loadingMore}
             type="button"
             className="secondary"
             disabled={loadingMore}
             onClick={() => void loadMore()}
           >
             {loadingMore ? 'Loading…' : 'Load older parties'}
-          </button>
+          </LoadingButton>
         )}
       </div>
     </section>

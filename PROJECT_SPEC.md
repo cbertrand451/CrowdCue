@@ -562,6 +562,27 @@ The frontend should provide clear:
 
 Avoid interfaces that silently fail.
 
+## Shared Loading Feedback
+
+Use the user-provided animated button in `docs/ui/loading-button.reference.txt`
+as the visual reference for loading tasks throughout the app. The reference is
+preserved as supplied; the reusable implementation lives in
+`src/client/LoadingButton.tsx` and uses React, TypeScript, Motion, and plain CSS.
+
+- For asynchronous button actions, use its button-to-circle spinner transition,
+  followed by a checkmark and an action-specific completion label on success.
+- For loading tasks without a button, reuse the same spinner treatment without
+  introducing an extra clickable control.
+- Use the app's existing theme colors for backgrounds, borders, text, spinner,
+  and success feedback. Replace the reference's hard-coded colors with the
+  actual theme tokens; do not introduce a separate palette.
+- Drive pending and success states from the real operation, replacing the
+  reference's simulated loading timers. Show success only after confirmation.
+- Prevent duplicate submissions while pending, and handle failure with clear
+  error feedback and a usable retry action.
+- Preserve visible keyboard focus, accessible action labels and loading status,
+  reduced-motion support, and space for action-specific labels.
+
 ---
 
 # 23. Design Direction

@@ -71,12 +71,25 @@ it('submits only track IDs, blocks double submission, and reuses the request key
   });
   await screen.findByRole('button', { name: 'Request song' });
   fireEvent.click(screen.getByRole('button', { name: 'Request song' }));
+  expect(screen.getByRole('button', { name: 'Requesting…' })).toHaveAttribute(
+    'data-state',
+    'loading',
+  );
+  expect(screen.getByRole('button', { name: 'Requesting…' })).toHaveAttribute(
+    'aria-busy',
+    'true',
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Requesting…' }));
   expect(posts).toBe(1);
   await act(async () => {
     resolve(reply({ error: 'Try again' }, 503));
     await pending;
   });
+  expect(screen.getByRole('button', { name: 'Request song' })).toHaveAttribute(
+    'data-state',
+    'idle',
+  );
+  expect(screen.getByRole('button', { name: 'Request song' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Request song' }));
   await screen.findByText('Request sent for host approval.');
   const submissions = fetcher.mock.calls.filter(
@@ -90,6 +103,9 @@ it('submits only track IDs, blocks double submission, and reuses the request key
   expect(submissions[0][1]!.headers).toEqual(submissions[1][1]!.headers);
   expect(onRequested).toHaveBeenCalledOnce();
   expect(screen.getByRole('button', { name: 'Song Requested' })).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: 'Song Requested' }),
+  ).toHaveAttribute('data-state', 'saved');
 });
 it('shows request status and lets the host approve, reject, or remove supported requests', async () => {
   let status = 'REQUESTED';

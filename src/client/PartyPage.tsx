@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { TVDisplay } from './TVDisplay';
 import { LiveRevision, usePartyRealtime } from './realtime';
 import { useCallback, useEffect, useState } from 'react';
@@ -102,7 +103,8 @@ function RolePage({ role, token }: { role: 'guest' | 'admin'; token: string }) {
         {error && (
           <div role="alert">
             <p>{error}</p>
-            <button
+            <LoadingButton
+              loading={retryBusy}
               type="button"
               className="secondary"
               disabled={retryBusy}
@@ -112,10 +114,10 @@ function RolePage({ role, token }: { role: 'guest' | 'admin'; token: string }) {
               }}
             >
               {retryBusy ? 'Loading…' : 'Try again'}
-            </button>
+            </LoadingButton>
           </div>
         )}
-        {!party && !error && <p aria-live="polite">Loading party…</p>}
+        {!party && !error && <LoadingStatus>Loading party…</LoadingStatus>}
         {party && (
           <>
             <p className="label">

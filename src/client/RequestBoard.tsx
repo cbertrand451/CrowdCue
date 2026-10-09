@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useLiveRevision } from './realtime';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -39,6 +40,7 @@ export function RequestBoard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string>();
+  const [busyAction, setBusyAction] = useState<boolean | string>();
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const mutation = useRef<AbortController | null>(null);
@@ -95,6 +97,7 @@ export function RequestBoard({
     if (pending.current) return;
     pending.current = true;
     setBusy(id);
+    setBusyAction(action);
     setError(undefined);
     const controller = mutation.current;
     try {
@@ -148,7 +151,8 @@ export function RequestBoard({
     >
       <div className="section-heading">
         <h2>Song requests</h2>
-        <button
+        <LoadingButton
+          loading={refreshBusy}
           type="button"
           className="secondary"
           disabled={refreshBusy}
@@ -158,17 +162,10 @@ export function RequestBoard({
             setAttempt((v) => v + 1);
           }}
         >
-          {refreshBusy ? (
-            <>
-              <span className="loading-spinner" aria-hidden="true" />
-              Refreshing…
-            </>
-          ) : (
-            'Refresh requests'
-          )}
-        </button>
+          {refreshBusy ? <>Refreshing…</> : 'Refresh requests'}
+        </LoadingButton>
       </div>
-      {loading && <p role="status">Loading requests…</p>}
+      {loading && <LoadingStatus>Loading requests…</LoadingStatus>}
       {error && <p role="alert">{error}</p>}
       {!loading && !error && requests.length === 0 && (
         <p>
@@ -232,7 +229,10 @@ export function RequestBoard({
                 !request.isOwn &&
                 !request.locked &&
                 ['REQUESTED', 'APPROVED'].includes(request.status) && (
-                  <button
+                  <LoadingButton
+                    loading={
+                      busy === request.id && typeof busyAction === 'boolean'
+                    }
                     type="button"
                     className="secondary"
                     aria-pressed={request.hasVoted}
@@ -244,7 +244,7 @@ export function RequestBoard({
                       : request.hasVoted
                         ? 'Remove vote'
                         : 'Vote'}
-                  </button>
+                  </LoadingButton>
                 )}
               {role === 'admin' &&
                 active &&
@@ -252,30 +252,35 @@ export function RequestBoard({
                 ['REQUESTED', 'APPROVED'].includes(request.status) && (
                   <div className="party-actions">
                     {request.status === 'REQUESTED' && (
-                      <button
+                      <LoadingButton
+                        loading={
+                          busy === request.id && busyAction === 'approve'
+                        }
                         type="button"
                         disabled={!!busy}
                         onClick={() => void moderate(request.id, 'approve')}
                       >
                         Approve
-                      </button>
+                      </LoadingButton>
                     )}
-                    <button
+                    <LoadingButton
+                      loading={busy === request.id && busyAction === 'reject'}
                       type="button"
                       className="secondary"
                       disabled={!!busy}
                       onClick={() => void moderate(request.id, 'reject')}
                     >
                       Reject
-                    </button>
-                    <button
+                    </LoadingButton>
+                    <LoadingButton
+                      loading={busy === request.id && busyAction === 'remove'}
                       type="button"
                       className="secondary"
                       disabled={!!busy}
                       onClick={() => void moderate(request.id, 'remove')}
                     >
                       Remove
-                    </button>
+                    </LoadingButton>
                   </div>
                 )}
             </div>
@@ -284,22 +289,32 @@ export function RequestBoard({
       </ul>
       <div className="party-actions">
         {offset > 0 && (
-          <button
+          <LoadingButton
+            loading={refreshBusy}
+            disabled={refreshBusy}
             type="button"
             className="secondary"
-            onClick={() => setOffset(Math.max(0, offset - 50))}
+            onClick={() => {
+              setRefreshBusy(true);
+              setOffset(Math.max(0, offset - 50));
+            }}
           >
             Newer requests
-          </button>
+          </LoadingButton>
         )}
         {nextOffset !== null && (
-          <button
+          <LoadingButton
+            loading={refreshBusy}
+            disabled={refreshBusy}
             type="button"
             className="secondary"
-            onClick={() => setOffset(nextOffset)}
+            onClick={() => {
+              setRefreshBusy(true);
+              setOffset(nextOffset);
+            }}
           >
             Older requests
-          </button>
+          </LoadingButton>
         )}
       </div>
       <p className="muted">

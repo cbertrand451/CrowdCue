@@ -1,5 +1,6 @@
 import { GuestQRCode } from './GuestQRCode';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { LoadingButton } from './LoadingButton';
 import type { PartyDetails } from '../server/parties/contracts.js';
 
 export function PartyLinks({
@@ -10,12 +11,21 @@ export function PartyLinks({
   active: boolean;
 }) {
   const [feedback, setFeedback] = useState<string>();
+  const [copying, setCopying] = useState(false);
+  const copyingRef = useRef(false);
   async function copyGuestLink() {
+    if (copyingRef.current) return;
+    copyingRef.current = true;
+    setCopying(true);
+    setFeedback(undefined);
     try {
       await navigator.clipboard.writeText(links.guest);
       setFeedback('Guest link copied.');
     } catch {
       setFeedback('Copy the guest link below to share it.');
+    } finally {
+      copyingRef.current = false;
+      setCopying(false);
     }
   }
   return (
@@ -27,13 +37,16 @@ export function PartyLinks({
       <a href={links.guest} rel="noreferrer">
         {links.guest}
       </a>
-      <button
+      <LoadingButton
+        loading={copying}
+        loadingLabel="Copying guest link…"
+        succeeded={feedback === 'Guest link copied.'}
         type="button"
         className="secondary"
         onClick={() => void copyGuestLink()}
       >
         Copy guest link
-      </button>
+      </LoadingButton>
       <div className="party-actions">
         {links.admin && (
           <a href={links.admin} rel="noreferrer">

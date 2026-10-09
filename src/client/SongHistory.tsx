@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useEffect, useState } from 'react';
 import {
   eventHistorySchema,
@@ -61,7 +62,8 @@ export function SongHistory({
     <section className="request-board" aria-label="Event song history">
       <div className="section-heading">
         <h2>Song history</h2>
-        <button
+        <LoadingButton
+          loading={refreshBusy}
           className="secondary"
           type="button"
           disabled={refreshBusy}
@@ -71,15 +73,8 @@ export function SongHistory({
             setAttempt((v) => v + 1);
           }}
         >
-          {refreshBusy ? (
-            <>
-              <span className="loading-spinner" aria-hidden="true" />
-              Refreshing…
-            </>
-          ) : (
-            'Refresh song history'
-          )}
-        </button>
+          {refreshBusy ? <>Refreshing…</> : 'Refresh song history'}
+        </LoadingButton>
       </div>
       <p className="muted">
         Songs appear when locked into #1, in commitment order. Repeats are
@@ -87,7 +82,9 @@ export function SongHistory({
         missed songs may have no observation.
       </p>
       {error && <p role="alert">{error}</p>}
-      {!history && !error && <p role="status">Loading song history…</p>}
+      {!history && !error && (
+        <LoadingStatus>Loading song history…</LoadingStatus>
+      )}
       {history && (
         <>
           <p>
@@ -170,22 +167,32 @@ export function SongHistory({
           </ol>
           <div className="party-actions">
             {offset > 0 && (
-              <button
+              <LoadingButton
+                loading={refreshBusy}
+                disabled={refreshBusy}
                 type="button"
                 className="secondary"
-                onClick={() => setOffset(Math.max(0, offset - 50))}
+                onClick={() => {
+                  setRefreshBusy(true);
+                  setOffset(Math.max(0, offset - 50));
+                }}
               >
                 Earlier songs
-              </button>
+              </LoadingButton>
             )}
             {history.nextOffset !== null && (
-              <button
+              <LoadingButton
+                loading={refreshBusy}
+                disabled={refreshBusy}
                 type="button"
                 className="secondary"
-                onClick={() => setOffset(history.nextOffset!)}
+                onClick={() => {
+                  setRefreshBusy(true);
+                  setOffset(history.nextOffset!);
+                }}
               >
                 Later songs
-              </button>
+              </LoadingButton>
             )}
           </div>
         </>

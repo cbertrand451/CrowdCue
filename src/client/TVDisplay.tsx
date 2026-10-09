@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { GuestQRCode } from './GuestQRCode';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -57,6 +58,8 @@ export function TVDisplay({ token }: { token: string }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [screenError, setScreenError] = useState<string>();
   const fullscreenBusy = useRef(false);
+  const [fullscreenLoading, setFullscreenLoading] = useState(false);
+  const [retryLoading, setRetryLoading] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -85,6 +88,7 @@ export function TVDisplay({ token }: { token: string }) {
         if (!controller.signal.aborted)
           setError('Connection interrupted. Reconnecting to the party…');
       } finally {
+        if (!controller.signal.aborted) setRetryLoading(false);
         if (!controller.signal.aborted)
           timer = setTimeout(() => void load(), 5000);
       }
@@ -107,6 +111,7 @@ export function TVDisplay({ token }: { token: string }) {
   async function toggleFullscreen() {
     if (fullscreenBusy.current) return;
     fullscreenBusy.current = true;
+    setFullscreenLoading(true);
     setScreenError(undefined);
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -117,6 +122,7 @@ export function TVDisplay({ token }: { token: string }) {
       );
     } finally {
       fullscreenBusy.current = false;
+      setFullscreenLoading(false);
     }
   }
   const ended = snapshot?.party.status === 'ENDED';
@@ -152,19 +158,21 @@ export function TVDisplay({ token }: { token: string }) {
         </p>
         <h1>{snapshot?.party.name ?? 'Your party, on screen'}</h1>
         {typeof document.documentElement.requestFullscreen === 'function' && (
-          <button
+          <LoadingButton
+            loading={fullscreenLoading}
+            loadingLabel="Changing full screen…"
             className="secondary tv-fullscreen"
             type="button"
             onClick={() => void toggleFullscreen()}
           >
             {fullscreen ? 'Exit full screen' : 'Full screen'}
-          </button>
+          </LoadingButton>
         )}
       </header>
       {!snapshot && !error && (
-        <p className="tv-loading" role="status">
+        <LoadingStatus className="tv-loading">
           Getting the party ready…
-        </p>
+        </LoadingStatus>
       )}
       {snapshot && (
         <div className="tv-content">
@@ -334,13 +342,18 @@ export function TVDisplay({ token }: { token: string }) {
         <div className="tv-error" role="alert">
           <p>{error ?? screenError}</p>
           {error && (
-            <button
+            <LoadingButton
+              loading={retryLoading}
+              loadingLabel="Reconnecting…"
               className="secondary"
               type="button"
-              onClick={() => setAttempt((value) => value + 1)}
+              onClick={() => {
+                setRetryLoading(true);
+                setAttempt((value) => value + 1);
+              }}
             >
               Try again
-            </button>
+            </LoadingButton>
           )}
         </div>
       )}

@@ -1,3 +1,4 @@
+import { LoadingStatus } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
 import { useCallback, useEffect, useState } from 'react';
 import { SpotifyConnection } from './SpotifyConnection';
@@ -60,13 +61,15 @@ function HostHome() {
         Together.
       </h1>
       <p className="intro">Create a party and share it with your guests.</p>
-      <p role="status" className={`status ${status}`}>
-        {status === 'checking'
-          ? 'Checking connection…'
-          : status === 'ready'
+      {status === 'checking' ? (
+        <LoadingStatus className="status">Checking connection…</LoadingStatus>
+      ) : (
+        <p role="status" className={`status ${status}`}>
+          {status === 'ready'
             ? 'CrowdCue is running.'
             : 'Unable to reach CrowdCue. Please refresh to try again.'}
-      </p>
+        </p>
+      )}
       <SpotifyConnection onAuthenticationChange={authenticationChanged} />
       {authenticated && (
         <div className="dashboard-layout">

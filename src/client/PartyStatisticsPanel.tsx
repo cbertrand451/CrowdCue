@@ -1,3 +1,4 @@
+import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useEffect, useState } from 'react';
 import {
   partyStatisticsSchema,
@@ -60,7 +61,8 @@ export function PartyStatisticsPanel({
     <section aria-label="Party statistics" className="request-board">
       <div className="section-heading">
         <h2>Party statistics</h2>
-        <button
+        <LoadingButton
+          loading={refreshBusy}
           type="button"
           className="secondary"
           disabled={refreshBusy}
@@ -70,18 +72,13 @@ export function PartyStatisticsPanel({
             setAttempt((v) => v + 1);
           }}
         >
-          {refreshBusy ? (
-            <>
-              <span className="loading-spinner" aria-hidden="true" />
-              Refreshing…
-            </>
-          ) : (
-            'Refresh statistics'
-          )}
-        </button>
+          {refreshBusy ? <>Refreshing…</> : 'Refresh statistics'}
+        </LoadingButton>
       </div>
       {error && <p role="alert">{error}</p>}
-      {!statistics && !error && <p role="status">Loading party statistics…</p>}
+      {!statistics && !error && (
+        <LoadingStatus>Loading party statistics…</LoadingStatus>
+      )}
       {statistics && (
         <>
           <p className="muted">
