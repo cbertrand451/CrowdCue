@@ -488,3 +488,7 @@ Host instructions cover backup setup, starting the session, playing in Spotify
 and sharing invites. **Setup help** closes the dialog, switches to Spotify
 session and opens its detailed help below the session controls. Ended parties
 do not show active-party instructions.
+
+Admin and Guest pages have a small **Connect with the Creator** disclosure at the
+bottom, using the existing Expand Details component. It reveals Colin Bertrand’s
+LinkedIn and email only when expanded, independently of party controls.

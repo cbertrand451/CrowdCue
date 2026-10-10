@@ -2517,6 +2517,39 @@ button.requested-button {
 .page-guide {
   margin: 1rem 0;
 }
+
+.creator-contact {
+  margin-top: 2rem;
+  color: var(--cue-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.creator-contact .expand-details {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.creator-contact summary {
+  width: fit-content;
+  font-weight: 400;
+}
+.creator-contact summary:hover,
+.creator-contact a:hover {
+  color: var(--cue-accent);
+}
+.creator-contact p {
+  margin: 0.5rem 0 0.25rem;
+}
+.creator-contact-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+.creator-contact a {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
 .page-guide > button {
   border-radius: 999px;
   padding: 0.65rem 1rem;

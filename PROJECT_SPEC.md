@@ -1171,3 +1171,8 @@ reflect name requirements, approval and voting settings. Host instructions expla
 backup setup, session creation, manual Spotify playback and guest sharing. Setup
 help closes the dialog and opens the full documentation at the bottom of the
 session panel. Do not display active-party instructions for ended parties.
+
+Admin and Guest pages include a discreet, collapsed **Connect with the Creator**
+footer after the page content. Expanding it shows Colin Bertrand’s LinkedIn
+profile and email contact. It is separate from party controls and omitted from
+Home and Display.

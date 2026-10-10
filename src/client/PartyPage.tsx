@@ -11,6 +11,7 @@ import {
 import { GuestInterface } from './GuestInterface';
 import { AdminDashboard } from './AdminDashboard';
 import { SpotifyConnection } from './SpotifyConnection';
+import { CreatorContact } from './CreatorContact';
 
 const publicResponse = z.object({
   party: publicPartySchema.extend({ guestUrl: z.string().url().optional() }),
@@ -166,6 +167,7 @@ function RolePage({ role, token }: { role: 'guest' | 'admin'; token: string }) {
             </a>
           </p>
         }
+        <CreatorContact />
       </main>
     </LiveRevision.Provider>
   );
