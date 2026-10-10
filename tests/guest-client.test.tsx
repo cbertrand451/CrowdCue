@@ -190,7 +190,7 @@ it('cancels a pending join on navigation without updating a departed page', asyn
   );
 });
 
-it('makes instructions and the tour accessible before joining, with the actual party rules', async () => {
+it('keeps instructions collapsed before joining and opens help with the actual party rules', async () => {
   stubActionFetch(vi.fn().mockResolvedValue(reply({ guest: null })));
   render(
     <GuestInterface
@@ -210,12 +210,21 @@ it('makes instructions and the tour accessible before joining, with the actual p
   expect(
     screen.getByRole('region', { name: 'Guest instructions' }),
   ).toBeVisible();
-  expect(screen.getByText(/Join with your name/)).toBeVisible();
+  expect(screen.queryByText(/Join with your name/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'How CrowdCue works' }));
+  await waitFor(() =>
+    expect(screen.getByText(/Join with your name/)).toBeVisible(),
+  );
   expect(
     screen.getByText(/The host must approve them; voting is off/),
   ).toBeVisible();
+  const dialog = screen.getByRole('dialog', { name: 'How CrowdCue works' });
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.queryByText(/Join with your name/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'How CrowdCue works' }));
-  expect(
-    screen.getByRole('dialog', { name: 'How CrowdCue works' }),
-  ).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Close How CrowdCue works' }),
+  );
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });

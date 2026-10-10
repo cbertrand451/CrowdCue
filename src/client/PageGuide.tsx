@@ -1,5 +1,6 @@
 import type { PublicParty } from '../server/parties/contracts.js';
-import { FeatureTour } from './FeatureTour';
+import { useState } from 'react';
+import { Modal } from './Modal';
 
 export function PageGuide({
   role,
@@ -10,6 +11,7 @@ export function PageGuide({
   party: PublicParty;
   onSetupHelp?: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   if (party.status !== 'ACTIVE') return null;
   const steps =
     role === 'admin'
@@ -52,26 +54,38 @@ export function PageGuide({
       className="page-guide"
       aria-label={role === 'admin' ? 'Host instructions' : 'Guest instructions'}
     >
-      <div className="page-guide-heading">
-        <h2>{role === 'admin' ? 'Host quick start' : 'How to join in'}</h2>
-        {role === 'guest' ? (
-          <FeatureTour />
-        ) : (
-          onSetupHelp && (
-            <button type="button" className="secondary" onClick={onSetupHelp}>
+      <button
+        type="button"
+        className="secondary"
+        aria-haspopup="dialog"
+        onClick={() => setOpen(true)}
+      >
+        How CrowdCue works
+      </button>
+      {open && (
+        <Modal title="How CrowdCue works" onClose={() => setOpen(false)}>
+          <ol className="page-guide-steps">
+            {steps.map(([title, text]) => (
+              <li key={title}>
+                <strong>{title}</strong>
+                <p>{text}</p>
+              </li>
+            ))}
+          </ol>
+          {role === 'admin' && onSetupHelp && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setOpen(false);
+                onSetupHelp();
+              }}
+            >
               Setup help
             </button>
-          )
-        )}
-      </div>
-      <ol className="page-guide-steps">
-        {steps.map(([title, text]) => (
-          <li key={title}>
-            <strong>{title}</strong>
-            <p>{text}</p>
-          </li>
-        ))}
-      </ol>
+          )}
+        </Modal>
+      )}
     </section>
   );
 }

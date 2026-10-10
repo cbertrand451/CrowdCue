@@ -542,7 +542,13 @@ it('opens detailed session help from the prominent host guide even when another 
     expect(
       screen.getByRole('region', { name: 'Host instructions' }),
     ).toBeVisible();
+    expect(screen.queryByText('Set up your session')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'How CrowdCue works' }));
+    await waitFor(() =>
+      expect(screen.getByText('Set up your session')).toBeVisible(),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Setup help' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(scroll).toHaveBeenCalled());
     expect(screen.getByRole('button', { name: 'Start session' })).toBeVisible();
     expect(document.querySelector('.session-help')).toHaveAttribute('open');

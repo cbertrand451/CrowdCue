@@ -480,12 +480,11 @@ invitations and Display keep visible QR codes. See [component adaptations](docs/
 
 ## Visible guest and host instructions
 
-Active Guest and Admin pages show a compact, always-visible guide below the party
-heading and above their main controls. Guest instructions explain joining,
-requesting, voting (when enabled), host approval and locked songs. **How CrowdCue
-works** opens the existing tour from this guide instead of hiding it under Party
-details. Host quick start covers adding a backup playlist, starting the session,
-playing in Spotify and sharing guest invites. **Setup help** switches to Spotify
-session and opens its detailed help; that documentation remains below session
-controls. Guides stack on phones and appear in three columns on larger screens.
-Ended parties do not show instructions for starting or joining an active party.
+Active Guest and Admin pages show a compact **How CrowdCue works** button below
+the party heading and above their main controls. Instructions stay collapsed
+until this button opens a dismissible help dialog. Guest instructions reflect
+joining, requesting, voting, approval and locked songs for the current party.
+Host instructions cover backup setup, starting the session, playing in Spotify
+and sharing invites. **Setup help** closes the dialog, switches to Spotify
+session and opens its detailed help below the session controls. Ended parties
+do not show active-party instructions.

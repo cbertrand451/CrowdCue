@@ -2515,34 +2515,18 @@ button.requested-button {
 }
 
 .page-guide {
-  padding: 1.25rem;
-  margin: 1.25rem 0;
-  border: 1px solid var(--cue-border);
-  border-left: 3px solid var(--cue-accent);
-  border-radius: 0.75rem;
-  background: var(--cue-surface);
+  margin: 1rem 0;
 }
-.page-guide-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-.page-guide-heading h2 {
-  margin: 0;
-  font-size: 1.2rem;
-}
-.page-guide-heading button {
+.page-guide > button {
   border-radius: 999px;
   padding: 0.65rem 1rem;
 }
 .page-guide-steps {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
   padding-left: 1.25rem;
-  margin: 1.25rem 0 0;
+  margin: 1.25rem 0;
 }
 .page-guide-steps li {
   padding-left: 0.25rem;
@@ -2558,9 +2542,6 @@ button.requested-button {
   font-size: 0.9rem;
 }
 @media (max-width: 760px) {
-  .page-guide {
-    padding: 1rem;
-  }
   .page-guide-steps {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;
