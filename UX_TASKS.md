@@ -129,3 +129,5 @@ feedback. Cards remain #000000 and the accent remains #65b32e.
 - [x] Remove the home introduction and retain the almost-black background/black cards/green theme.
 - [x] Show a startup checklist and expanded recovery guidance for failed Spotify/session actions, including safe Spotify categories and cooldown information.
 - [x] Refresh status after uncertain network failures without automatically resubmitting playlist creation.
+
+- [x] Remove the redundant home Create New shortcut; retain New party and Your parties workspace navigation.

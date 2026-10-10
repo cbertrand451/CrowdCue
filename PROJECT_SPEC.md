@@ -1068,8 +1068,9 @@ visual playback indicator, not measured audio data; Spotify retains playback.
 
 ### Home overview and session startup help
 
-The home page groups connection status, Spotify account actions and creation
-shortcuts in a compact black card. Alongside it, authenticated hosts see active
+The home page groups connection status and Spotify account actions in a compact
+black card. The redundant Create New shortcut is removed; New party and Your
+parties remain available in the workspace navigation. Alongside it, authenticated hosts see active
 parties from the existing loaded owner list, with real admin, Display and guest
 links and backup configuration status. Creating, closing and refreshing parties
 update the overview. Loading/failure states do not imply that no active party
