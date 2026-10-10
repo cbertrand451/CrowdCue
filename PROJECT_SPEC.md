@@ -1065,3 +1065,21 @@ track is present, the party is active and the Spotify observation is PLAYING and
 fresh. Pause motion when paused, unavailable or stale; ended parties show the
 existing completion view. Honor reduced-motion preferences. The waveform is a
 visual playback indicator, not measured audio data; Spotify retains playback.
+
+### Home overview and session startup help
+
+The home page groups connection status, Spotify account actions and creation
+shortcuts in a compact black card. Alongside it, authenticated hosts see active
+parties from the existing loaded owner list, with real admin, Display and guest
+links and backup configuration status. Creating, closing and refreshing parties
+update the overview. Loading/failure states do not imply that no active party
+exists; older parties remain available through the paginated Your parties view.
+The previous home introduction is removed.
+
+Admin session startup includes an expandable checklist and automatically opens
+troubleshooting when an operation fails. Spotify failures return only safe error
+categories and cooldown seconds, preserving access/permission/rate-limit reasons
+when backup verification fails before session state is persisted. Guidance covers
+backup configuration/playability, other active sessions, reconnection, cooldowns
+and uncertain playlist creation. Refresh checks progress; retry resumes sync;
+backup refresh reloads songs. CrowdCue never starts Spotify playback automatically.

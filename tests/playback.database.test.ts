@@ -238,6 +238,34 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       headers: { origin: config.appOrigin, 'content-type': 'application/json' },
       payload: JSON.stringify(payload),
     });
+  it.each(['permissions', 'reauthenticate', 'rate_limited'] as const)(
+    'returns safe %s diagnostics when backup verification blocks startup',
+    async (kind) => {
+      const party = await create();
+      vi.mocked(provider.backupTracks).mockRejectedValue(
+        new SpotifyError(kind, kind === 'rate_limited' ? 60 : undefined),
+      );
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/party-links/admin/${token(party.links.admin!)}/playback`,
+        headers: {
+          origin: config.appOrigin,
+          cookie: `__Host-crowdcue_host=${host.cookie}`,
+        },
+        payload: { action: 'start' },
+      });
+      expect(response.statusCode).toBe(kind === 'rate_limited' ? 429 : 503);
+      expect(response.json()).toEqual({
+        error: new SpotifyError(kind).message,
+        code: kind,
+        retryAfter: kind === 'rate_limited' ? 60 : null,
+      });
+      expect(provider.createPlaylist).not.toHaveBeenCalled();
+      expect(
+        (await store.status(host.id, token(party.links.admin!))).enabled,
+      ).toBe(false);
+    },
+  );
   it('creates only on Start, customizes a private session, seeds three random backups and never sends playback commands', async () => {
     const p = await create(),
       t = token(p.links.admin!);

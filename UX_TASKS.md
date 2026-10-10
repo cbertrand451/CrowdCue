@@ -122,3 +122,10 @@ migration changes are needed for this visual update.
 
 The page background was subsequently darkened to #111111 following visual
 feedback. Cards remain #000000 and the accent remains #65b32e.
+
+### Home overview and session startup diagnostics
+
+- [x] Group connection and creation shortcuts in a compact card; show loaded active parties alongside it with role links and backup status.
+- [x] Remove the home introduction and retain the almost-black background/black cards/green theme.
+- [x] Show a startup checklist and expanded recovery guidance for failed Spotify/session actions, including safe Spotify categories and cooldown information.
+- [x] Refresh status after uncertain network failures without automatically resubmitting playlist creation.

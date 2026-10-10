@@ -195,7 +195,9 @@ it('automatically reveals the confirmed playlist link on the next status poll', 
   expect(
     screen.getByText(/Checking whether Spotify created your session playlist/),
   ).toBeVisible();
-  expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('link', { name: 'Open session playlist in Spotify' }),
+  ).not.toBeInTheDocument();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
   });
@@ -245,4 +247,72 @@ it('does not claim an ended party left a playlist when no creation was confirmed
   expect(
     screen.queryByText('Your session playlist stays in Spotify.'),
   ).not.toBeInTheDocument();
+});
+
+it('keeps Spotify failure diagnostics and expands actionable setup help after refreshing status', async () => {
+  const initial = {
+    ...status,
+    enabled: false,
+    playlistUrl: null,
+    creation: 'NEW',
+  };
+  const fetcher = vi.fn(async (_url, opts) =>
+    opts?.method === 'POST'
+      ? reply(
+          {
+            error: 'Spotify permissions are missing. Please reconnect.',
+            code: 'permissions',
+          },
+          503,
+        )
+      : reply(initial),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const configure = vi.fn();
+  render(
+    <PlaybackPanel
+      token={'a'.repeat(43)}
+      active
+      onExpired={vi.fn()}
+      onConfigureBackup={configure}
+    />,
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Start session' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Spotify permissions are missing',
+  );
+  expect(
+    screen.getByText('Session troubleshooting').closest('details'),
+  ).toHaveAttribute('open');
+  expect(
+    screen.getByText(/Reconnect Spotify and approve playlist read/),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Open party settings' }));
+  expect(configure).toHaveBeenCalledOnce();
+  expect(
+    fetcher.mock.calls.filter((call) => call[1]?.method === 'POST'),
+  ).toHaveLength(1);
+});
+
+it('explains cooldowns when Spotify rejects startup without persisted session errors', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url, opts) =>
+      opts?.method === 'POST'
+        ? reply(
+            {
+              error: 'Spotify is busy. Please try again shortly.',
+              code: 'rate_limited',
+              retryAfter: 60,
+            },
+            429,
+          )
+        : reply({ ...status, enabled: false, playlistUrl: null, error: null }),
+    ),
+  );
+  render(<PlaybackPanel token={'a'.repeat(43)} active onExpired={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Start session' }));
+  expect(
+    await screen.findByText('Wait at least 60 seconds before retrying.'),
+  ).toBeVisible();
 });

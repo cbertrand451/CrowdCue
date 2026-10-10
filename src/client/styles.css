@@ -2139,3 +2139,83 @@ button.requested-button {
 .switch-row input:checked + .switch-track span {
   background: var(--cue-accent-foreground);
 }
+
+.home-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 23rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+  margin: 1.5rem 0;
+}
+.home-account-card,
+.home-active-card {
+  min-width: 0;
+  background: var(--cue-surface);
+  border: 1px solid var(--cue-border);
+  border-radius: 1.25rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+.home-account-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.home-account-card h2,
+.home-active-card h2,
+.active-party-summary h3,
+.home-account-card .status,
+.home-account-card .spotify-connection {
+  margin: 0;
+}
+.home-account-card .status {
+  border: 0;
+  padding: 0;
+}
+.home-account-card .spotify-connection p {
+  margin: 0 0 1rem;
+}
+.active-party-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.active-party-summary {
+  overflow-wrap: anywhere;
+}
+.active-party-summary + .active-party-summary {
+  border-top: 1px solid var(--cue-border);
+  padding-top: 1rem;
+}
+.active-party-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+.active-party-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.session-help {
+  border: 1px solid var(--cue-border);
+  border-radius: 1rem;
+  padding: 1rem;
+  margin: 1rem 0;
+  background: var(--cue-surface);
+  overflow-wrap: anywhere;
+}
+.session-help summary {
+  cursor: pointer;
+  font-weight: 650;
+  min-height: 24px;
+}
+.session-help li + li {
+  margin-top: 0.75rem;
+}
+@media (max-width: 760px) {
+  .home-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -20,7 +20,16 @@ const creationSchema = z.object({ party: partyDetailsSchema });
 export function PartyCreation({
   view = 'all',
   onCreated,
-}: { view?: 'all' | 'create' | 'parties'; onCreated?: () => void } = {}) {
+  onOverviewChange,
+}: {
+  view?: 'all' | 'create' | 'parties';
+  onCreated?: () => void;
+  onOverviewChange?: (overview: {
+    parties: PartyDetails[];
+    loading: boolean;
+    failed: boolean;
+  }) => void;
+} = {}) {
   const [closing, setClosing] = useState<string>();
   const closePending = useRef(false);
   const [closeError, setCloseError] = useState<string>();
@@ -75,6 +84,10 @@ export function PartyCreation({
     void load();
     return () => controller.abort();
   }, [listAttempt, createdId]);
+
+  useEffect(() => {
+    onOverviewChange?.({ parties, loading, failed: listError });
+  }, [parties, loading, listError, onOverviewChange]);
 
   async function loadMore() {
     if (nextOffset === null || loadingMore) return;

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { SpotifyConnection } from './SpotifyConnection';
 import { PartyCreation } from './PartyCreation';
 import { PartyPage } from './PartyPage';
+import type { PartyDetails } from '../server/parties/contracts.js';
 
 export function App() {
   const route = /^\/(join|admin|display)\/([^/]+)\/?$/.exec(
@@ -22,6 +23,11 @@ export function App() {
 function HostHome() {
   const [menu, setMenu] = useState('create');
   const [authenticated, setAuthenticated] = useState(false);
+  const [overview, setOverview] = useState<{
+    parties: PartyDetails[];
+    loading: boolean;
+    failed: boolean;
+  }>({ parties: [], loading: true, failed: false });
   const authenticationChanged = useCallback(
     (value: boolean) => setAuthenticated(value),
     [],
@@ -56,48 +62,99 @@ function HostHome() {
   return (
     <main className="host-home">
       <h1>CrowdCue</h1>
-      <p className="intro">Create a party and share it with your guests.</p>
-      {status === 'checking' ? (
-        <LoadingStatus className="status">Checking connection…</LoadingStatus>
-      ) : (
-        <p role="status" className={`status ${status}`}>
-          {status === 'ready'
-            ? 'CrowdCue is running.'
-            : 'Unable to reach CrowdCue. Please refresh to try again.'}
-        </p>
-      )}
-      <SpotifyConnection onAuthenticationChange={authenticationChanged} />
-      {authenticated && (
-        <CreateNewDisclosure
-          items={[
-            {
-              id: 'create',
-              icon: '+',
-              label: 'Create a party',
-              onAction: () => setMenu('create'),
-            },
-            {
-              id: 'parties',
-              icon: '≋',
-              label: 'Browse parties',
-              onAction: () => setMenu('parties'),
-            },
-            {
-              id: 'spotify',
-              icon: '◉',
-              label: 'Spotify connection',
-              onAction: () => {
-                const connection = document.querySelector<HTMLElement>(
-                  '.spotify-connection',
-                );
-                connection?.setAttribute('tabindex', '-1');
-                connection?.focus({ preventScroll: true });
-                connection?.scrollIntoView?.({ block: 'start' });
-              },
-            },
-          ]}
-        />
-      )}
+      <div className="home-overview">
+        <section className="home-account-card" aria-label="Host controls">
+          <h2>Your connection</h2>
+          {status === 'checking' ? (
+            <LoadingStatus className="status">
+              Checking connection…
+            </LoadingStatus>
+          ) : (
+            <p role="status" className={`status ${status}`}>
+              {status === 'ready'
+                ? 'CrowdCue is running.'
+                : 'Unable to reach CrowdCue. Please refresh to try again.'}
+            </p>
+          )}
+          <SpotifyConnection onAuthenticationChange={authenticationChanged} />
+          {authenticated && (
+            <CreateNewDisclosure
+              items={[
+                {
+                  id: 'create',
+                  icon: '+',
+                  label: 'Create a party',
+                  onAction: () => setMenu('create'),
+                },
+                {
+                  id: 'parties',
+                  icon: '≋',
+                  label: 'Browse parties',
+                  onAction: () => setMenu('parties'),
+                },
+                {
+                  id: 'spotify',
+                  icon: '◉',
+                  label: 'Spotify connection',
+                  onAction: () => {
+                    const connection = document.querySelector<HTMLElement>(
+                      '.spotify-connection',
+                    );
+                    connection?.setAttribute('tabindex', '-1');
+                    connection?.focus({ preventScroll: true });
+                    connection?.scrollIntoView?.({ block: 'start' });
+                  },
+                },
+              ]}
+            />
+          )}
+        </section>
+        {authenticated && (
+          <section
+            className="home-active-card"
+            aria-label="Active party overview"
+          >
+            <h2>Active parties</h2>
+            {overview.loading ? (
+              <LoadingStatus>Loading your parties…</LoadingStatus>
+            ) : overview.failed ? (
+              <p role="status">
+                Could not refresh your parties. Open Your parties and choose
+                Refresh parties to try again.
+              </p>
+            ) : !overview.parties.some((party) => party.status === 'ACTIVE') ? (
+              <p className="muted">
+                No active party in your recent parties. Create one below, or
+                browse Your parties for older parties.
+              </p>
+            ) : null}
+            <div className="active-party-list">
+              {overview.parties
+                .filter((party) => party.status === 'ACTIVE')
+                .map((party) => (
+                  <article key={party.id} className="active-party-summary">
+                    <h3>{party.name}</h3>
+                    <p className="ready">Party open to guests</p>
+                    <p className="muted">
+                      {party.settings.backupSourceId
+                        ? 'Backup playlist configured'
+                        : 'Add a backup playlist in settings before starting the Spotify session'}
+                    </p>
+                    <div className="active-party-actions">
+                      {party.links.admin && (
+                        <a href={party.links.admin}>Open admin</a>
+                      )}
+                      {party.links.display && (
+                        <a href={party.links.display}>Open display</a>
+                      )}
+                      <a href={party.links.guest}>Guest link</a>
+                    </div>
+                  </article>
+                ))}
+            </div>
+          </section>
+        )}
+      </div>
       {authenticated && (
         <div className="dashboard-layout">
           <DashboardNavigation
@@ -113,6 +170,7 @@ function HostHome() {
             <PartyCreation
               view={menu === 'parties' ? 'parties' : 'create'}
               onCreated={() => setMenu('parties')}
+              onOverviewChange={setOverview}
             />
           </div>
         </div>

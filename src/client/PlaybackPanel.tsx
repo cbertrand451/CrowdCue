@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { SessionHelp } from './SessionHelp';
 import { OnboardingChecklist } from './OnboardingChecklist';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
 import { useLiveRevision } from './realtime';
@@ -6,6 +8,11 @@ import {
   playbackStatusSchema,
   type PlaybackStatus,
 } from '../server/playback/contracts.js';
+const failureSchema = z.object({
+  error: z.string().optional(),
+  code: playbackStatusSchema.shape.error.optional(),
+  retryAfter: z.number().positive().nullable().optional(),
+});
 const errors: Record<NonNullable<PlaybackStatus['error']>, string> = {
   reauthenticate: 'Reconnect Spotify to continue.',
   permissions:
@@ -45,6 +52,11 @@ export function PlaybackPanel({
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
+  const [diagnostic, setDiagnostic] = useState<{
+    code?: PlaybackStatus['error'];
+    httpStatus?: number;
+    retryAfter?: number;
+  }>({});
   const [busy, setBusy] = useState<string>();
   const [playlistName, setPlaylistName] = useState('');
   const [description, setDescription] = useState('');
@@ -71,7 +83,10 @@ export function PlaybackPanel({
             setStatus(undefined);
             onExpired();
           }
-          throw new Error('Unavailable');
+          const failure = failureSchema.parse(await response.json());
+          if (!c.signal.aborted)
+            setError(failure.error ?? 'Unable to load Spotify session status.');
+          return;
         }
         const data = playbackStatusSchema.parse(await response.json());
         if (!c.signal.aborted) {
@@ -102,6 +117,7 @@ export function PlaybackPanel({
     pending.current = true;
     setBusy(body.action);
     setActionError(undefined);
+    setDiagnostic({});
     const c = mutation.current;
     try {
       const response = await fetch(
@@ -121,7 +137,12 @@ export function PlaybackPanel({
           onExpired();
           return;
         }
-        const data = (await response.json()) as { error?: string };
+        const data = failureSchema.parse(await response.json());
+        setDiagnostic({
+          code: data.code,
+          httpStatus: response.status,
+          retryAfter: data.retryAfter ?? undefined,
+        });
         setActionError(
           data.error ??
             'Could not confirm the action. Refresh the status before retrying.',
@@ -133,10 +154,12 @@ export function PlaybackPanel({
       setAttempt((x) => x + 1);
       setRecreate(false);
     } catch {
-      if (!c?.signal.aborted)
+      if (!c?.signal.aborted) {
         setActionError(
           'Could not confirm the action. Refresh the status before retrying.',
         );
+        setAttempt((x) => x + 1);
+      }
     } finally {
       pending.current = false;
       if (!c?.signal.aborted) setBusy(undefined);
@@ -165,11 +188,27 @@ export function PlaybackPanel({
       </div>
       {busy && <LoadingStatus>Updating Spotify session…</LoadingStatus>}
       {(actionError || error) && <p role="alert">{actionError ?? error}</p>}
+      {!status && error && (
+        <p className="muted">
+          Check your internet connection and sign in as this party’s host. If
+          Spotify session playback is not configured, the app owner must check
+          the Spotify and database configuration. Use Refresh Spotify status to
+          check again.
+        </p>
+      )}
       {!status && !error && (
         <LoadingStatus>Loading Spotify session…</LoadingStatus>
       )}
       {status && (
         <>
+          {active && (
+            <SessionHelp
+              status={status}
+              failed={!!(actionError || error)}
+              {...diagnostic}
+              onConfigureBackup={onConfigureBackup}
+            />
+          )}
           {active && (
             <OnboardingChecklist
               steps={[

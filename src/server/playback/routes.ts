@@ -27,7 +27,11 @@ export async function playbackRoutes(
       if (error.retryAfter) reply.header('Retry-After', error.retryAfter);
       return reply.code(error.kind === 'rate_limited' ? 429 : 503).send({
         error:
-          'Spotify could not confirm the change. Check the session status before retrying.',
+          error.kind === 'no_active_device'
+            ? 'Open Spotify on your usual device and start playback.'
+            : error.message,
+        code: error.kind,
+        retryAfter: error.retryAfter ?? null,
       });
     }
     if (
