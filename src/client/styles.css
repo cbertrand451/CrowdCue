@@ -2140,40 +2140,23 @@ button.requested-button {
   background: var(--cue-accent-foreground);
 }
 
-.home-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 23rem) minmax(0, 1fr);
-  gap: 1.5rem;
-  align-items: start;
-  margin: 1.5rem 0;
-}
-.home-account-card,
 .home-active-card {
   min-width: 0;
+  margin: 1.5rem 0;
   background: var(--cue-surface);
   border: 1px solid var(--cue-border);
   border-radius: 1.25rem;
   padding: clamp(1rem, 2vw, 1.5rem);
 }
-.home-account-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1rem;
-}
-.home-account-card h2,
 .home-active-card h2,
-.active-party-summary h3,
-.home-account-card .status,
-.home-account-card .spotify-connection {
+.active-party-summary h3 {
   margin: 0;
 }
-.home-account-card .status {
-  border: 0;
+.host-home .home-status {
+  margin: 0 0 1.5rem;
   padding: 0;
-}
-.home-account-card .spotify-connection p {
-  margin: 0 0 1rem;
+  border: 0;
+  font-size: 0.9rem;
 }
 .active-party-list {
   display: grid;
@@ -2213,11 +2196,6 @@ button.requested-button {
 }
 .session-help li + li {
   margin-top: 0.75rem;
-}
-@media (max-width: 760px) {
-  .home-overview {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .active-party-summary {

@@ -140,3 +140,5 @@ feedback. Cards remain #000000 and the accent remains #65b32e.
 - [x] Move Setup help below session content; match the third setup action to the other rows.
 - [x] Animate only the mutation being performed when saving settings or ending parties.
 - [x] Share a hardcoded Spotify request budget and cooldown across all production callers; bound admission waits and preserve mutation certainty.
+
+- [x] Remove the App status card and its reserved column; retain compact connection feedback below the home header and let active parties use the full width.

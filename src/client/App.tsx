@@ -75,82 +75,77 @@ function HostHome() {
         <h1>CrowdCue</h1>
         <SpotifyConnection onAuthenticationChange={authenticationChanged} />
       </header>
-      <div className="home-overview">
-        <section className="home-account-card" aria-label="Host controls">
-          <h2>App status</h2>
-          {status === 'checking' ? (
-            <LoadingStatus className="status">
-              Checking connection…
-            </LoadingStatus>
-          ) : (
-            <p role="status" className={`status ${status}`}>
-              {status === 'ready'
-                ? 'CrowdCue is running.'
-                : 'Unable to reach CrowdCue. Please refresh to try again.'}
+      {status === 'checking' ? (
+        <LoadingStatus className="home-status">
+          Checking connection…
+        </LoadingStatus>
+      ) : (
+        <p role="status" className={`home-status ${status}`}>
+          {status === 'ready'
+            ? 'CrowdCue is running.'
+            : 'Unable to reach CrowdCue. Please refresh to try again.'}
+        </p>
+      )}
+      {authenticated && (
+        <section
+          className="home-active-card"
+          aria-label="Active party overview"
+        >
+          <h2>Active parties</h2>
+          {overview.loading ? (
+            <LoadingStatus>Loading your parties…</LoadingStatus>
+          ) : overview.failed ? (
+            <p role="status">
+              Could not refresh your parties. Open Your parties and choose
+              Refresh parties to try again.
             </p>
-          )}
-        </section>
-        {authenticated && (
-          <section
-            className="home-active-card"
-            aria-label="Active party overview"
-          >
-            <h2>Active parties</h2>
-            {overview.loading ? (
-              <LoadingStatus>Loading your parties…</LoadingStatus>
-            ) : overview.failed ? (
-              <p role="status">
-                Could not refresh your parties. Open Your parties and choose
-                Refresh parties to try again.
-              </p>
-            ) : !overview.parties.some((party) => party.status === 'ACTIVE') ? (
-              <p className="muted">
-                No active party in your recent parties. Create one below, or
-                browse Your parties for older parties.
-              </p>
-            ) : null}
-            <div className="active-party-list">
-              {overview.parties
-                .filter((party) => party.status === 'ACTIVE')
-                .map((party) => (
-                  <article key={party.id} className="active-party-summary">
-                    <GuestQRCode url={party.links.guest} />
-                    <div className="active-party-details">
-                      <h3>{party.name}</h3>
-                      <p className="ready">Party open to guests</p>
-                      <p className="muted">
-                        {party.settings.backupSourceId
-                          ? 'Backup playlist configured'
-                          : 'Add a backup playlist in settings before starting the Spotify session'}
-                      </p>
-                      <div className="active-party-actions">
-                        {party.links.admin && (
-                          <a
-                            href={party.links.admin}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Open admin
-                          </a>
-                        )}
-                        {party.links.display && (
-                          <a
-                            href={party.links.display}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Open display
-                          </a>
-                        )}
-                        <a href={party.links.guest}>Guest link</a>
-                      </div>
+          ) : !overview.parties.some((party) => party.status === 'ACTIVE') ? (
+            <p className="muted">
+              No active party in your recent parties. Create one below, or
+              browse Your parties for older parties.
+            </p>
+          ) : null}
+          <div className="active-party-list">
+            {overview.parties
+              .filter((party) => party.status === 'ACTIVE')
+              .map((party) => (
+                <article key={party.id} className="active-party-summary">
+                  <GuestQRCode url={party.links.guest} />
+                  <div className="active-party-details">
+                    <h3>{party.name}</h3>
+                    <p className="ready">Party open to guests</p>
+                    <p className="muted">
+                      {party.settings.backupSourceId
+                        ? 'Backup playlist configured'
+                        : 'Add a backup playlist in settings before starting the Spotify session'}
+                    </p>
+                    <div className="active-party-actions">
+                      {party.links.admin && (
+                        <a
+                          href={party.links.admin}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open admin
+                        </a>
+                      )}
+                      {party.links.display && (
+                        <a
+                          href={party.links.display}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open display
+                        </a>
+                      )}
+                      <a href={party.links.guest}>Guest link</a>
                     </div>
-                  </article>
-                ))}
-            </div>
-          </section>
-        )}
-      </div>
+                  </div>
+                </article>
+              ))}
+          </div>
+        </section>
+      )}
       {authenticated && (
         <div className="dashboard-layout">
           <DashboardNavigation

@@ -1068,11 +1068,13 @@ visual playback indicator, not measured audio data; Spotify retains playback.
 
 ### Home overview and session startup help
 
-The home page groups app connection status in a compact black card. Spotify
-account actions sit at the right of the CrowdCue header on Home and Admin. The
+The home page shows app connection status as a compact message beneath the
+header, without a separate status card or reserved column. Active parties use
+the full content width. Spotify account actions sit at the right of the
+CrowdCue header on Home and Admin. The
 redundant Create New shortcut is removed; New party and Your parties remain
-available in the workspace navigation. Alongside it, authenticated hosts see active
-parties from the existing loaded owner list, with real admin, Display and guest
+available in the workspace navigation. Below the header, authenticated hosts see
+active parties from the existing loaded owner list, with real admin, Display and guest
 links and backup configuration status. Creating, closing and refreshing parties
 update the overview. Loading/failure states do not imply that no active party
 exists; older parties remain available through the paginated Your parties view.
