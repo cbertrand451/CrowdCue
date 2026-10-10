@@ -1,3 +1,4 @@
+import { EndPartyAction } from './EndPartyAction';
 import { GuestQRCode } from './GuestQRCode';
 import { LoadingStatus } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
@@ -33,15 +34,25 @@ export function App() {
 function HostHome() {
   const [menu, setMenu] = useState('create');
   const [authenticated, setAuthenticated] = useState(false);
+  const [endedParty, setEndedParty] = useState<PartyDetails>();
+  const [confirmedEndedParties, setConfirmedEndedParties] = useState<
+    ReadonlyMap<string, PartyDetails>
+  >(() => new Map());
+  const recordEnded = useCallback((updated: PartyDetails) => {
+    setConfirmedEndedParties((current) =>
+      new Map(current).set(updated.id, updated),
+    );
+    setEndedParty(updated);
+  }, []);
   const [overview, setOverview] = useState<{
     parties: PartyDetails[];
     loading: boolean;
     failed: boolean;
   }>({ parties: [], loading: true, failed: false });
-  const authenticationChanged = useCallback(
-    (value: boolean) => setAuthenticated(value),
-    [],
-  );
+  const authenticationChanged = useCallback((value: boolean) => {
+    setAuthenticated(value);
+    if (!value) setEndedParty(undefined);
+  }, []);
   const [status, setStatus] = useState<'checking' | 'ready' | 'unavailable'>(
     'checking',
   );
@@ -92,6 +103,11 @@ function HostHome() {
           aria-label="Active party overview"
         >
           <h2>Active parties</h2>
+          {endedParty && (
+            <p role="status" className="ready">
+              {endedParty.name} ended. Spotify playback continues.
+            </p>
+          )}
           {overview.loading ? (
             <LoadingStatus>Loading your parties…</LoadingStatus>
           ) : overview.failed ? (
@@ -139,6 +155,7 @@ function HostHome() {
                         </a>
                       )}
                       <a href={party.links.guest}>Guest link</a>
+                      <EndPartyAction party={party} onEnded={recordEnded} />
                     </div>
                   </div>
                 </article>
@@ -162,6 +179,8 @@ function HostHome() {
               view={menu === 'parties' ? 'parties' : 'create'}
               onCreated={() => setMenu('parties')}
               onOverviewChange={setOverview}
+              confirmedEndedParties={confirmedEndedParties}
+              onPartyEnded={recordEnded}
             />
           </div>
         </div>

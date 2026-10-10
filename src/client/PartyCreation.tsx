@@ -1,8 +1,16 @@
+import { EndPartyAction } from './EndPartyAction';
 import { SwitchDisclosure } from './SwitchDisclosure';
 import { FloatingInput } from './FloatingInput';
 import { PartyPickerDialog } from './PartyPickerDialog';
 import { LoadingButton, LoadingStatus } from './LoadingButton';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { z } from 'zod';
 import {
   createPartySchema,
@@ -21,8 +29,12 @@ export function PartyCreation({
   view = 'all',
   onCreated,
   onOverviewChange,
+  confirmedEndedParties,
+  onPartyEnded,
 }: {
   view?: 'all' | 'create' | 'parties';
+  confirmedEndedParties?: ReadonlyMap<string, PartyDetails>;
+  onPartyEnded?: (party: PartyDetails) => void;
   onCreated?: () => void;
   onOverviewChange?: (overview: {
     parties: PartyDetails[];
@@ -33,7 +45,22 @@ export function PartyCreation({
   const [closing, setClosing] = useState<string>();
   const closePending = useRef(false);
   const [closeError, setCloseError] = useState<string>();
-  const [parties, setParties] = useState<PartyDetails[]>([]);
+  const [loadedParties, setParties] = useState<PartyDetails[]>([]);
+  const [localEnds, setLocalEnds] = useState<ReadonlyMap<string, PartyDetails>>(
+    () => new Map(),
+  );
+  const confirmedEnds = confirmedEndedParties ?? localEnds;
+  const parties = useMemo(
+    () => loadedParties.map((party) => confirmedEnds.get(party.id) ?? party),
+    [loadedParties, confirmedEnds],
+  );
+  const recordEnded = useCallback(
+    (updated: PartyDetails) => {
+      if (onPartyEnded) onPartyEnded(updated);
+      else setLocalEnds((current) => new Map(current).set(updated.id, updated));
+    },
+    [onPartyEnded],
+  );
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState(false);
   const [listAttempt, setListAttempt] = useState(0);
@@ -315,6 +342,9 @@ export function PartyCreation({
                 <span className={party.status === 'ACTIVE' ? 'ready' : 'muted'}>
                   {party.status === 'ACTIVE' ? 'Active' : 'Ended'}
                 </span>
+                {party.status === 'ACTIVE' && (
+                  <EndPartyAction party={party} onEnded={recordEnded} />
+                )}
                 {party.status === 'ENDED' && (
                   <LoadingButton
                     loading={closing === party.id}

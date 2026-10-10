@@ -1120,3 +1120,14 @@ The limiter covers the single Node server used by the Render deployment;
 multiple instances or other apps sharing the credentials need a shared budget.
 Quota changes, restarts or endpoint-specific rules can still produce upstream
 429s. Source: https://developer.spotify.com/documentation/web-api/concepts/rate-limits
+
+### Ending parties from Home
+
+Hosts can end active parties from the home overview or Your parties as well as
+Admin settings. Each action confirms the named party, explains that ending is
+permanent and Spotify playback continues, and animates only the pending action.
+The browser uses the existing owner-authorized, same-origin admin end endpoint;
+no new public capability is introduced. Only a validated ENDED response updates
+the shared owner list. Confirmed endings survive a delayed or stale list response,
+and ended parties remain available in Your parties for the existing Close action.
+Failures keep the confirmation open with retry/sign-in guidance.

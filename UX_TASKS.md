@@ -142,3 +142,5 @@ feedback. Cards remain #000000 and the accent remains #65b32e.
 - [x] Share a hardcoded Spotify request budget and cooldown across all production callers; bound admission waits and preserve mutation certainty.
 
 - [x] Remove the App status card and its reserved column; retain compact connection feedback below the home header and let active parties use the full width.
+
+- [x] Add confirmed End party actions to home active-party cards and Your parties; update both views only after a successful authorized end response and preserve existing Close behavior.

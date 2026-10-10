@@ -2283,3 +2283,9 @@ button.requested-button {
 .admin-header .spotify-connection p {
   max-width: 100%;
 }
+.active-party-actions .end-party-action {
+  margin-left: auto;
+}
+.end-party-action {
+  flex-shrink: 0;
+}

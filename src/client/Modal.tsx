@@ -4,10 +4,12 @@ export function Modal({
   title,
   onClose,
   children,
+  closeDisabled = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  closeDisabled?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -28,12 +30,12 @@ export function Modal({
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
-          onClose();
+          if (!closeDisabled) onClose();
         }
       }}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (!closeDisabled) onClose();
       }}
     >
       <MotionConfig reducedMotion="user">
@@ -48,6 +50,7 @@ export function Modal({
               type="button"
               className="secondary"
               aria-label={`Close ${title}`}
+              disabled={closeDisabled}
               onClick={onClose}
             >
               ×
