@@ -498,3 +498,55 @@ it('animates only the end action while settings remain disabled and idle', async
   );
   expect(await screen.findByText('Party ended.')).toBeVisible();
 });
+
+it('opens detailed session help from the prominent host guide even when another menu is selected', async () => {
+  const { AdminDashboard } = await import('../src/client/AdminDashboard');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url.endsWith('/playback')
+        ? reply({
+            enabled: false,
+            mode: 'PLAYLIST',
+            playlistUrl: null,
+            playlistRemoved: false,
+            creation: 'NEW',
+            error: null,
+            retryAt: null,
+            syncedAt: null,
+            lockedCount: 0,
+            guestCount: 0,
+            backupCount: 0,
+            saveAtCreation: true,
+            saveAtClose: null,
+            closeDecided: false,
+            ended: false,
+          })
+        : reply({}, 503),
+    ),
+  );
+  const originalScroll = HTMLElement.prototype.scrollIntoView;
+  const scroll = vi.fn();
+  HTMLElement.prototype.scrollIntoView = scroll;
+  try {
+    render(
+      <AdminDashboard
+        party={party}
+        token={'a'.repeat(43)}
+        onChange={vi.fn()}
+        onExpired={vi.fn()}
+      />,
+    );
+    await screen.findByRole('button', { name: 'Start session' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(
+      screen.getByRole('region', { name: 'Host instructions' }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Setup help' }));
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Start session' })).toBeVisible();
+    expect(document.querySelector('.session-help')).toHaveAttribute('open');
+  } finally {
+    HTMLElement.prototype.scrollIntoView = originalScroll;
+  }
+});

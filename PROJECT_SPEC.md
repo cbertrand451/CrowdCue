@@ -1161,3 +1161,13 @@ expandable QR control; main party invitations and Display must keep their direct
 visible QR. Gallery cards subtly float on hover and respect reduced motion. Alert,
 disabled-action and grouped-button patterns represent actual application state.
 The established #111111 background, black cards and #65b32e accent remain in use.
+
+## Prominent role instructions
+
+Active Guest and Admin pages show concise, always-visible instructions near the
+top, below the party heading and before joining or dashboard controls. Guest
+instructions reflect name requirements, approval and voting settings; the existing
+guided tour is accessible here. Host instructions explain backup setup, session
+creation, manual Spotify playback and guest sharing. A visible Setup help action
+opens the full session documentation, which remains at the bottom of the session
+panel. Do not display active-party instructions for ended parties.

@@ -189,3 +189,33 @@ it('cancels a pending join on navigation without updating a departed page', asyn
     expect(screen.queryByText('Joined as Alex.')).not.toBeInTheDocument(),
   );
 });
+
+it('makes instructions and the tour accessible before joining, with the actual party rules', async () => {
+  stubActionFetch(vi.fn().mockResolvedValue(reply({ guest: null })));
+  render(
+    <GuestInterface
+      party={{
+        ...party,
+        settings: {
+          ...party.settings,
+          requireGuestNames: true,
+          votingEnabled: false,
+          approvalRequired: true,
+        },
+      }}
+      token={'g'.repeat(43)}
+    />,
+  );
+  await screen.findByRole('button', { name: 'Join party' });
+  expect(
+    screen.getByRole('region', { name: 'Guest instructions' }),
+  ).toBeVisible();
+  expect(screen.getByText(/Join with your name/)).toBeVisible();
+  expect(
+    screen.getByText(/The host must approve them; voting is off/),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'How CrowdCue works' }));
+  expect(
+    screen.getByRole('dialog', { name: 'How CrowdCue works' }),
+  ).toBeInTheDocument();
+});

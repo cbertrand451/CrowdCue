@@ -1,4 +1,4 @@
-import { FeatureTour } from './FeatureTour';
+import { PageGuide } from './PageGuide';
 import { ExpandDetails } from './ExpandDetails';
 import { FloatingInput } from './FloatingInput';
 import { ExpandableProfileCard } from './ExpandableProfileCard';
@@ -195,6 +195,7 @@ export function GuestInterface({
   );
   return (
     <section className="guest-interface" aria-label="Guest access">
+      <PageGuide role="guest" party={party} />
       {loading ? (
         <LoadingStatus>Checking your guest session…</LoadingStatus>
       ) : (
@@ -284,7 +285,6 @@ export function GuestInterface({
                     className="guest-preferences"
                   >
                     <h2>At this party</h2>
-                    <FeatureTour />
                     <ExpandDetails title="Request limits and party rules">
                       <p>
                         {party.settings.approvalRequired

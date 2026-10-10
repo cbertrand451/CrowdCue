@@ -477,3 +477,15 @@ Automated tests mock Spotify writes; live acceptance needs the host’s consent.
 The supplied tooltip nav patterns are adapted to the existing desktop sidebar and
 mobile menu. **Find a party** offers an expandable secondary QR control; main
 invitations and Display keep visible QR codes. See [component adaptations](docs/ui/batch-3/README.md).
+
+## Visible guest and host instructions
+
+Active Guest and Admin pages show a compact, always-visible guide below the party
+heading and above their main controls. Guest instructions explain joining,
+requesting, voting (when enabled), host approval and locked songs. **How CrowdCue
+works** opens the existing tour from this guide instead of hiding it under Party
+details. Host quick start covers adding a backup playlist, starting the session,
+playing in Spotify and sharing guest invites. **Setup help** switches to Spotify
+session and opens its detailed help; that documentation remains below session
+controls. Guides stack on phones and appear in three columns on larger screens.
+Ended parties do not show instructions for starting or joining an active party.
