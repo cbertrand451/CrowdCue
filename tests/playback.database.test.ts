@@ -456,6 +456,71 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     expect(actual).toEqual(before);
     expect((await requests.adminQueue(host.id, t, 0)).items).toHaveLength(2);
   });
+  it('uses distinct backups before repeating across restarts and refreshes, and reports exhaustion', async () => {
+    vi.mocked(provider.backupTracks).mockResolvedValue([
+      track('a'),
+      track('a'),
+      track('b'),
+      track('c'),
+      track('d'),
+      track('e'),
+    ]);
+    const p = await create(),
+      t = token(p.links.admin!);
+    await start(p);
+    expect(new Set(actual).size).toBe(3);
+    expect(await store.status(host.id, t)).toMatchObject({
+      backupTrackCount: 5,
+      backupRemainingTrackCount: 2,
+      backupExhausted: false,
+    });
+    context = `spotify:playlist:${createdId}`;
+    await advance(actual[0].slice(-22)[0]);
+    await new PlaybackService(store, provider).tick();
+    await service.action(host.id, t, { action: 'refresh-backup' });
+    for (let i = 0; i < 2; i++) {
+      const queue = await requests.adminQueue(host.id, t, 0);
+      await advance(queue.items[0].request.track.id[0]);
+    }
+    expect(actual).toHaveLength(5);
+    expect(new Set(actual).size).toBe(5);
+    expect(await store.status(host.id, t)).toMatchObject({
+      backupRemainingTrackCount: 0,
+      backupExhausted: true,
+    });
+    for (let i = 0; i < 5; i++) {
+      const queue = await requests.adminQueue(host.id, t, 0);
+      await advance(queue.items[0].request.track.id[0]);
+    }
+    expect(actual).toHaveLength(10);
+    expect(new Set(actual.slice(5)).size).toBe(5);
+    const lockedBefore = (await requests.adminQueue(host.id, t, 0)).items.map(
+      (e) => e.request.id,
+    );
+    await parties.update(host.id, t, {
+      name: p.name,
+      settings: { ...p.settings, backupSourceId: 'x'.repeat(22) },
+    });
+    vi.mocked(provider.backupTracks).mockResolvedValue([
+      track('a'),
+      track('f'),
+    ]);
+    await service.action(host.id, t, { action: 'refresh-backup' });
+    expect(await store.status(host.id, t)).toMatchObject({
+      backupRemainingTrackCount: 1,
+      backupExhausted: false,
+      backupSourceUrl: 'https://open.spotify.com/playlist/' + 'x'.repeat(22),
+    });
+    expect(
+      (await requests.adminQueue(host.id, t, 0)).items.map((e) => e.request.id),
+    ).toEqual(lockedBefore);
+    const queue = await requests.adminQueue(host.id, t, 0);
+    await advance(queue.items[0].request.track.id[0]);
+    expect(actual.at(-1)).toBe(`spotify:track:${track('f').id}`);
+    expect(await store.status(host.id, t)).toMatchObject({
+      backupExhausted: true,
+    });
+  });
   it('keeps the complete playlist after ending without deleting, clearing or rewriting it', async () => {
     const p = await create(false),
       t = token(p.links.admin!);

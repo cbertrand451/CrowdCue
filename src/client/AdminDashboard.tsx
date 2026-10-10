@@ -1,3 +1,4 @@
+import { AlertMessage } from './AlertMessage';
 import { PageGuide } from './PageGuide';
 import { SwitchDisclosure } from './SwitchDisclosure';
 import { FloatingInput } from './FloatingInput';
@@ -30,6 +31,7 @@ export function AdminDashboard({
   onExpired: () => void;
 }) {
   const [menu, setMenu] = useState('session');
+  const [backupExhausted, setBackupExhausted] = useState(false);
   const [queueRefresh, setQueueRefresh] = useState(0);
   const [backupSource, setBackupSource] = useState(
     party.settings.backupSourceId
@@ -137,6 +139,16 @@ export function AdminDashboard({
           });
         }}
       />
+      {party.status === 'ACTIVE' && backupExhausted && (
+        <AlertMessage
+          action="Change backup playlist"
+          onAction={() => setMenu('settings')}
+        >
+          Backup songs have run out. Add another playlist in Settings, then
+          check / refresh it in Spotify session. Otherwise, backup songs will
+          start repeating. Current and the next two songs stay locked.
+        </AlertMessage>
+      )}
       <div className="admin-dashboard dashboard-layout">
         <DashboardNavigation
           label="Host menus"
@@ -160,6 +172,7 @@ export function AdminDashboard({
               refresh={queueRefresh}
               onExpired={onExpired}
               onConfigureBackup={() => setMenu('settings')}
+              onBackupExhausted={setBackupExhausted}
             />
           </div>
           <div hidden={menu !== 'live'}>

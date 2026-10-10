@@ -556,3 +556,52 @@ it('opens detailed session help from the prominent host guide even when another 
     HTMLElement.prototype.scrollIntoView = originalScroll;
   }
 });
+
+it('shows backup exhaustion above every admin menu and directs the host to settings', async () => {
+  const { AdminDashboard } = await import('../src/client/AdminDashboard');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url.endsWith('/playback')
+        ? reply({
+            enabled: true,
+            mode: 'PLAYLIST',
+            playlistUrl: 'https://open.spotify.com/playlist/' + 'p'.repeat(22),
+            playlistRemoved: false,
+            creation: 'READY',
+            error: null,
+            retryAt: null,
+            syncedAt: null,
+            lockedCount: 3,
+            guestCount: 0,
+            backupCount: 3,
+            backupTrackCount: 3,
+            backupRemainingTrackCount: 0,
+            backupExhausted: true,
+            saveAtCreation: true,
+            saveAtClose: null,
+            closeDecided: false,
+            ended: false,
+          })
+        : reply({}, 503),
+    ),
+  );
+  render(
+    <AdminDashboard
+      party={party}
+      token={'a'.repeat(43)}
+      onChange={vi.fn()}
+      onExpired={vi.fn()}
+    />,
+  );
+  const message = await screen.findByText(/Backup songs have run out/);
+  expect(message).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Invite guests' }));
+  expect(message).toBeVisible();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Change backup playlist' }),
+  );
+  expect(
+    screen.getByRole('textbox', { name: 'Backup Spotify playlist' }),
+  ).toBeVisible();
+});

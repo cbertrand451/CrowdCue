@@ -61,9 +61,14 @@ export async function fillBackupBuffer(client: PoolClient, partyId: string) {
     )
   ).rows[0];
   if (!state?.enabled) return;
-  const tracks = state.backup_tracks
-    .map((t) => trackSchema.parse(t))
-    .filter((t) => state.allow_explicit_tracks || !t.explicit);
+  const tracks = [
+    ...new Map(
+      state.backup_tracks
+        .map((t) => trackSchema.parse(t))
+        .filter((t) => state.allow_explicit_tracks || !t.explicit)
+        .map((t) => [t.id, t]),
+    ).values(),
+  ];
   if (!tracks.length) return;
   const playing = (
     await client.query(
@@ -91,6 +96,17 @@ export async function fillBackupBuffer(client: PoolClient, partyId: string) {
       [partyId],
     )
   ).rows[0].count;
+  // Durable usage survives restarts and source refreshes. Removed unlocked
+  // filler can be selected again. Include guest occurrences
+  // so backup selection does not repeat a song already requested by a guest.
+  const usage = new Map(
+    (
+      await client.query<{ id: string; count: number }>(
+        "SELECT track->>'id' AS id,count(*)::int AS count FROM playback_entries WHERE party_id=$1 AND status!='REMOVED' GROUP BY track->>'id'",
+        [partyId],
+      )
+    ).rows.map((row) => [row.id, row.count]),
+  );
   for (let n = count; n < minimum; n++) {
     const previous = (
       await client.query<{ track: { id: string } }>(
@@ -98,12 +114,17 @@ export async function fillBackupBuffer(client: PoolClient, partyId: string) {
         [partyId],
       )
     ).rows[0]?.track.id;
-    const candidates = tracks.filter((t) => t.id !== previous);
-    const choices = candidates.length ? candidates : tracks;
+    // Use every fresh track before repeating; subsequent cycles also use the
+    // least-used tracks first, without immediate repeats when an alternative exists.
+    const leastUsed = Math.min(...tracks.map((t) => usage.get(t.id) ?? 0));
+    const cycle = tracks.filter((t) => (usage.get(t.id) ?? 0) === leastUsed);
+    const candidates = cycle.filter((t) => t.id !== previous);
+    const choices = candidates.length ? candidates : cycle;
     const t = choices[randomInt(choices.length)];
     await client.query(
       "INSERT INTO playback_entries (party_id,source,track) VALUES ($1,'BACKUP',$2)",
       [partyId, JSON.stringify(t)],
     );
+    usage.set(t.id, (usage.get(t.id) ?? 0) + 1);
   }
 }

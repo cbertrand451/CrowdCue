@@ -86,6 +86,22 @@ export class PlaybackStore {
         [id],
       )
     ).rows[0];
+    const backupIds = new Set(
+      s.backup_tracks
+        .filter((t) => s.allow_explicit_tracks || !t.explicit)
+        .map((t) => t.id),
+    );
+    const used = await this.pool.query<{ id: string }>(
+      "SELECT DISTINCT track->>'id' AS id FROM playback_entries WHERE party_id=$1 AND status!='REMOVED'",
+      [id],
+    );
+    for (const track of used.rows) backupIds.delete(track.id);
+    const backupRemainingTrackCount = backupIds.size;
+    const backupTrackCount = new Set(
+      s.backup_tracks
+        .filter((t) => s.allow_explicit_tracks || !t.explicit)
+        .map((t) => t.id),
+    ).size;
     return playbackStatusSchema.parse({
       coverState: !cover
         ? 'none'
@@ -113,9 +129,10 @@ export class PlaybackStore {
       backupSourceUrl: s.backup_source_id
         ? `https://open.spotify.com/playlist/${s.backup_source_id}`
         : null,
-      backupTrackCount: s.backup_tracks.filter(
-        (t) => s.allow_explicit_tracks || !t.explicit,
-      ).length,
+      backupTrackCount,
+      backupRemainingTrackCount,
+      backupExhausted:
+        s.enabled && backupTrackCount > 0 && backupRemainingTrackCount === 0,
       saveAtCreation: s.save_at_creation,
       saveAtClose: s.save_at_close,
       closeDecided: s.close_decided,

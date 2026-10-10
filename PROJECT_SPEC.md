@@ -1176,3 +1176,16 @@ Admin and Guest pages include a discreet, collapsed **Connect with the Creator**
 footer after the page content. Expanding it shows Colin Bertrand’s LinkedIn
 profile and email contact. It is separate from party controls and omitted from
 Home and Display.
+
+
+## Backup repeats and exhaustion
+
+Backup refill chooses random distinct eligible tracks with the lowest persisted
+occurrence count, using all fresh tracks before repeating. Counts include guest
+songs already in the session; removed filler is excluded. Duplicate source entries
+count once. History survives restarts and source changes. Once no fresh eligible
+tracks remain, Admin shows an alert above all menus with a Settings action asking
+for another playlist; repeating cycles use least-used tracks and avoid immediate
+repeats where possible. Refreshing a source with fresh songs clears the warning.
+Current and next-two locks and continuous refill remain unchanged. No additional
+Spotify calls are needed to report remaining songs or exhaustion.

@@ -115,12 +115,20 @@ it('shows the backup source/count and checks it without starting playback', asyn
       ),
     );
   vi.stubGlobal('fetch', fetcher);
+  const configure = vi.fn();
   const { rerender } = render(
-    <PlaybackPanel token={'a'.repeat(43)} active onExpired={vi.fn()} />,
+    <PlaybackPanel
+      token={'a'.repeat(43)}
+      active
+      onExpired={vi.fn()}
+      onConfigureBackup={configure}
+    />,
   );
   expect(
     await screen.findByRole('link', { name: 'Open backup source in Spotify' }),
   ).toHaveAttribute('href', checked.backupSourceUrl);
+  fireEvent.click(screen.getByRole('button', { name: 'Change backup source' }));
+  expect(configure).toHaveBeenCalledOnce();
   fireEvent.click(
     screen.getByRole('button', { name: 'Check / refresh backup playlist' }),
   );

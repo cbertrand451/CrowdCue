@@ -31,6 +31,8 @@ export const playbackStatusSchema = z.object({
   backupCount: z.number().int().nonnegative(),
   backupSourceUrl: z.string().url().nullable().default(null),
   backupTrackCount: z.number().int().nonnegative().default(0),
+  backupRemainingTrackCount: z.number().int().nonnegative().default(0),
+  backupExhausted: z.boolean().default(false),
   saveAtCreation: z.boolean(),
   saveAtClose: z.boolean().nullable(),
   closeDecided: z.boolean(),

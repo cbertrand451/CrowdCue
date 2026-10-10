@@ -43,6 +43,7 @@ export function PlaybackPanel({
   refresh = 0,
   onExpired,
   onConfigureBackup,
+  onBackupExhausted,
 }: {
   token: string;
   partyId?: string;
@@ -50,6 +51,7 @@ export function PlaybackPanel({
   refresh?: number;
   onExpired: () => void;
   onConfigureBackup?: () => void;
+  onBackupExhausted?: (exhausted: boolean) => void;
 }) {
   const liveRevision = useLiveRevision();
   const [status, setStatus] = useState<PlaybackStatus>();
@@ -96,6 +98,7 @@ export function PlaybackPanel({
         const data = playbackStatusSchema.parse(await response.json());
         if (!c.signal.aborted) {
           setStatus(data);
+          onBackupExhausted?.(data.backupExhausted && !data.ended);
           setError(undefined);
         }
       } catch {
@@ -111,7 +114,15 @@ export function PlaybackPanel({
       c.abort();
       clearTimeout(timer);
     };
-  }, [token, active, refresh, attempt, onExpired, liveRevision]);
+  }, [
+    token,
+    active,
+    refresh,
+    attempt,
+    onExpired,
+    liveRevision,
+    onBackupExhausted,
+  ]);
   async function action(body: {
     action: string;
     name?: string;
@@ -155,7 +166,9 @@ export function PlaybackPanel({
         setAttempt((x) => x + 1);
         return;
       }
-      setStatus(playbackStatusSchema.parse(await response.json()));
+      const updated = playbackStatusSchema.parse(await response.json());
+      setStatus(updated);
+      onBackupExhausted?.(updated.backupExhausted && !updated.ended);
       setAttempt((x) => x + 1);
       setRecreate(false);
     } catch {
@@ -318,16 +331,34 @@ export function PlaybackPanel({
                   ? `${status.backupTrackCount} usable songs loaded. Random backup songs fill gaps when guests have no songs waiting.`
                   : 'No usable backup songs loaded. Check the playlist after saving its link in settings.'}
               </p>
+              {status.enabled && (
+                <p className="muted">
+                  {status.backupRemainingTrackCount} fresh backup songs
+                  remaining before repeats.
+                </p>
+              )}
               {active && (
-                <LoadingButton
-                  loading={busy === 'refresh-backup'}
-                  type="button"
-                  className="secondary"
-                  disabled={!!busy}
-                  onClick={() => void action({ action: 'refresh-backup' })}
-                >
-                  Check / refresh backup playlist
-                </LoadingButton>
+                <div className="party-actions">
+                  {onConfigureBackup && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={!!busy}
+                      onClick={onConfigureBackup}
+                    >
+                      Change backup source
+                    </button>
+                  )}
+                  <LoadingButton
+                    loading={busy === 'refresh-backup'}
+                    type="button"
+                    className="secondary"
+                    disabled={!!busy}
+                    onClick={() => void action({ action: 'refresh-backup' })}
+                  >
+                    Check / refresh backup playlist
+                  </LoadingButton>
+                </div>
               )}
               <p className="muted">
                 Refresh uses updated playlist contents for future refills.
