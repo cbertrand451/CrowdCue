@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import { PostgresRequestStore } from '../src/server/requests/store.js';
 import { PostgresGuestStore } from '../src/server/guests/store.js';
 import { guestCookieName } from '../src/server/guests/routes.js';
@@ -142,6 +143,119 @@ describe.skipIf(!url)('party creation and authorization', () => {
     }
   });
 
+  it('archives ended and closed parties for their owner and removes only the gallery card', async () => {
+    const party = await created();
+    expect((await store.archive(host.id, 0)).parties).toEqual([]);
+    await store.end(host.id, tokenFrom(party.links.admin!));
+    await store.close(host.id, party.id);
+    await pool.query(
+      "UPDATE party_playback SET playlist_id=$2,playlist_creation='READY' WHERE party_id=$1",
+      [party.id, 'p'.repeat(22)],
+    );
+    const list = await app.inject({
+      url: '/api/parties/archive',
+      cookies: { '__Host-crowdcue_host': host.token },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().parties).toEqual([
+      expect.objectContaining({
+        id: party.id,
+        playlistUrl: `https://open.spotify.com/playlist/${'p'.repeat(22)}`,
+      }),
+    ]);
+    expect(
+      (
+        await app.inject({
+          url: '/api/parties/archive',
+          cookies: { '__Host-crowdcue_host': other.token },
+        })
+      ).json().parties,
+    ).toEqual([]);
+    const remove = (cookie: string, origin = config.appOrigin) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/parties/${party.id}/archive/remove`,
+        headers: { origin },
+        cookies: { '__Host-crowdcue_host': cookie },
+        payload: {},
+      });
+    expect((await remove(other.token)).statusCode).toBe(404);
+    expect((await remove(host.token, 'https://evil.example')).statusCode).toBe(
+      403,
+    );
+    expect((await remove(host.token)).json()).toEqual({ removed: true });
+    expect((await remove(host.token)).json()).toEqual({ removed: true });
+    expect((await store.archive(host.id, 0)).parties).toEqual([]);
+    expect((await store.owned(host.id, party.id)).status).toBe('ENDED');
+    expect(
+      (
+        await pool.query(
+          'SELECT playlist_id FROM party_playback WHERE party_id=$1',
+          [party.id],
+        )
+      ).rows[0].playlist_id,
+    ).toBe('p'.repeat(22));
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('validates and persists normalized covers atomically with creation and protects image reads and writes', async () => {
+    const png = await sharp({
+      create: { width: 32, height: 16, channels: 3, background: '#65b32e' },
+    })
+      .png()
+      .toBuffer();
+    const key = randomUUID();
+    const payload = { name: 'Covered party', cover: png.toString('base64') };
+    const first = await create(payload, key);
+    expect(first.statusCode).toBe(201);
+    const p = first.json().party;
+    expect((await create(payload, key)).json().party.id).toBe(p.id);
+    expect(
+      (
+        await create(
+          { ...payload, cover: Buffer.from('bad').toString('base64') },
+          randomUUID(),
+        )
+      ).statusCode,
+    ).toBe(400);
+    const image = await app.inject({
+      url: `/api/parties/${p.id}/cover`,
+      cookies: { '__Host-crowdcue_host': host.token },
+    });
+    expect(image.statusCode).toBe(200);
+    expect(image.headers['content-type']).toBe('image/jpeg');
+    const metadata = await sharp(image.rawPayload).metadata();
+    expect(metadata).toMatchObject({ format: 'jpeg', width: 512, height: 512 });
+    expect(metadata.exif).toBeUndefined();
+    expect(
+      (
+        await app.inject({
+          url: `/api/parties/${p.id}/cover`,
+          cookies: { '__Host-crowdcue_host': other.token },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ url: `/api/parties/${p.id}/cover` })).statusCode,
+    ).toBe(401);
+    const upload = (cookie: string, origin = config.appOrigin) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/parties/${p.id}/cover`,
+        headers: { origin },
+        cookies: { '__Host-crowdcue_host': cookie },
+        payload: { cover: png.toString('base64') },
+      });
+    expect((await upload(other.token)).statusCode).toBe(404);
+    expect((await upload(host.token, 'https://evil.example')).statusCode).toBe(
+      403,
+    );
+    expect((await upload(host.token)).json()).toEqual({ saved: true });
+    await store.end(host.id, tokenFrom(p.links.admin));
+    expect((await upload(host.token)).statusCode).toBe(409);
+    expect((await store.archive(host.id, 0)).parties[0].coverUrl).toBe(
+      `/api/parties/${p.id}/cover`,
+    );
+  });
   it('creates an active party, default settings, and independently generated encrypted links', async () => {
     const response = await create({ name: '  Launch party  ' });
     expect(response.statusCode).toBe(201);

@@ -8,6 +8,7 @@ export const spotifyScopes = [
   'user-read-private',
   'user-read-playback-state',
   'playlist-modify-private',
+  'ugc-image-upload',
   'playlist-read-private',
   'playlist-read-collaborative',
 ];

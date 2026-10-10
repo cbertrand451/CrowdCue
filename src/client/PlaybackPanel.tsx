@@ -1,3 +1,6 @@
+import { ReconnectSpotify } from './ReconnectSpotify';
+import { AlertMessage } from './AlertMessage';
+import { CoverUpload } from './CoverUpload';
 import { z } from 'zod';
 import { SessionHelp } from './SessionHelp';
 import { OnboardingChecklist } from './OnboardingChecklist';
@@ -35,12 +38,14 @@ const errors: Record<NonNullable<PlaybackStatus['error']>, string> = {
 };
 export function PlaybackPanel({
   token,
+  partyId,
   active,
   refresh = 0,
   onExpired,
   onConfigureBackup,
 }: {
   token: string;
+  partyId?: string;
   active: boolean;
   refresh?: number;
   onExpired: () => void;
@@ -187,7 +192,18 @@ export function PlaybackPanel({
         </LoadingButton>
       </div>
       {busy && <LoadingStatus>Updating Spotify session…</LoadingStatus>}
-      {(actionError || error) && <p role="alert">{actionError ?? error}</p>}
+      {(actionError || error) && (
+        <AlertMessage
+          action="Setup help"
+          onAction={() =>
+            document
+              .querySelector<HTMLElement>('.session-help')
+              ?.scrollIntoView({ block: 'center' })
+          }
+        >
+          {actionError ?? error}
+        </AlertMessage>
+      )}
       {!status && error && (
         <p className="muted">
           Check your internet connection and sign in as this party’s host. If
@@ -320,6 +336,24 @@ export function PlaybackPanel({
               </p>
             </div>
           )}
+          {status.coverState === 'pending' && (
+            <p role="status" className="muted">
+              Cover saved; waiting for Spotify playlist upload.
+            </p>
+          )}
+          {status.coverState === 'synced' && (
+            <p className="ready">Playlist cover synced to Spotify.</p>
+          )}
+          {status.coverState === 'error' && (
+            <AlertMessage>
+              {status.coverError === 'reauthenticate' ||
+              status.coverError === 'permissions'
+                ? 'Reconnect Spotify to grant image-upload permission. Your cover is saved and will retry automatically.'
+                : 'Cover upload is delayed. Your cover is saved and will retry after Spotify’s cooldown.'}
+              {(status.coverError === 'permissions' ||
+                status.coverError === 'reauthenticate') && <ReconnectSpotify />}
+            </AlertMessage>
+          )}
           {status.syncedAt && (
             <p className="muted">
               Playlist last updated{' '}
@@ -351,6 +385,9 @@ export function PlaybackPanel({
                       onChange={(e) => setDescription(e.target.value)}
                     />
                   </label>
+                  {partyId && (
+                    <CoverUpload partyId={partyId} disabled={!!busy} />
+                  )}
                   <LoadingButton
                     className="session-start"
                     loading={busy === 'start'}

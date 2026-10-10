@@ -61,11 +61,29 @@ export interface PartyStore {
     hostId: string,
     input: CreatePartyInput,
     idempotencyKey: string,
+    cover?: Buffer,
   ): Promise<{ party: PartyDetails; created: boolean }>;
   list(
     hostId: string,
     offset: number,
   ): Promise<{ parties: PartyDetails[]; nextOffset: number | null }>;
+  archive(
+    hostId: string,
+    offset: number,
+  ): Promise<{
+    parties: import('./contracts.js').ArchiveItem[];
+    nextOffset: number | null;
+  }>;
+  removeFromArchive(
+    hostId: string,
+    partyId: string,
+  ): Promise<{ removed: boolean }>;
+  cover(hostId: string, partyId: string): Promise<Buffer>;
+  saveCover(
+    hostId: string,
+    partyId: string,
+    image: Buffer,
+  ): Promise<{ saved: boolean }>;
   close(hostId: string, partyId: string): Promise<{ closed: boolean }>;
   owned(hostId: string, partyId: string): Promise<PartyDetails>;
   admin(hostId: string, token: string): Promise<PartyDetails>;
@@ -132,10 +150,12 @@ export class PostgresPartyStore implements PartyStore {
     hostId: string,
     input: CreatePartyInput,
     idempotencyKey: string,
+    cover?: Buffer,
   ) {
     idempotencyKey = idempotencyKey.toLowerCase();
     const fingerprint = createHash('sha256')
       .update(JSON.stringify(input))
+      .update(cover ?? Buffer.alloc(0))
       .digest('hex');
     return inTransaction(this.pool, async (client) => {
       // Serialize concurrent retries for the same host/key across processes.
@@ -183,6 +203,11 @@ export class PostgresPartyStore implements PartyStore {
           hashToken(displayToken),
         ],
       );
+      if (cover)
+        await client.query(
+          'INSERT INTO party_covers (party_id,image) VALUES ($1,$2)',
+          [id, cover],
+        );
       const settings = input.settings;
       await client.query(
         `INSERT INTO party_settings
@@ -236,6 +261,80 @@ export class PostgresPartyStore implements PartyStore {
       parties: result.rows.slice(0, 20).map((row) => this.details(row)),
       nextOffset: result.rows.length > 20 ? offset + 20 : null,
     };
+  }
+  async archive(hostId: string, offset: number) {
+    const rows = (
+      await this.pool.query<{
+        id: string;
+        name: string;
+        created_at: Date;
+        ended_at: Date | null;
+        playlist_id: string | null;
+        has_cover: boolean;
+        track_count: number;
+      }>(
+        `SELECT p.id,p.name,p.created_at,p.ended_at,
+       CASE WHEN b.playlist_removed THEN NULL ELSE b.playlist_id END AS playlist_id,
+       c.party_id IS NOT NULL AS has_cover,
+       (SELECT count(*)::int FROM playback_entries e WHERE e.party_id=p.id AND COALESCE(e.legacy_committed_at,e.locked_at) IS NOT NULL) AS track_count
+       FROM parties p LEFT JOIN party_playback b ON b.party_id=p.id LEFT JOIN party_covers c ON c.party_id=p.id
+       WHERE p.host_account_id=$1 AND p.status='ENDED' AND p.archive_hidden_at IS NULL
+       ORDER BY p.created_at DESC,p.id DESC LIMIT 21 OFFSET $2`,
+        [hostId, offset],
+      )
+    ).rows;
+    return {
+      parties: rows.slice(0, 20).map((p) => ({
+        id: p.id,
+        name: p.name,
+        createdAt: p.created_at.toISOString(),
+        endedAt: p.ended_at?.toISOString() ?? null,
+        playlistUrl: p.playlist_id
+          ? `https://open.spotify.com/playlist/${p.playlist_id}`
+          : null,
+        coverUrl: p.has_cover ? `/api/parties/${p.id}/cover` : null,
+        trackCount: p.track_count,
+      })),
+      nextOffset: rows.length > 20 ? offset + 20 : null,
+    };
+  }
+  async removeFromArchive(hostId: string, partyId: string) {
+    const result = await this.pool.query(
+      "UPDATE parties SET archive_hidden_at=COALESCE(archive_hidden_at,now()) WHERE id=$1 AND host_account_id=$2 AND status='ENDED' RETURNING id",
+      [partyId, hostId],
+    );
+    if (!result.rowCount)
+      throw new PartyError(404, 'Archived party not found.');
+    return { removed: true };
+  }
+  async cover(hostId: string, partyId: string) {
+    const row = (
+      await this.pool.query<{ image: Buffer }>(
+        'SELECT c.image FROM party_covers c JOIN parties p ON p.id=c.party_id WHERE p.id=$1 AND p.host_account_id=$2',
+        [partyId, hostId],
+      )
+    ).rows[0];
+    if (!row) throw new PartyError(404, 'Cover not found.');
+    return row.image;
+  }
+  async saveCover(hostId: string, partyId: string, image: Buffer) {
+    return inTransaction(this.pool, async (client) => {
+      const row = (
+        await client.query<{ status: string }>(
+          'SELECT status FROM parties WHERE id=$1 AND host_account_id=$2 FOR UPDATE',
+          [partyId, hostId],
+        )
+      ).rows[0];
+      if (!row) throw new PartyError(404, 'Party not found.');
+      if (row.status !== 'ACTIVE')
+        throw new PartyError(409, 'This party has ended.');
+      await client.query(
+        `INSERT INTO party_covers(party_id,image) VALUES($1,$2)
+       ON CONFLICT(party_id) DO UPDATE SET image=EXCLUDED.image,revision=party_covers.revision+1,error_code=NULL,retry_at=NULL`,
+        [partyId, image],
+      );
+      return { saved: true };
+    });
   }
   async close(hostId: string, partyId: string) {
     return inTransaction(this.pool, async (client) => {

@@ -159,6 +159,11 @@ export class AuthService {
       return work(await this.store.accessToken(hostId, this.spotify, token));
     }
   }
+  uploadCover(hostId: string, id: string, base64: string) {
+    return this.playbackCall(hostId, (t) =>
+      this.spotify.playback.uploadCover(t, id, base64),
+    );
+  }
   createPlaylist(hostId: string, name: string, marker: string) {
     return this.playbackCall(hostId, (t) =>
       this.spotify.playback.createPlaylist(t, name, marker),

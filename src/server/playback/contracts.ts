@@ -1,5 +1,10 @@
 import { z } from 'zod';
 export const playbackStatusSchema = z.object({
+  coverState: z.enum(['none', 'pending', 'synced', 'error']).default('none'),
+  coverError: z
+    .enum(['reauthenticate', 'permissions', 'rate_limited', 'unavailable'])
+    .nullable()
+    .default(null),
   enabled: z.boolean(),
   mode: z.enum(['QUEUE', 'PLAYLIST']),
   playlistUrl: z.string().url().nullable(),

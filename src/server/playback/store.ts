@@ -75,7 +75,27 @@ export class PlaybackStore {
         [id],
       )
     ).rows[0];
+    const cover = (
+      await this.pool.query<{
+        revision: number;
+        synced_revision: number;
+        synced_playlist_id: string | null;
+        error_code: string | null;
+      }>(
+        'SELECT revision,synced_revision,synced_playlist_id,error_code FROM party_covers WHERE party_id=$1',
+        [id],
+      )
+    ).rows[0];
     return playbackStatusSchema.parse({
+      coverState: !cover
+        ? 'none'
+        : cover.error_code
+          ? 'error'
+          : cover.synced_revision === cover.revision &&
+              cover.synced_playlist_id === s.playlist_id
+            ? 'synced'
+            : 'pending',
+      coverError: cover?.error_code ?? null,
       enabled: s.enabled,
       mode: s.mode,
       playlistUrl:

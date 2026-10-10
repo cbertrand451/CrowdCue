@@ -1,3 +1,5 @@
+import { AlertMessage } from './AlertMessage';
+import { CoverUpload } from './CoverUpload';
 import { EndPartyAction } from './EndPartyAction';
 import { SwitchDisclosure } from './SwitchDisclosure';
 import { FloatingInput } from './FloatingInput';
@@ -66,6 +68,8 @@ export function PartyCreation({
   const [listAttempt, setListAttempt] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [cover, setCover] = useState<string>();
   const [name, setName] = useState('');
   const [backupSource, setBackupSource] = useState('');
   const [approvalRequired, setApprovalRequired] = useState(false);
@@ -165,7 +169,7 @@ export function PartyCreation({
   }
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (inFlight.current) return;
+    if (inFlight.current || coverBusy) return;
     const backupSourceId = playlistIdFromInput(backupSource);
     if (backupSourceId === undefined) {
       setCreationError('Enter a valid Spotify playlist link.');
@@ -186,7 +190,10 @@ export function PartyCreation({
       setCreationError('Enter a party name between 1 and 120 characters.');
       return;
     }
-    const fingerprint = JSON.stringify(parsed.data);
+    const fingerprint = JSON.stringify({
+      ...parsed.data,
+      ...(cover ? { cover } : {}),
+    });
     if (intent.current?.fingerprint !== fingerprint) {
       intent.current = { fingerprint, key: crypto.randomUUID() };
     }
@@ -204,11 +211,16 @@ export function PartyCreation({
         body: fingerprint,
       });
       if (!response.ok) {
+        const failure = z
+          .object({ error: z.string().max(500) })
+          .safeParse(await response.json().catch(() => null));
         setCreationError(
           response.status === 401
             ? 'Your session expired. Sign in with Spotify again to create a party.'
             : response.status === 400
-              ? 'Check your party name and preferences, then try again.'
+              ? failure.success
+                ? failure.data.error
+                : 'Check your party name, cover and preferences, then try again.'
               : response.status === 409
                 ? 'This attempt already created a party. Refresh your parties before starting another.'
                 : response.status === 429
@@ -225,6 +237,7 @@ export function PartyCreation({
       setCreatedId(result.party.id);
       onCreated?.();
       setName('');
+      setCover(undefined);
       intent.current = null;
     } catch {
       setCreationError(
@@ -267,6 +280,12 @@ export function PartyCreation({
               Your private session playlist stays in Spotify after the party.
               You can remove it manually.
             </p>
+            <CoverUpload
+              value={cover}
+              onChange={setCover}
+              onBusyChange={setCoverBusy}
+              disabled={creating}
+            />
             <div className="party-preferences">
               <SwitchDisclosure
                 label="Approve song requests"
@@ -291,15 +310,19 @@ export function PartyCreation({
                 }
               />
             </div>
-            <LoadingButton loading={creating} type="submit">
+            <LoadingButton
+              loading={creating}
+              disabled={coverBusy}
+              type="submit"
+            >
               {creating ? 'Creating party…' : 'Create party'}
             </LoadingButton>
           </fieldset>
         </form>
         {creationError && (
-          <p id="creation-error" role="alert">
-            {creationError}
-          </p>
+          <div id="creation-error">
+            <AlertMessage>{creationError}</AlertMessage>
+          </div>
         )}
         {createdId && (
           <p aria-live="polite" className="ready">

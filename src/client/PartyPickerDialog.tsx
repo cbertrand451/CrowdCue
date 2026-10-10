@@ -1,3 +1,4 @@
+import { ShowQR } from './ShowQR';
 import { ComponentIcon } from './ComponentIcon';
 import { useMemo, useState } from 'react';
 import { motion, MotionConfig } from 'motion/react';
@@ -70,6 +71,9 @@ export function PartyPickerDialog({ parties }: { parties: PartyDetails[] }) {
                     </span>
                     <ComponentIcon symbol="↗" />
                   </a>
+                  {party.status === 'ACTIVE' && (
+                    <ShowQR url={party.links.guest} />
+                  )}
                 </li>
               ))}
             </motion.ul>

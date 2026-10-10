@@ -1131,3 +1131,31 @@ no new public capability is introduced. Only a validated ENDED response updates
 the shared owner list. Confirmed endings survive a delayed or stale list response,
 and ended parties remain available in Your parties for the existing Close action.
 Failures keep the confirmation open with retry/sign-in guidance.
+
+## Host gallery and cover images
+
+The Home workspace includes **Party Archive**, an owner-only gallery of past
+(ENDED) parties, including closed parties. Each card displays its real name,
+date, queued-song count, optional uploaded cover, details and a Spotify session
+playlist link when available. Older parties are paginated. Removing a card
+requires confirmation and hides only the gallery entry; party history and Spotify
+playlists are retained. Active parties continue to appear in the existing overview
+and Your parties.
+
+Hosts can choose an optional **Cover Image** during party creation or before
+starting the session playlist. JPEG, PNG and WebP uploads are bounded to 6 MiB,
+validated on the backend, cropped square and re-encoded to a metadata-free JPEG
+within Spotify’s 256 KiB encoded payload limit. Covers are stored in PostgreSQL
+and shown on archive cards; the same normalized image is uploaded to the app’s
+managed Spotify playlist. Upload permissions use `ugc-image-upload` in addition
+to private playlist modification; previously connected hosts may need to reconnect.
+Covers use existing rate limiting and safe background retries. Image upload errors
+are visible and do not interrupt song synchronization. Never expose account tokens
+or private links through gallery or cover responses to non-owning users.
+
+Navigation retains visible labels and gains hover/focus tooltips using the supplied
+vertical (desktop) and horizontal (mobile) patterns. Secondary sharing may use an
+expandable QR control; main party invitations and Display must keep their directly
+visible QR. Gallery cards subtly float on hover and respect reduced motion. Alert,
+disabled-action and grouped-button patterns represent actual application state.
+The established #111111 background, black cards and #65b32e accent remain in use.

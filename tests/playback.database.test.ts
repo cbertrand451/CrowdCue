@@ -154,6 +154,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
     provider = {
       createPlaylist: vi.fn(async () => createdId),
       findPlaylist: vi.fn(async () => createdId),
+      uploadCover: vi.fn(async () => {}),
       matchingPlaylistIds: vi.fn(async () => []),
       updatePlaylistDescription: vi.fn(async () => {}),
       backupTracks: vi.fn(async () => [track('a'), track('b'), track('c')]),
@@ -266,6 +267,63 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
       ).toBe(false);
     },
   );
+  it('syncs covers once per revision, respects image cooldowns, and finishes uploads after the party ends', async () => {
+    const p = await create();
+    const image = Buffer.from('/9j/2Q==', 'base64');
+    await parties.saveCover(host.id, p.id, image);
+    await start(p);
+    expect(provider.uploadCover).toHaveBeenCalledWith(
+      host.id,
+      createdId,
+      image.toString('base64'),
+    );
+    expect(
+      (await store.status(host.id, token(p.links.admin!))).coverState,
+    ).toBe('synced');
+    await service.tick();
+    expect(provider.uploadCover).toHaveBeenCalledTimes(1);
+    await parties.saveCover(host.id, p.id, image);
+    vi.mocked(provider.uploadCover).mockRejectedValueOnce(
+      new SpotifyError('rate_limited', 45),
+    );
+    await service.tick();
+    expect(
+      (await store.status(host.id, token(p.links.admin!))).coverState,
+    ).toBe('error');
+    await service.tick();
+    expect(provider.uploadCover).toHaveBeenCalledTimes(2);
+    await parties.end(host.id, token(p.links.admin!));
+    await pool.query(
+      "UPDATE party_covers SET retry_at=now()-interval '1 second' WHERE party_id=$1",
+      [p.id],
+    );
+    await service.tick();
+    expect(provider.uploadCover).toHaveBeenCalledTimes(3);
+    expect(
+      (await store.status(host.id, token(p.links.admin!))).coverState,
+    ).toBe('synced');
+    expect(provider.createPlaylist).toHaveBeenCalledTimes(1);
+  });
+  it('does not acknowledge a stale cover revision when a newer cover arrives during upload', async () => {
+    const p = await create();
+    const image = Buffer.from('/9j/2Q==', 'base64');
+    await parties.saveCover(host.id, p.id, image);
+    vi.mocked(provider.uploadCover).mockImplementationOnce(async () => {
+      await parties.saveCover(host.id, p.id, image);
+    });
+    await start(p);
+    const row = (
+      await pool.query(
+        'SELECT revision,synced_revision FROM party_covers WHERE party_id=$1',
+        [p.id],
+      )
+    ).rows[0];
+    expect(row).toMatchObject({ revision: 2, synced_revision: 0 });
+    await service.tick();
+    expect(
+      (await store.status(host.id, token(p.links.admin!))).coverState,
+    ).toBe('synced');
+  });
   it('creates only on Start, customizes a private session, seeds three random backups and never sends playback commands', async () => {
     const p = await create(),
       t = token(p.links.admin!);

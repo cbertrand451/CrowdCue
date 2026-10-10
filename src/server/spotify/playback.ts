@@ -68,6 +68,7 @@ export class SpotifyPlayback {
     token: string,
     method = 'GET',
     body?: unknown,
+    image = false,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -75,9 +76,13 @@ export class SpotifyPlayback {
         method,
         headers: {
           authorization: `Bearer ${token}`,
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...(body === undefined
+            ? {}
+            : { 'content-type': image ? 'image/jpeg' : 'application/json' }),
         },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(body === undefined
+          ? {}
+          : { body: image ? String(body) : JSON.stringify(body) }),
         redirect: 'error',
         signal: AbortSignal.timeout(10000),
       });
@@ -116,12 +121,21 @@ export class SpotifyPlayback {
           ? 'no_active_device'
           : 'unavailable',
       );
-    if (response.status === 204) return null;
+    if (response.status === 204 || (image && response.status === 202))
+      return null;
     try {
       return (await response.json()) as unknown;
     } catch {
       throw new SpotifyMutationError(method !== 'GET');
     }
+  }
+  async uploadCover(token: string, id: string, base64: string) {
+    idSchema.parse(id);
+    z.string()
+      .max(256 * 1024)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/)
+      .parse(base64);
+    await this.call(`playlists/${id}/images`, token, 'PUT', base64, true);
   }
   async createPlaylist(token: string, name: string, description: string) {
     const parsed = z.object({ id: idSchema }).safeParse(

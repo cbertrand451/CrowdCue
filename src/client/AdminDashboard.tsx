@@ -137,6 +137,7 @@ export function AdminDashboard({
       <div className="dashboard-content">
         <div hidden={menu !== 'session'}>
           <PlaybackPanel
+            partyId={party.id}
             token={token}
             active={party.status === 'ACTIVE'}
             refresh={queueRefresh}

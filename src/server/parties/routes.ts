@@ -6,6 +6,7 @@ import type { AuthService } from '../auth/service.js';
 import { validToken } from '../auth/service.js';
 import { SpotifyError } from '../spotify/client.js';
 import { createPartySchema, PartyError } from './contracts.js';
+import { coverInputSchema, normalizeCover } from './covers.js';
 import type { PartyStore } from './store.js';
 
 export async function partyRoutes(
@@ -50,7 +51,7 @@ export async function partyRoutes(
 
   app.post(
     '/api/parties',
-    { ...limited(10), bodyLimit: 4096 },
+    { ...limited(10), bodyLimit: 8 * 1024 * 1024 + 4096 },
     async (request, reply) => {
       if (!auth || !store)
         return reply
@@ -61,14 +62,29 @@ export async function partyRoutes(
           .code(403)
           .send({ error: 'Open CrowdCue to create a party.' });
       const host = await auth.requireHost(request.cookies[hostCookie]);
-      const parsed = createPartySchema.safeParse(request.body);
+      const parsed = createPartySchema
+        .extend({ cover: coverInputSchema.optional() })
+        .safeParse(request.body);
       const key = z.uuid().safeParse(request.headers['idempotency-key']);
       if (!parsed.success || !key.success)
         return reply.code(400).send({
           error:
             'Enter a party name (1–120 characters), valid settings, and a creation key.',
         });
-      const result = await store.create(host.accountId, parsed.data, key.data);
+      let cover: Buffer | undefined;
+      try {
+        if (parsed.data.cover) cover = await normalizeCover(parsed.data.cover);
+      } catch {
+        return reply.code(400).send({
+          error: 'Upload a valid JPEG, PNG, or WebP image under 6 MB.',
+        });
+      }
+      const input = createPartySchema.parse(
+        parsed.data.cover === undefined
+          ? parsed.data
+          : { name: parsed.data.name, settings: parsed.data.settings },
+      );
+      const result = await store.create(host.accountId, input, key.data, cover);
       reply.header('Location', `/api/parties/${result.party.id}`);
       return reply
         .code(result.created ? 201 : 200)
@@ -89,6 +105,85 @@ export async function partyRoutes(
       return reply.code(400).send({ error: 'Invalid party list page.' });
     return store.list(host.accountId, query.data.offset);
   });
+  app.get('/api/parties/archive', limited(60), async (request, reply) => {
+    if (!auth || !store)
+      return reply.code(503).send({ error: 'Parties are not available yet.' });
+    const host = await auth.requireHost(request.cookies[hostCookie]);
+    const query = z
+      .object({ offset: z.coerce.number().int().min(0).max(100000).default(0) })
+      .strict()
+      .safeParse(request.query);
+    if (!query.success)
+      return reply.code(400).send({ error: 'Invalid archive page.' });
+    return store.archive(host.accountId, query.data.offset);
+  });
+  app.post<{ Params: { id: string } }>(
+    '/api/parties/:id/archive/remove',
+    { ...limited(30), bodyLimit: 1024 },
+    async (request, reply) => {
+      if (!auth || !store)
+        return reply
+          .code(503)
+          .send({ error: 'Parties are not available yet.' });
+      if (request.headers.origin !== auth.config.appOrigin)
+        return reply
+          .code(403)
+          .send({ error: 'Open CrowdCue to manage the archive.' });
+      const host = await auth.requireHost(request.cookies[hostCookie]);
+      if (!z.uuid().safeParse(request.params.id).success)
+        throw new PartyError(404, 'Party not found.');
+      if (!z.object({}).strict().safeParse(request.body).success)
+        return reply.code(400).send({ error: 'Send an empty JSON object.' });
+      return store.removeFromArchive(host.accountId, request.params.id);
+    },
+  );
+  app.get<{ Params: { id: string } }>(
+    '/api/parties/:id/cover',
+    limited(120),
+    async (request, reply) => {
+      if (!auth || !store)
+        return reply.code(503).send({ error: 'Cover unavailable.' });
+      const host = await auth.requireHost(request.cookies[hostCookie]);
+      if (!z.uuid().safeParse(request.params.id).success)
+        throw new PartyError(404, 'Party not found.');
+      return reply
+        .type('image/jpeg')
+        .send(await store.cover(host.accountId, request.params.id));
+    },
+  );
+  app.post<{ Params: { id: string } }>(
+    '/api/parties/:id/cover',
+    { ...limited(10), bodyLimit: 8 * 1024 * 1024 + 1024 },
+    async (request, reply) => {
+      if (!auth || !store)
+        return reply.code(503).send({ error: 'Cover unavailable.' });
+      if (request.headers.origin !== auth.config.appOrigin)
+        return reply
+          .code(403)
+          .send({ error: 'Open CrowdCue to upload a cover.' });
+      const host = await auth.requireHost(request.cookies[hostCookie]);
+      if (!z.uuid().safeParse(request.params.id).success)
+        throw new PartyError(404, 'Party not found.');
+      await store.owned(host.accountId, request.params.id);
+      const body = z
+        .object({ cover: coverInputSchema })
+        .strict()
+        .safeParse(request.body);
+      if (!body.success)
+        return reply.code(400).send({
+          error: 'Upload a valid JPEG, PNG, or WebP image under 6 MB.',
+        });
+      let image: Buffer;
+      try {
+        image = await normalizeCover(body.data.cover);
+      } catch {
+        return reply.code(400).send({
+          error: 'Upload a valid JPEG, PNG, or WebP image under 6 MB.',
+        });
+      }
+      return store.saveCover(host.accountId, request.params.id, image);
+    },
+  );
   app.post<{ Params: { id: string } }>(
     '/api/parties/:id/close',
     { ...limited(30), bodyLimit: 1024 },

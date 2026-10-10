@@ -1,4 +1,5 @@
-import { motion, MotionConfig } from 'motion/react';
+import { useId, useState } from 'react';
+import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 const shortLabels: Record<string, string> = {
   'Find a song': 'Search',
   'Live queue': 'Queue',
@@ -9,8 +10,10 @@ const shortLabels: Record<string, string> = {
   'Invite guests': 'Invite',
   'Party insights': 'Stats',
   'Your parties': 'Parties',
+  'Party Archive': 'Archive',
 };
 const iconPaths: Record<string, string> = {
+  '▣': 'M4 4h16v16H4zM4 15l5-5 4 4 3-3 4 4M15 8h.01',
   '⌕': 'M15 15l5 5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0',
   '≋': 'M4 6h16M4 12h16M4 18h10',
   '＋': 'M12 4v16M4 12h16',
@@ -30,6 +33,8 @@ export function DashboardNavigation({
   onSelect: (id: string) => void;
   label: string;
 }) {
+  const [active, setActive] = useState<string>();
+  const id = useId();
   return (
     <MotionConfig reducedMotion="user">
       <nav className="dashboard-nav dock" aria-label={label}>
@@ -45,7 +50,29 @@ export function DashboardNavigation({
             aria-label={item.label}
             aria-current={selected === item.id ? 'page' : undefined}
             onClick={() => onSelect(item.id)}
+            onHoverStart={() => setActive(item.id)}
+            onHoverEnd={() => setActive(undefined)}
+            onFocus={() => setActive(item.id)}
+            onBlur={() => setActive(undefined)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setActive(undefined);
+            }}
           >
+            <AnimatePresence>
+              {active === item.id && (
+                <motion.span
+                  className="nav-tooltip"
+                  role="tooltip"
+                  layoutId={`${id}-tooltip`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15, delay: 0.3 }}
+                >
+                  {item.label}
+                </motion.span>
+              )}
+            </AnimatePresence>
             <span className="nav-icon" aria-hidden="true">
               <svg
                 viewBox="0 0 24 24"

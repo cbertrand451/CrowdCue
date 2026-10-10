@@ -61,6 +61,27 @@ export const partyDetailsSchema = publicPartySchema.extend({
 export type PublicParty = z.infer<typeof publicPartySchema>;
 export type PartyDetails = z.infer<typeof partyDetailsSchema>;
 
+export const archiveItemSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  createdAt: z.string(),
+  endedAt: z.string().nullable(),
+  playlistUrl: z
+    .string()
+    .regex(/^https:\/\/open\.spotify\.com\/playlist\/[A-Za-z0-9]{22}$/)
+    .nullable(),
+  coverUrl: z
+    .string()
+    .regex(/^\/api\/parties\/[a-f0-9-]{36}\/cover$/)
+    .nullable(),
+  trackCount: z.number().int().nonnegative(),
+});
+export const archiveSchema = z.object({
+  parties: z.array(archiveItemSchema),
+  nextOffset: z.number().int().nonnegative().nullable(),
+});
+export type ArchiveItem = z.infer<typeof archiveItemSchema>;
+
 export class PartyError extends Error {
   constructor(
     public readonly statusCode: 404 | 409,

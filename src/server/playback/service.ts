@@ -10,6 +10,7 @@ import type { z } from 'zod';
 import type { SearchResult } from '../search/contracts.js';
 export type PlaybackProvider = Pick<
   AuthService,
+  | 'uploadCover'
   | 'createPlaylist'
   | 'findPlaylist'
   | 'matchingPlaylistIds'
@@ -56,7 +57,7 @@ export class PlaybackService {
   async tick() {
     const parties = (
       await this.store.pool.query<{ party_id: string }>(
-        `SELECT b.party_id FROM party_playback b JOIN parties p ON p.id=b.party_id WHERE NOT b.playlist_removed AND (NOT b.completed OR (b.playlist_id IS NOT NULL AND NOT b.playlist_credit_updated)) AND (b.retry_at IS NULL OR b.retry_at<=now()) ORDER BY b.updated_at,b.party_id LIMIT 100`,
+        `SELECT b.party_id FROM party_playback b JOIN parties p ON p.id=b.party_id WHERE NOT b.playlist_removed AND (NOT b.completed OR (b.playlist_id IS NOT NULL AND NOT b.playlist_credit_updated) OR EXISTS (SELECT 1 FROM party_covers c WHERE c.party_id=b.party_id AND b.playlist_id IS NOT NULL AND (c.synced_revision<>c.revision OR c.synced_playlist_id IS DISTINCT FROM b.playlist_id) AND (c.retry_at IS NULL OR c.retry_at<=now()))) AND (b.retry_at IS NULL OR b.retry_at<=now()) ORDER BY b.updated_at,b.party_id LIMIT 100`,
       )
     ).rows;
     for (const p of parties) {
@@ -133,12 +134,46 @@ export class PlaybackService {
     this.backupCache.set(key, { tracks, expires: Date.now() + 60000 });
     return tracks;
   }
+  private async syncCover(client: PoolClient, s: Session, playlistId: string) {
+    const row = (
+      await client.query<{ image: Buffer; revision: number }>(
+        `SELECT image,revision FROM party_covers WHERE party_id=$1
+     AND (synced_revision<>revision OR synced_playlist_id IS DISTINCT FROM $2) AND (retry_at IS NULL OR retry_at<=now())`,
+        [s.party_id, playlistId],
+      )
+    ).rows[0];
+    if (!row) return;
+    try {
+      // Replacing the same cover is idempotent; retries cannot duplicate playlists.
+      await this.spotify.uploadCover(
+        s.host_account_id,
+        playlistId,
+        row.image.toString('base64'),
+      );
+      await client.query(
+        'UPDATE party_covers SET synced_revision=$2,synced_playlist_id=$3,error_code=NULL,retry_at=NULL WHERE party_id=$1 AND revision=$2',
+        [s.party_id, row.revision, playlistId],
+      );
+    } catch (error) {
+      await client.query(
+        'UPDATE party_covers SET error_code=$3,retry_at=now()+make_interval(secs=>$4) WHERE party_id=$1 AND revision=$2',
+        [
+          s.party_id,
+          row.revision,
+          error instanceof SpotifyError ? error.kind : 'unavailable',
+          error instanceof SpotifyError ? (error.retryAfter ?? 60) : 60,
+        ],
+      );
+    }
+  }
   private async process(client: PoolClient, s: Session) {
     // Upgrade only the description of known app-created playlists, including recaps.
     if (s.playlist_id && !s.playlist_credit_updated) {
       await this.playlists.ensure(client, s);
       s.playlist_credit_updated = true;
     }
+    if (s.playlist_id && !s.playlist_removed)
+      await this.syncCover(client, s, s.playlist_id);
     let player: Awaited<ReturnType<PlaybackProvider['player']>> = null;
     let observationError: unknown;
     if (s.status === 'ACTIVE') {
@@ -166,6 +201,7 @@ export class PlaybackService {
     }
     const playlistId = await this.playlists.ensure(client, s);
     if (!playlistId) return;
+    await this.syncCover(client, s, playlistId);
     if (!s.backup_source_id) {
       await client.query(
         "UPDATE party_playback SET error_code='backup_required',updated_at=now() WHERE party_id=$1",

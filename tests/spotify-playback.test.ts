@@ -371,3 +371,23 @@ it('updates only the description of a known playlist without changing its tracks
     description: 'Credit',
   });
 });
+
+it('uploads raw JPEG base64 to the managed cover endpoint and accepts an empty 202 response', async () => {
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockResolvedValue(new Response(null, { status: 202 }));
+  const api = new SpotifyPlayback(fetcher);
+  await api.uploadCover('fixture-access', playlist, '/9j/2Q==');
+  expect(fetcher).toHaveBeenCalledWith(
+    `https://api.spotify.com/v1/playlists/${playlist}/images`,
+    expect.objectContaining({
+      method: 'PUT',
+      headers: expect.objectContaining({ 'content-type': 'image/jpeg' }),
+      body: '/9j/2Q==',
+    }),
+  );
+  await expect(
+    api.uploadCover('fixture-access', playlist, 'A'.repeat(256 * 1024 + 4)),
+  ).rejects.toThrow();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});

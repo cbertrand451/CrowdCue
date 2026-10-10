@@ -1,3 +1,4 @@
+import { PartyArchive } from './PartyArchive';
 import { EndPartyAction } from './EndPartyAction';
 import { GuestQRCode } from './GuestQRCode';
 import { LoadingStatus } from './LoadingButton';
@@ -97,7 +98,7 @@ function HostHome() {
             : 'Unable to reach CrowdCue. Please refresh to try again.'}
         </p>
       )}
-      {authenticated && (
+      {authenticated && menu !== 'archive' && (
         <section
           className="home-active-card"
           aria-label="Active party overview"
@@ -172,16 +173,20 @@ function HostHome() {
             items={[
               { id: 'create', label: 'New party', icon: '＋' },
               { id: 'parties', label: 'Your parties', icon: '≋' },
+              { id: 'archive', label: 'Party Archive', icon: '▣' },
             ]}
           />
           <div className="dashboard-content">
-            <PartyCreation
-              view={menu === 'parties' ? 'parties' : 'create'}
-              onCreated={() => setMenu('parties')}
-              onOverviewChange={setOverview}
-              confirmedEndedParties={confirmedEndedParties}
-              onPartyEnded={recordEnded}
-            />
+            <div hidden={menu === 'archive'}>
+              <PartyCreation
+                view={menu === 'parties' ? 'parties' : 'create'}
+                onCreated={() => setMenu('parties')}
+                onOverviewChange={setOverview}
+                confirmedEndedParties={confirmedEndedParties}
+                onPartyEnded={recordEnded}
+              />
+            </div>
+            {menu === 'archive' && <PartyArchive />}
           </div>
         </div>
       )}

@@ -122,7 +122,7 @@ The host clicks **Connect Spotify**, grants Spotify permissions, and returns to 
 4. For local development, run `npm run auth:keygen`. This writes a random encryption key to ignored `.env.token-key` with private permissions, without printing it. Existing key files are never overwritten. Server/start scripts load this file after `.env`; process environment values take precedence over both. Preserve the file across restarts. For deployment, provision `TOKEN_ENCRYPTION_KEYS` and `TOKEN_ENCRYPTION_KEY_ID` through your secret manager; never commit the local file.
 5. Set `SPOTIFY_AUTH_ENABLED=true`, restart with `npm run dev`, and click Connect Spotify. Configuration validation fails safely when required values, matching origins, or encryption keys are missing. When disabled, the app remains runnable and displays an unavailable connection button.
 
-The requested scopes are `user-read-private`, `user-read-playback-state`, `playlist-modify-private`, `playlist-read-private`, and `playlist-read-collaborative`. CrowdCue only writes to the private session playlist it creates. It does not request playback modification or public playlist modification. Existing hosts should reconnect Spotify to use the reduced consent list. Spotify app access restrictions still apply; browser consent and live client acceptance testing are required. All automated Spotify writes are mocked.
+The requested scopes are `user-read-private`, `user-read-playback-state`, `playlist-modify-private`, `ugc-image-upload`, `playlist-read-private`, and `playlist-read-collaborative`. CrowdCue only writes to the private session playlist it creates. It does not request playback modification or public playlist modification. Existing hosts should reconnect Spotify to grant the current consent list, including cover-image upload permission. Spotify app access restrictions still apply; browser consent and live client acceptance testing are required. All automated Spotify writes are mocked.
 
 Authentication endpoints:
 
@@ -436,3 +436,42 @@ does not publish a fixed safe quota. This is a conservative CrowdCue ceiling,
 not a guarantee against upstream throttling. It applies to the single Node
 process deployed on Render; horizontal scaling or other processes sharing the
 Spotify app credentials require a shared limiter.
+
+## Party Archive and cover images
+
+Home’s **Party Archive** tab shows the signed-in host’s ended parties, including
+parties closed from Your parties. Cards show their creation date, queued-song
+count, saved cover and a link to the actual session playlist when one exists.
+Older cards load in pages of 20. Details open in a dialog. Cards gently float on
+hover and respect reduced motion. Removing a card requires confirmation and
+hides it from this gallery; it does not delete party history or modify Spotify.
+
+**Cover Image** accepts JPEG, PNG or WebP files up to 6 MiB when creating a party
+or preparing its session playlist on Admin. Server-side Sharp validates the image,
+limits decoding to 24 million pixels, crops to 512×512, strips metadata and encodes
+a JPEG. The encoded Spotify payload is capped at 256 KiB. SVG, animation, corrupt
+images and oversized uploads are rejected. Covers persist in PostgreSQL, without
+relying on Render’s ephemeral filesystem. Cover reads/writes and archive operations
+require the owning host’s cookie; writes also require the configured Origin.
+
+Migration **012-party-gallery** preserves existing records and adds the archive
+visibility timestamp and bounded cover table. Production startup applies it
+through the existing migration runner. Creating a party stores its optional cover
+in the same transaction and creation-key fingerprint. `GET /api/parties/archive`
+accepts `offset`; `POST /api/parties/:id/archive/remove` accepts `{}`;
+`GET /api/parties/:id/cover` returns authenticated JPEG bytes, and
+`POST /api/parties/:id/cover` accepts `{ "cover": "<base64 image>" }` for active parties.
+
+The Spotify worker uploads only to CrowdCue’s managed private session playlist,
+using the shared API limiter, token refresh and provider cooldowns. Successful
+uploads are tracked by cover revision and playlist ID. Cover failures do not stop
+song synchronization; saved images retry safely, including after a party ends.
+Admin shows pending, synced or failed cover status and a reconnect action when
+permissions are missing. Existing hosts need to reconnect and grant the new
+`ugc-image-upload` scope. Spotify’s [cover upload documentation](https://developer.spotify.com/documentation/web-api/reference/upload-custom-playlist-cover)
+specifies raw base64 JPEG, `image/jpeg`, the 256 KB payload limit and HTTP 202.
+Automated tests mock Spotify writes; live acceptance needs the host’s consent.
+
+The supplied tooltip nav patterns are adapted to the existing desktop sidebar and
+mobile menu. **Find a party** offers an expandable secondary QR control; main
+invitations and Display keep visible QR codes. See [component adaptations](docs/ui/batch-3/README.md).
