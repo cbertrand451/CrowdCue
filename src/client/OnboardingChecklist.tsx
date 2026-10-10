@@ -68,7 +68,7 @@ export function OnboardingChecklist({
                   <span className="step-marker" aria-hidden="true">
                     {step.isCompleted ? '✓' : index + 1}
                   </span>
-                  {step.onAction && !step.isCompleted ? (
+                  {step.onAction ? (
                     <button
                       type="button"
                       className="secondary"
@@ -78,7 +78,7 @@ export function OnboardingChecklist({
                       <ComponentIcon symbol="→" />
                     </button>
                   ) : (
-                    <span>{step.title}</span>
+                    <span className="step-title">{step.title}</span>
                   )}
                   <span className="step-status">
                     {step.isCompleted ? 'Complete' : 'Pending'}

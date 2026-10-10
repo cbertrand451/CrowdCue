@@ -1,3 +1,4 @@
+import { GuestQRCode } from './GuestQRCode';
 import { LoadingStatus } from './LoadingButton';
 import { DashboardNavigation } from './DashboardNavigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -10,6 +11,16 @@ export function App() {
   const route = /^\/(join|admin|display)\/([^/]+)\/?$/.exec(
     window.location.pathname,
   );
+  const page = route
+    ? route[1] === 'join'
+      ? 'Guest'
+      : route[1] === 'admin'
+        ? 'Admin'
+        : 'Display'
+    : 'Home';
+  useEffect(() => {
+    document.title = `CrowdCue · ${page}`;
+  }, [page]);
   if (route)
     return (
       <PartyPage
@@ -60,10 +71,13 @@ function HostHome() {
   }, []);
   return (
     <main className="host-home">
-      <h1>CrowdCue</h1>
+      <header className="party-header admin-header home-header">
+        <h1>CrowdCue</h1>
+        <SpotifyConnection onAuthenticationChange={authenticationChanged} />
+      </header>
       <div className="home-overview">
         <section className="home-account-card" aria-label="Host controls">
-          <h2>Your connection</h2>
+          <h2>App status</h2>
           {status === 'checking' ? (
             <LoadingStatus className="status">
               Checking connection…
@@ -75,7 +89,6 @@ function HostHome() {
                 : 'Unable to reach CrowdCue. Please refresh to try again.'}
             </p>
           )}
-          <SpotifyConnection onAuthenticationChange={authenticationChanged} />
         </section>
         {authenticated && (
           <section
@@ -101,21 +114,36 @@ function HostHome() {
                 .filter((party) => party.status === 'ACTIVE')
                 .map((party) => (
                   <article key={party.id} className="active-party-summary">
-                    <h3>{party.name}</h3>
-                    <p className="ready">Party open to guests</p>
-                    <p className="muted">
-                      {party.settings.backupSourceId
-                        ? 'Backup playlist configured'
-                        : 'Add a backup playlist in settings before starting the Spotify session'}
-                    </p>
-                    <div className="active-party-actions">
-                      {party.links.admin && (
-                        <a href={party.links.admin}>Open admin</a>
-                      )}
-                      {party.links.display && (
-                        <a href={party.links.display}>Open display</a>
-                      )}
-                      <a href={party.links.guest}>Guest link</a>
+                    <GuestQRCode url={party.links.guest} />
+                    <div className="active-party-details">
+                      <h3>{party.name}</h3>
+                      <p className="ready">Party open to guests</p>
+                      <p className="muted">
+                        {party.settings.backupSourceId
+                          ? 'Backup playlist configured'
+                          : 'Add a backup playlist in settings before starting the Spotify session'}
+                      </p>
+                      <div className="active-party-actions">
+                        {party.links.admin && (
+                          <a
+                            href={party.links.admin}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open admin
+                          </a>
+                        )}
+                        {party.links.display && (
+                          <a
+                            href={party.links.display}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open display
+                          </a>
+                        )}
+                        <a href={party.links.guest}>Guest link</a>
+                      </div>
                     </div>
                   </article>
                 ))}

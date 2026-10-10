@@ -39,7 +39,7 @@ export function PartyLinks({
           />
           <div className="party-actions">
             {links.admin && (
-              <a href={links.admin} rel="noreferrer">
+              <a href={links.admin} rel="noreferrer" target="_blank">
                 Open admin
               </a>
             )}

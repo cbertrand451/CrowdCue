@@ -37,7 +37,8 @@ export function AdminDashboard({
   );
   const [name, setName] = useState(party.name);
   const [settings, setSettings] = useState(party.settings);
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'settings' | 'end'>();
+  const busy = pendingAction !== undefined;
   const [confirming, setConfirming] = useState(false);
   const [feedback, setFeedback] = useState<string>();
   const [error, setError] = useState<string>();
@@ -64,7 +65,7 @@ export function AdminDashboard({
       return;
     }
     inFlight.current = true;
-    setBusy(true);
+    setPendingAction(action);
     setError(undefined);
     setFeedback(undefined);
     const controller = requestController.current;
@@ -105,7 +106,7 @@ export function AdminDashboard({
         setError('Could not confirm the change. Refresh the party or retry.');
     } finally {
       inFlight.current = false;
-      setBusy(false);
+      setPendingAction(undefined);
     }
   }
   function save(event: FormEvent) {
@@ -277,11 +278,11 @@ export function AdminDashboard({
                   reordered.
                 </p>
                 <LoadingButton
-                  loading={busy}
+                  loading={pendingAction === 'settings'}
                   succeeded={feedback === 'Settings saved.'}
                   type="submit"
                 >
-                  {busy ? 'Saving…' : 'Save settings'}
+                  {pendingAction === 'settings' ? 'Saving…' : 'Save settings'}
                 </LoadingButton>
               </fieldset>
             </form>
@@ -304,12 +305,14 @@ export function AdminDashboard({
                   <p>End this party? You cannot reopen it.</p>
                   <div className="party-actions">
                     <LoadingButton
-                      loading={busy}
+                      loading={pendingAction === 'end'}
                       disabled={busy}
                       type="button"
                       onClick={() => void mutate('end')}
                     >
-                      {busy ? 'Ending…' : 'Confirm end party'}
+                      {pendingAction === 'end'
+                        ? 'Ending…'
+                        : 'Confirm end party'}
                     </LoadingButton>
                     <button
                       disabled={busy}

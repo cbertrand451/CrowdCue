@@ -465,3 +465,36 @@ it('cancels dashboard mutations on unmount without restoring private details', a
   });
   expect(onChange).not.toHaveBeenCalled();
 });
+
+it('animates only the end action while settings remain disabled and idle', async () => {
+  const { AdminDashboard } = await import('../src/client/AdminDashboard');
+  let complete!: (value: ReturnType<typeof reply>) => void;
+  const pendingEnd = new Promise<ReturnType<typeof reply>>((resolve) => {
+    complete = resolve;
+  });
+  stubActionFetch((url: string) =>
+    url.endsWith('/end') ? pendingEnd : Promise.resolve(reply({})),
+  );
+  render(
+    <AdminDashboard
+      party={party}
+      token={'a'.repeat(43)}
+      onChange={vi.fn()}
+      onExpired={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('button', { name: 'End party' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm end party' }));
+  const save = screen.getByRole('button', { name: 'Save settings' });
+  expect(save).toBeDisabled();
+  expect(save).toHaveAttribute('data-state', 'idle');
+  expect(screen.getByRole('button', { name: 'Ending…' })).toHaveAttribute(
+    'data-state',
+    'loading',
+  );
+  await act(async () =>
+    complete(reply({ party: { ...party, status: 'ENDED' } })),
+  );
+  expect(await screen.findByText('Party ended.')).toBeVisible();
+});

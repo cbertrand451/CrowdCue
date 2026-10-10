@@ -175,7 +175,7 @@ export function PlaybackPanel({
         <LoadingButton
           loading={refreshBusy}
           type="button"
-          className="secondary"
+          className="secondary session-refresh"
           disabled={refreshBusy}
           aria-busy={refreshBusy}
           onClick={() => {
@@ -202,14 +202,6 @@ export function PlaybackPanel({
       {status && (
         <>
           {active && (
-            <SessionHelp
-              status={status}
-              failed={!!(actionError || error)}
-              {...diagnostic}
-              onConfigureBackup={onConfigureBackup}
-            />
-          )}
-          {active && (
             <OnboardingChecklist
               steps={[
                 {
@@ -231,6 +223,14 @@ export function PlaybackPanel({
                   id: 'playlist',
                   title: 'Create the session playlist',
                   isCompleted: !!status.playlistUrl,
+                  onAction: () =>
+                    (
+                      document.querySelector<HTMLElement>('.session-start') ??
+                      document.querySelector<HTMLElement>(
+                        '.playlist-launch a',
+                      ) ??
+                      document.querySelector<HTMLElement>('.session-refresh')
+                    )?.focus(),
                 },
               ]}
             />
@@ -415,6 +415,14 @@ export function PlaybackPanel({
                 </>
               )}
             </>
+          )}
+          {active && (
+            <SessionHelp
+              status={status}
+              failed={!!(actionError || error)}
+              {...diagnostic}
+              onConfigureBackup={onConfigureBackup}
+            />
           )}
           {!active && status.playlistUrl && (
             <>

@@ -2219,3 +2219,89 @@ button.requested-button {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.active-party-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1.5rem;
+}
+.active-party-summary .guest-qr {
+  margin: 0;
+}
+.active-party-summary .guest-qr svg {
+  width: 160px;
+  height: auto;
+}
+.active-party-details {
+  min-width: 0;
+}
+.party-header {
+  margin-bottom: 1.5rem;
+}
+.party-header .wordmark {
+  margin: 0;
+}
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+.admin-header .spotify-connection {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  text-align: right;
+}
+.admin-header .spotify-connection p,
+.admin-header .spotify-connection form {
+  margin: 0;
+}
+.checklist-steps button.secondary,
+.checklist-steps .step-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  font-weight: 650;
+  text-align: center;
+}
+@media (max-width: 600px) {
+  .active-party-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-header {
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .admin-header .spotify-connection {
+    font-size: 0.85rem;
+  }
+}
+.home-header h1 {
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .home-header {
+    flex-wrap: wrap;
+  }
+  .home-header .spotify-connection {
+    margin-left: auto;
+  }
+}
+.admin-header .wordmark {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.admin-header .spotify-connection {
+  flex: 1;
+  min-width: 0;
+}
+.admin-header .spotify-connection p {
+  max-width: 100%;
+}

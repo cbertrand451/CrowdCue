@@ -49,7 +49,7 @@ it('groups home controls and shows only active parties with their real links', a
     endedAt: null,
     settings: {},
     links: {
-      guest: 'https://crowdcue.example/join/guest',
+      guest: `https://crowdcue.example/join/${'g'.repeat(43)}`,
       admin: 'https://crowdcue.example/admin/host',
       display: 'https://crowdcue.example/display/tv',
     },
@@ -85,13 +85,22 @@ it('groups home controls and shows only active parties with their real links', a
   expect(await within(overview).findByText('Tonight')).toBeVisible();
   expect(within(overview).queryByText('Yesterday')).not.toBeInTheDocument();
   expect(
+    within(overview).getByRole('img', { name: 'Guest join QR code' }),
+  ).toBeVisible();
+  expect(document.title).toBe('CrowdCue · Home');
+  for (const label of ['Open admin', 'Open display']) {
+    expect(within(overview).getByRole('link', { name: label })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
+  }
+  expect(
     within(overview).getByRole('link', { name: 'Open admin' }),
   ).toHaveAttribute('href', party.links.admin);
   expect(
-    within(screen.getByRole('region', { name: 'Host controls' })).getByRole(
-      'button',
-      { name: 'Sign out' },
-    ),
+    within(
+      screen.getByRole('region', { name: 'Spotify connection' }),
+    ).getByRole('button', { name: 'Sign out' }),
   ).toBeVisible();
   expect(
     screen.queryByText('Create a party and share it with your guests.'),

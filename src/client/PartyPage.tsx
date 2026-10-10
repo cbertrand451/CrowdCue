@@ -89,16 +89,22 @@ function RolePage({ role, token }: { role: 'guest' | 'admin'; token: string }) {
   return (
     <LiveRevision.Provider value={revision}>
       <main className="party-page">
-        <p className="wordmark">CrowdCue</p>
+        <header
+          className={
+            role === 'admin' ? 'party-header admin-header' : 'party-header'
+          }
+        >
+          <p className="wordmark">CrowdCue</p>
+          {role === 'admin' && (
+            <SpotifyConnection onAuthenticationChange={authenticationChanged} />
+          )}
+        </header>
         {party && (
           <p className="muted" role="status">
             {connected
               ? 'Live updates connected.'
               : 'Live updates reconnecting. Checking for changes periodically.'}
           </p>
-        )}
-        {role === 'admin' && (
-          <SpotifyConnection onAuthenticationChange={authenticationChanged} />
         )}
         {error && (
           <div role="alert">

@@ -57,9 +57,7 @@ export function SessionHelp({
   return (
     <details className="session-help" open={failed || !!reason || undefined}>
       <summary>
-        {failed || reason
-          ? 'Session troubleshooting'
-          : 'Before you start · setup help'}
+        {failed || reason ? 'Session troubleshooting' : 'Setup help'}
       </summary>
       {reason && (
         <ol>
