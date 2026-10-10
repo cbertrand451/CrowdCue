@@ -1199,6 +1199,11 @@ button.requested-button:disabled {
 .request-board .track-details {
   flex: 1;
 }
+.guest-interface .request-board .search-results > li {
+  padding: 1.25rem;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
 @media (min-width: 1100px) {
   .queue-results li {
     grid-template-columns: 2rem 64px minmax(0, 1fr) auto;
