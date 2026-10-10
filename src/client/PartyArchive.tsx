@@ -228,7 +228,7 @@ export function PartyArchive() {
               This removes the card from your Party Archive. Your Spotify
               playlist and party history are kept.
             </p>
-            <div className="dialog-actions">
+            <div className="dialog-actions archive-dialog-actions">
               <button
                 type="button"
                 className="secondary"

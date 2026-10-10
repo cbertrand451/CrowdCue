@@ -2497,3 +2497,14 @@ button.requested-button {
     transform: none;
   }
 }
+
+.archive-dialog-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.archive-dialog-actions > button {
+  border-radius: 999px;
+  min-height: 52px;
+}
