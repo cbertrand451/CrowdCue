@@ -9,6 +9,7 @@ import { readAuthConfig } from './auth/config.js';
 import { TokenCipher } from './auth/crypto.js';
 import { PostgresAuthStore } from './auth/store.js';
 import { AuthService } from './auth/service.js';
+import { createSpotifyFetch } from './spotify/rate-limit.js';
 import { SpotifyClient } from './spotify/client.js';
 import { createDatabase } from './db/index.js';
 import { PostgresPartyStore } from './parties/store.js';
@@ -38,7 +39,7 @@ const auth =
           pool,
           new TokenCipher(authConfig.keyId, authConfig.keys),
         ),
-        new SpotifyClient(authConfig),
+        new SpotifyClient(authConfig, createSpotifyFetch()),
       )
     : undefined;
 const playback =

@@ -254,7 +254,7 @@ describe.skipIf(!database)('durable Spotify session playback', () => {
         },
         payload: { action: 'start' },
       });
-      expect(response.statusCode).toBe(kind === 'rate_limited' ? 429 : 503);
+      expect(response.statusCode).toBe(503);
       expect(response.json()).toEqual({
         error: new SpotifyError(kind).message,
         code: kind,

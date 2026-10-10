@@ -131,3 +131,12 @@ feedback. Cards remain #000000 and the accent remains #65b32e.
 - [x] Refresh status after uncertain network failures without automatically resubmitting playlist creation.
 
 - [x] Remove the redundant home Create New shortcut; retain New party and Your parties workspace navigation.
+
+### Navigation, session controls and Spotify pacing
+
+- [x] Open home admin/Display links in new tabs and identify the role in tab titles.
+- [x] Add guest QR codes to active-party summaries.
+- [x] Place Spotify account and sign-out controls in the right side of Home/Admin headers.
+- [x] Move Setup help below session content; match the third setup action to the other rows.
+- [x] Animate only the mutation being performed when saving settings or ending parties.
+- [x] Share a hardcoded Spotify request budget and cooldown across all production callers; bound admission waits and preserve mutation certainty.

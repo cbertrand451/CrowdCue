@@ -419,3 +419,20 @@ record, with animated equalizer bars beside the now-playing label. Motion follow
 fresh Spotify PLAYING observations and stops for paused, unavailable, stale or
 ended playback. Reduced-motion preferences disable both animations. The bars
 are a decorative playback indicator; CrowdCue does not analyze or stream audio.
+
+## Spotify request pacing
+
+The production server shares a hardcoded outbound budget across Spotify sign-in,
+search and playback synchronization: 60 starts per rolling 30 seconds, spaced by
+at least 500 ms. A request queues for at most two seconds; larger bursts receive
+a temporary-unavailability response so hosts/guests can retry. Spotify's
+`Retry-After` pauses the shared budget, and upstream cooldowns use safe HTTP 503
+responses with retry guidance instead of forwarding HTTP 429. CrowdCue's own
+inbound abuse protection may still return 429. Mutations are never automatically
+replayed.
+
+[Spotify's documentation](https://developer.spotify.com/documentation/web-api/concepts/rate-limits)
+does not publish a fixed safe quota. This is a conservative CrowdCue ceiling,
+not a guarantee against upstream throttling. It applies to the single Node
+process deployed on Render; horizontal scaling or other processes sharing the
+Spotify app credentials require a shared limiter.

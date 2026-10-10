@@ -44,13 +44,7 @@ export async function authRoutes(
     if (error instanceof SpotifyError) {
       if (error.retryAfter) reply.header('Retry-After', error.retryAfter);
       return reply
-        .code(
-          error.kind === 'rate_limited'
-            ? 429
-            : error.kind === 'reauthenticate'
-              ? 401
-              : 503,
-        )
+        .code(error.kind === 'reauthenticate' ? 401 : 503)
         .send({ error: error.message });
     }
     if (

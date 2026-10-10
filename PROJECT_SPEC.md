@@ -1068,9 +1068,10 @@ visual playback indicator, not measured audio data; Spotify retains playback.
 
 ### Home overview and session startup help
 
-The home page groups connection status and Spotify account actions in a compact
-black card. The redundant Create New shortcut is removed; New party and Your
-parties remain available in the workspace navigation. Alongside it, authenticated hosts see active
+The home page groups app connection status in a compact black card. Spotify
+account actions sit at the right of the CrowdCue header on Home and Admin. The
+redundant Create New shortcut is removed; New party and Your parties remain
+available in the workspace navigation. Alongside it, authenticated hosts see active
 parties from the existing loaded owner list, with real admin, Display and guest
 links and backup configuration status. Creating, closing and refreshing parties
 update the overview. Loading/failure states do not imply that no active party
@@ -1084,3 +1085,36 @@ when backup verification fails before session state is persisted. Guidance cover
 backup configuration/playability, other active sessions, reconnection, cooldowns
 and uncertain playlist creation. Refresh checks progress; retry resumes sync;
 backup refresh reloads songs. CrowdCue never starts Spotify playback automatically.
+
+### Navigation, setup layout and Spotify request budget
+
+- Browser tabs identify Home, Admin, Guest or Display after app initialization;
+  this works with the existing Render deployment without hosting changes.
+- Home admin and Display links open new tabs. Each loaded active-party summary
+  includes a QR code encoding only its guest join link.
+- Wherever host Spotify account controls appear (Home and Admin), place them at
+  the right of the CrowdCue header. Small screens wrap the Home header as needed.
+- Setup help follows the session content at the bottom, without the previous
+  “Before you start” label. Failed actions still expand troubleshooting. All
+  actionable setup rows use the same centered, bold button with an arrow;
+  playlist setup focuses the start/link/status control appropriate to its state.
+- Settings and ending share mutation exclusion but have separate loading states;
+  ending never animates Save settings.
+- Production uses one shared outbound Spotify scheduler for OAuth, profile,
+  search, track reads, pagination, playlist writes and worker playback reads.
+  CrowdCue caps dispatch at 60 calls per rolling 30 seconds, with at least 500 ms
+  between starts and at most two seconds waiting for admission. Aborted queued
+  work is discarded; rejected admission never marks a mutation as sent.
+  Spotify 429 responses establish a shared Retry-After cooldown. Unsent work is
+  deferred with a safe 503 response rather than held through a long cooldown;
+  Spotify cooldown responses also surface as 503 with Retry-After and existing
+  recovery guidance. CrowdCue's inbound abuse limits remain independent.
+  Requests and uncertain mutations are never automatically replayed.
+
+Spotify documents a rolling 30-second app-wide limit, variable quota modes and
+endpoint-specific exceptions, but no universal numeric threshold. The 60-call
+ceiling is a conservative CrowdCue policy, not a Spotify-published guarantee.
+The limiter covers the single Node server used by the Render deployment;
+multiple instances or other apps sharing the credentials need a shared budget.
+Quota changes, restarts or endpoint-specific rules can still produce upstream
+429s. Source: https://developer.spotify.com/documentation/web-api/concepts/rate-limits

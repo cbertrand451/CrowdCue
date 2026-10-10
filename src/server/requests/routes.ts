@@ -27,9 +27,11 @@ export async function requestRoutes(
     }
     if (error instanceof SpotifyError) {
       if (error.retryAfter) reply.header('Retry-After', error.retryAfter);
-      return reply.code(error.kind === 'rate_limited' ? 429 : 503).send({
+      return reply.code(503).send({
         error:
-          'Spotify is unavailable for this request. Ask the host to check their connection, then retry.',
+          error.kind === 'rate_limited' || error.retryAfter
+            ? 'Spotify requests are temporarily paused. Please wait before retrying.'
+            : 'Spotify is unavailable for this request. Ask the host to check their connection, then retry.',
       });
     }
     if (

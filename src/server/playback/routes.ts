@@ -25,7 +25,7 @@ export async function playbackRoutes(
       return reply.code(error.statusCode).send({ error: error.message });
     if (error instanceof SpotifyError) {
       if (error.retryAfter) reply.header('Retry-After', error.retryAfter);
-      return reply.code(error.kind === 'rate_limited' ? 429 : 503).send({
+      return reply.code(503).send({
         error:
           error.kind === 'no_active_device'
             ? 'Open Spotify on your usual device and start playback.'

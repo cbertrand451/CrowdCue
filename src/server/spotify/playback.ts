@@ -1,6 +1,10 @@
 import { isSpotifyArtworkUrl } from '../security/urls.js';
 import { z } from 'zod';
 import { SpotifyError } from './error.js';
+import {
+  SpotifyRequestDeferred,
+  SpotifyRequestCancelled,
+} from './rate-limit.js';
 import type { SpotifyFetch } from './client.js';
 import type { SearchResult } from '../search/contracts.js';
 export class SpotifyMutationError extends SpotifyError {
@@ -77,7 +81,18 @@ export class SpotifyPlayback {
         redirect: 'error',
         signal: AbortSignal.timeout(10000),
       });
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof SpotifyRequestDeferred ||
+        error instanceof SpotifyRequestCancelled
+      )
+        throw new SpotifyMutationError(
+          false,
+          'unavailable',
+          error instanceof SpotifyRequestDeferred
+            ? error.retryAfter
+            : undefined,
+        );
       throw new SpotifyMutationError(method !== 'GET');
     }
     if (response.status === 401)

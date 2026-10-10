@@ -109,7 +109,8 @@ export class SpotifyClient {
         redirect: 'error',
         signal: AbortSignal.timeout(10_000),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof SpotifyError) throw error;
       throw new SpotifyError('unavailable');
     }
     if (response.status === 429) {
