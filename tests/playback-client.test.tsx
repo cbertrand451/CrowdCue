@@ -316,3 +316,70 @@ it('explains cooldowns when Spotify rejects startup without persisted session er
     await screen.findByText('Wait at least 60 seconds before retrying.'),
   ).toBeVisible();
 });
+
+it('automatically reuses the saved party cover without offering another upload at session creation', async () => {
+  const before = {
+    ...status,
+    enabled: false,
+    playlistUrl: null,
+    creation: 'NEW',
+    coverState: 'pending',
+  };
+  const fetcher = vi.fn(async (_url, options) =>
+    reply(
+      options?.method === 'POST' ? { ...status, coverState: 'synced' } : before,
+    ),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <PlaybackPanel
+      token={'a'.repeat(43)}
+      partyId="a70dc230-6ab3-44cb-a58c-0e236973bb38"
+      active
+      onExpired={vi.fn()}
+    />,
+  );
+  expect(
+    await screen.findByText(
+      'Party cover saved. It will be used automatically for your Spotify session playlist.',
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByLabelText(/Cover Image/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+  await screen.findByText('Playlist cover synced to Spotify.');
+  const writes = fetcher.mock.calls.filter(
+    (call) => call[1]?.method === 'POST',
+  );
+  expect(writes).toHaveLength(1);
+  expect(writes[0][0]).toBe(
+    `/api/party-links/admin/${'a'.repeat(43)}/playback`,
+  );
+  expect(JSON.parse(writes[0][1].body)).toEqual({
+    action: 'start',
+    description: '',
+  });
+});
+it('offers an optional cover upload when the party has no saved image', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      reply({
+        ...status,
+        enabled: false,
+        playlistUrl: null,
+        creation: 'NEW',
+        coverState: 'none',
+      }),
+    ),
+  );
+  render(
+    <PlaybackPanel
+      token={'a'.repeat(43)}
+      partyId="a70dc230-6ab3-44cb-a58c-0e236973bb38"
+      active
+      onExpired={vi.fn()}
+    />,
+  );
+  expect(await screen.findByLabelText(/Cover Image/)).toBeInTheDocument();
+  expect(screen.queryByText(/Party cover saved/)).not.toBeInTheDocument();
+});

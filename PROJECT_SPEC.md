@@ -1143,7 +1143,9 @@ playlists are retained. Active parties continue to appear in the existing overvi
 and Your parties.
 
 Hosts can choose an optional **Cover Image** during party creation or before
-starting the session playlist. JPEG, PNG and WebP uploads are bounded to 6 MiB,
+starting the session playlist. A saved party cover is used automatically for the
+Spotify playlist; session setup must not ask for another image when a cover
+already exists. JPEG, PNG and WebP uploads are bounded to 6 MiB,
 validated on the backend, cropped square and re-encoded to a metadata-free JPEG
 within Spotify’s 256 KiB encoded payload limit. Covers are stored in PostgreSQL
 and shown on archive cards; the same normalized image is uploaded to the app’s

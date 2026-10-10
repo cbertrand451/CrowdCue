@@ -338,7 +338,9 @@ export function PlaybackPanel({
           )}
           {status.coverState === 'pending' && (
             <p role="status" className="muted">
-              Cover saved; waiting for Spotify playlist upload.
+              {!status.enabled && !status.playlistUrl
+                ? 'Party cover saved. It will be used automatically for your Spotify session playlist.'
+                : 'Cover saved; waiting for Spotify playlist upload.'}
             </p>
           )}
           {status.coverState === 'synced' && (
@@ -385,7 +387,7 @@ export function PlaybackPanel({
                       onChange={(e) => setDescription(e.target.value)}
                     />
                   </label>
-                  {partyId && (
+                  {partyId && status.coverState === 'none' && (
                     <CoverUpload partyId={partyId} disabled={!!busy} />
                   )}
                   <LoadingButton

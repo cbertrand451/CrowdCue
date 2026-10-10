@@ -447,7 +447,9 @@ hover and respect reduced motion. Removing a card requires confirmation and
 hides it from this gallery; it does not delete party history or modify Spotify.
 
 **Cover Image** accepts JPEG, PNG or WebP files up to 6 MiB when creating a party
-or preparing its session playlist on Admin. Server-side Sharp validates the image,
+or preparing its session playlist on Admin. A cover saved during party creation
+is reused automatically; Admin only offers an upload when no party cover exists.
+Server-side Sharp validates the image,
 limits decoding to 24 million pixels, crops to 512×512, strips metadata and encodes
 a JPEG. The encoded Spotify payload is capped at 256 KiB. SVG, animation, corrupt
 images and oversized uploads are rejected. Covers persist in PostgreSQL, without
