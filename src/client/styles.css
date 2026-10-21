@@ -1843,15 +1843,6 @@ button.requested-button:disabled {
     position: relative;
     border-radius: 12px;
   }
-  .dashboard-nav.dock button[aria-current='page']::after {
-    content: '';
-    position: absolute;
-    bottom: 3px;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: currentColor;
-  }
   .dock .nav-short-label {
     white-space: nowrap;
   }
